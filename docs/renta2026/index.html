@@ -396,7 +396,7 @@
         <div class="declared-group">
           <div class="declared-group-title">🏢 Datos financieros empresa 2024</div>
           <div class="field">
-            <label>Ingresos percibidos en 2024</label>
+            <label>Ingresos percibidos en 2024<span class="monto-badge badge-total">Monto total</span></label>
             <div class="money-wrap"><span class="prefix">$</span>
               <input type="number" id="v_ingresos" placeholder="0" min="0" />
             </div>
@@ -404,7 +404,7 @@
               📄 <span class="src">SII → Registro de Ventas e Ingresos (RVI)</span> o tu libro de ingresos.</div>
           </div>
           <div class="field">
-            <label>Gastos / egresos pagados en 2024</label>
+            <label>Gastos / egresos pagados en 2024<span class="monto-badge badge-neto">Monto neto</span></label>
             <div class="money-wrap"><span class="prefix">$</span>
               <input type="number" id="v_gastos" placeholder="0" min="0" />
             </div>
@@ -412,7 +412,7 @@
               📄 Libro de egresos, comprobantes o cartola bancaria de la empresa.</div>
           </div>
           <div class="field">
-            <label>PPM pagados en F29 durante 2024</label>
+            <label>PPM pagados en F29 durante 2024<span class="monto-badge badge-total">Monto total pagado</span></label>
             <div class="money-wrap"><span class="prefix">$</span>
               <input type="number" id="v_ppm" placeholder="0" min="0" />
             </div>
@@ -425,7 +425,7 @@
         <div class="declared-group">
           <div class="declared-group-title">💸 Retiros de los dueños en 2024</div>
           <div class="field">
-            <label>Retiros Dueño 1 en 2024</label>
+            <label>Retiros Dueño 1 en 2024<span class="monto-badge badge-total">Monto total (bruto)</span></label>
             <div class="money-wrap"><span class="prefix">$</span>
               <input type="number" id="v_retiros1" placeholder="0" min="0" />
             </div>
@@ -433,7 +433,7 @@
               📄 Movimientos de la cuenta bancaria de la empresa o libro de retiros de socios.</div>
           </div>
           <div class="field">
-            <label>Retiros Dueño 2 en 2024</label>
+            <label>Retiros Dueño 2 en 2024<span class="monto-badge badge-total">Monto total (bruto)</span></label>
             <div class="money-wrap"><span class="prefix">$</span>
               <input type="number" id="v_retiros2" placeholder="0" min="0" />
             </div>
@@ -464,14 +464,14 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Retiros declarados — Dueño 1</label>
+              <label>Retiros declarados — Dueño 1<span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_retiros1" placeholder="0" />
               </div>
               <div class="hint">📄 Columna "Retiros o dividendos" de la fila del Dueño 1 en la DJ 1948.</div>
             </div>
             <div class="field">
-              <label>Crédito 1ª Cat. declarado — Dueño 1</label>
+              <label>Crédito 1ª Cat. declarado — Dueño 1<span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_credito1" placeholder="0" />
               </div>
@@ -480,14 +480,14 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Retiros declarados — Dueño 2</label>
+              <label>Retiros declarados — Dueño 2<span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_retiros2" placeholder="0" />
               </div>
               <div class="hint">📄 Columna "Retiros o dividendos" de la fila del Dueño 2 en la DJ 1948.</div>
             </div>
             <div class="field">
-              <label>Crédito 1ª Cat. declarado — Dueño 2</label>
+              <label>Crédito 1ª Cat. declarado — Dueño 2<span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_credito2" placeholder="0" />
               </div>
@@ -505,14 +505,14 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Base imponible declarada</label>
+              <label>Base imponible declarada<span class="monto-badge badge-neto">Monto neto</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_base" placeholder="0" />
               </div>
               <div class="hint">📄 Campo "Renta Líquida Imponible" en la sección Pro Pyme General del F22.</div>
             </div>
             <div class="field">
-              <label>Impuesto 1ª Cat. declarado</label>
+              <label>Impuesto 1ª Cat. declarado<span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_imp1cat" placeholder="0" />
               </div>
@@ -520,7 +520,7 @@
             </div>
           </div>
           <div class="field">
-            <label>Resultado final empresa <span>(positivo = pagó, negativo = le devolvieron)</span></label>
+            <label>Resultado final empresa <span>(positivo = pagó, negativo = le devolvieron)</span><span class="monto-badge badge-total">Monto total</span></label>
             <div class="money-wrap"><span class="prefix">$</span>
               <input type="number" id="vd_difEmp" placeholder="0" />
             </div>
@@ -537,14 +537,14 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label>IGC declarado (antes de créditos)</label>
+              <label>IGC declarado (antes de créditos)<span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_igc1" placeholder="0" />
               </div>
               <div class="hint">📄 Campo "Impuesto Global Complementario determinado" en el F22 del dueño 1.</div>
             </div>
             <div class="field">
-              <label>Resultado final Dueño 1 <span>(positivo = pagó, negativo = devolución)</span></label>
+              <label>Resultado final Dueño 1 <span>(positivo = pagó, negativo = devolución)</span><span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_res1" placeholder="0" />
               </div>
@@ -562,14 +562,14 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label>IGC declarado (antes de créditos)</label>
+              <label>IGC declarado (antes de créditos)<span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_igc2" placeholder="0" />
               </div>
               <div class="hint">📄 Campo "Impuesto Global Complementario determinado" en el F22 del dueño 2.</div>
             </div>
             <div class="field">
-              <label>Resultado final Dueño 2 <span>(positivo = pagó, negativo = devolución)</span></label>
+              <label>Resultado final Dueño 2 <span>(positivo = pagó, negativo = devolución)</span><span class="monto-badge badge-total">Monto total</span></label>
               <div class="money-wrap"><span class="prefix">$</span>
                 <input type="number" id="vd_res2" placeholder="0" />
               </div>
