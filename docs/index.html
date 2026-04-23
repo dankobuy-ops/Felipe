@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mis Apps · Claude</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      min-height: 100vh;
+      padding: 40px 20px 60px;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; }
+
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #1a202c;
+      margin-bottom: 8px;
+    }
+
+    header p {
+      color: #718096;
+      font-size: 1rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 28px 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.13);
+    }
+
+    .card-icon {
+      font-size: 2.2rem;
+      line-height: 1;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #1a202c;
+    }
+
+    .card p {
+      font-size: 0.88rem;
+      color: #718096;
+      line-height: 1.5;
+      flex: 1;
+    }
+
+    .card-tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 100px;
+      background: #e2e8f0;
+      color: #4a5568;
+      align-self: flex-start;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 48px;
+      font-size: 0.8rem;
+      color: #a0aec0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Mis Apps</h1>
+      <p>Herramientas desarrolladas con Claude</p>
+    </header>
+
+    <div class="grid" id="appGrid">
+
+      <a href="comparador-seguros/" class="card">
+        <div class="card-icon">⚖️</div>
+        <h2>Comparador de Seguros</h2>
+        <p>Analiza y compara pólizas de seguro chilenas. Extrae coberturas, exclusiones y datos clave desde PDFs.</p>
+        <span class="card-tag">PDF · CMF Chile</span>
+      </a>
+
+      <a href="renta2026/" class="card">
+        <div class="card-icon">📊</div>
+        <h2>Asistente Renta 2026</h2>
+        <p>Asistente paso a paso para la declaración de renta 2026, orientado a corredoras de seguros en Chile.</p>
+        <span class="card-tag">SII · Chile</span>
+      </a>
+
+    </div>
+
+    <footer>
+      Desarrollado con Claude &mdash; para agregar una app, crea una subcarpeta con su <code>index.html</code> y agrega una tarjeta aquí.
+    </footer>
+  </div>
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comparador de Seguros Chile · CMF</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-content">
+      <div class="header-brand">
+        <div class="header-icon">⚖️</div>
+        <div>
+          <h1>Comparador de Seguros Chile</h1>
+          <p class="header-subtitle">Análisis automático de pólizas · Mercado regulado por CMF</p>
+        </div>
+      </div>
+      <a href="../" class="btn-config" style="text-decoration:none">← Volver</a>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <section class="upload-section">
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-zone-icon">📄</div>
+        <div class="drop-zone-text">
+          <strong>Arrastra tus pólizas o cotizaciones aquí</strong>
+          <span>o haz click para seleccionar archivos</span>
+          <small>Solo PDF · Máximo 5 archivos · 50 MB por archivo</small>
+        </div>
+        <input type="file" id="fileInput" accept=".pdf,application/pdf" multiple hidden>
+      </div>
+
+      <div class="file-list" id="fileList"></div>
+
+      <div class="upload-actions" id="uploadActions" style="display:none">
+        <button class="btn-analyze" id="btnAnalyze">🔍 Analizar</button>
+        <button class="btn-clear" id="btnClear">🗑 Limpiar todo</button>
+      </div>
+
+      <div class="privacy-notice" id="privacyNotice" style="display:none">
+        ℹ️ El análisis se realiza localmente en tu navegador. Ningún dato es enviado a servidores externos.
+      </div>
+    </section>
+
+    <section class="results-section" id="resultsSection" style="display:none">
+      <div id="resultsContent"></div>
+    </section>
+
+  </main>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="config.js"></script>
+  <script src="cmf-data.js"></script>
+  <script src="pdf-handler.js"></script>
+  <script src="claude-api.js"></script>
+  <script src="ui-renderer.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>

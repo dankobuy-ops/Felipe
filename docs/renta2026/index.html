@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asistente Renta 2026 — Corredora de Seguros</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      min-height: 100vh;
+      padding: 24px 16px 60px;
+    }
+
+    .container { max-width: 720px; margin: 0 auto; }
+
+    .header {
+      background: linear-gradient(135deg, #1a56db, #1e429f);
+      color: white;
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 20px rgba(26,86,219,0.3);
+    }
+    .header h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+    .header p { font-size: 0.88rem; opacity: 0.85; }
+
+    .progress-bar-wrap { background:#e2e8f0; border-radius:100px; height:8px; margin-bottom:6px; overflow:hidden; }
+    .progress-bar { height:100%; background:#38a169; border-radius:100px; transition:width .4s ease; }
+    .progress-label { font-size:.78rem; color:#718096; text-align:right; margin-bottom:18px; }
+
+    .steps-nav { display:flex; gap:6px; margin-bottom:20px; overflow-x:auto; padding-bottom:4px; }
+    .step-dot {
+      flex:1; min-width:54px; text-align:center; font-size:.7rem; font-weight:600;
+      padding:7px 4px; border-radius:8px; background:#e2e8f0; color:#718096;
+      white-space:nowrap; transition:all .3s;
+    }
+    .step-dot.active { background:#1a56db; color:white; }
+    .step-dot.done { background:#c6f6d5; color:#276749; }
+
+    .card {
+      background:white; border-radius:16px; padding:28px 28px;
+      box-shadow:0 2px 12px rgba(0,0,0,0.08); margin-bottom:14px;
+    }
+    .card-title {
+      font-size:1.15rem; font-weight:700; color:#1a202c;
+      margin-bottom:4px; display:flex; align-items:center; gap:10px;
+    }
+    .icon { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+    .icon-blue{background:#ebf4ff;} .icon-green{background:#f0fff4;} .icon-orange{background:#fffbeb;} .icon-purple{background:#f3e8ff;}
+    .card-subtitle { font-size:.87rem; color:#718096; margin-bottom:22px; }
+
+    /* Owner panels */
+    .owner-panel {
+      border:2px solid #e2e8f0; border-radius:12px; padding:18px;
+      margin-bottom:16px; position:relative;
+    }
+    .owner-panel.panel-1 { border-color:#bee3f8; background:#f7fbff; }
+    .owner-panel.panel-2 { border-color:#c6f6d5; background:#f7fff9; }
+    .owner-label {
+      font-size:.78rem; font-weight:700; text-transform:uppercase;
+      letter-spacing:.07em; margin-bottom:14px;
+    }
+    .owner-label.o1 { color:#1a56db; }
+    .owner-label.o2 { color:#276749; }
+
+    .field { margin-bottom:16px; }
+    .field:last-child { margin-bottom:0; }
+    .field label { display:block; font-size:.84rem; font-weight:600; color:#4a5568; margin-bottom:5px; }
+    .field label span { font-weight:400; color:#a0aec0; font-size:.78rem; }
+    .field input, .field select {
+      width:100%; padding:11px 13px; border:2px solid #e2e8f0;
+      border-radius:10px; font-size:.95rem; color:#1a202c;
+      transition:border-color .2s; background:#fafafa;
+    }
+    .field input:focus, .field select:focus { outline:none; border-color:#1a56db; background:white; }
+    .field .hint {
+      font-size:.76rem; color:#718096; margin-top:6px;
+      background:#f7fafc; border-left:3px solid #cbd5e0;
+      padding:6px 10px; border-radius:0 6px 6px 0;
+      line-height:1.5;
+    }
+    .field .hint b { color:#4a5568; }
+    .field .hint .src { color:#1a56db; font-weight:600; }
+
+    .money-wrap { position:relative; }
+    .money-wrap .prefix { position:absolute; left:13px; top:50%; transform:translateY(-50%); color:#718096; font-weight:600; font-size:.88rem; }
+    .money-wrap input { padding-left:28px; }
+
+    .pct-wrap { position:relative; }
+    .pct-wrap .suffix { position:absolute; right:13px; top:50%; transform:translateY(-50%); color:#718096; font-weight:600; font-size:.88rem; }
+    .pct-wrap input { padding-right:32px; }
+
+    .field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    @media(max-width:480px){ .field-row{ grid-template-columns:1fr; } }
+
+    .pct-check {
+      font-size:.82rem; font-weight:600; padding:8px 12px;
+      border-radius:8px; margin-top:8px; text-align:center;
+    }
+    .pct-ok { background:#f0fff4; color:#276749; }
+    .pct-err { background:#fff5f5; color:#c53030; }
+
+    .btn-primary {
+      display:inline-flex; align-items:center; gap:8px;
+      background:#1a56db; color:white; border:none; border-radius:10px;
+      padding:13px 26px; font-size:.95rem; font-weight:600; cursor:pointer; transition:background .2s;
+    }
+    .btn-primary:hover { background:#1e429f; }
+    .btn-secondary {
+      display:inline-flex; align-items:center; gap:8px;
+      background:#edf2f7; color:#4a5568; border:none; border-radius:10px;
+      padding:13px 22px; font-size:.92rem; font-weight:600; cursor:pointer; transition:background .2s;
+    }
+    .btn-secondary:hover { background:#e2e8f0; }
+    .btn-row { display:flex; gap:12px; justify-content:space-between; margin-top:26px; flex-wrap:wrap; }
+
+    /* Results */
+    .result-section { margin-bottom:24px; }
+    .result-section-title { font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#a0aec0; margin-bottom:10px; }
+
+    .result-row {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 14px; border-radius:10px; margin-bottom:7px;
+      background:#f7fafc; border:1px solid #e2e8f0; gap:10px;
+    }
+    .result-row .label { font-size:.86rem; color:#4a5568; flex:1; }
+    .result-row .label small { display:block; font-size:.74rem; color:#a0aec0; margin-top:2px; }
+    .result-row .value { font-size:.97rem; font-weight:700; color:#1a202c; white-space:nowrap; }
+    .result-row .copy-btn {
+      background:none; border:1px solid #e2e8f0; border-radius:6px;
+      padding:3px 9px; font-size:.7rem; color:#718096; cursor:pointer; transition:all .15s; flex-shrink:0;
+    }
+    .result-row .copy-btn:hover { background:#edf2f7; }
+    .result-row .copy-btn.copied { background:#c6f6d5; color:#276749; border-color:#9ae6b4; }
+
+    .rh { background:#ebf8ff; border-color:#bee3f8; }
+    .rh .value { color:#1a56db; }
+    .rg { background:#f0fff4; border-color:#9ae6b4; }
+    .rg .value { color:#276749; }
+
+    .total-box {
+      border-radius:13px; padding:20px; text-align:center; margin:16px 0;
+      color:white;
+    }
+    .total-box.neutral { background:linear-gradient(135deg,#1a56db,#1e429f); }
+    .total-box.green-box { background:linear-gradient(135deg,#38a169,#276749); }
+    .total-box.red-box { background:linear-gradient(135deg,#e53e3e,#c53030); }
+    .total-box .total-label { font-size:.82rem; opacity:.88; margin-bottom:5px; }
+    .total-box .total-value { font-size:1.8rem; font-weight:800; }
+    .total-box .total-sub { font-size:.76rem; opacity:.78; margin-top:4px; }
+
+    .divider { border:none; border-top:2px solid #e2e8f0; margin:22px 0; }
+
+    .alert {
+      border-radius:10px; padding:12px 15px; font-size:.84rem;
+      margin-bottom:18px; display:flex; gap:10px; align-items:flex-start;
+    }
+    .alert-info { background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; }
+    .alert-warn { background:#fffbeb; color:#744210; border:1px solid #fbd38d; }
+    .alert-icon { font-size:.95rem; flex-shrink:0; margin-top:1px; }
+
+    .summary-block { border-radius:12px; padding:18px; margin-bottom:14px; }
+    .summary-block.blue { background:#ebf4ff; border:1px solid #bee3f8; }
+    .summary-block.green { background:#f0fff4; border:1px solid #9ae6b4; }
+    .summary-block.orange { background:#fffbeb; border:1px solid #fbd38d; }
+    .summary-block h3 { font-size:.82rem; font-weight:700; margin-bottom:11px; text-transform:uppercase; letter-spacing:.06em; }
+    .summary-block.blue h3 { color:#1a56db; }
+    .summary-block.green h3 { color:#276749; }
+    .summary-block.orange h3 { color:#744210; }
+
+    .steps-list { list-style:none; counter-reset:steps; }
+    .steps-list li { counter-increment:steps; display:flex; gap:12px; margin-bottom:13px; align-items:flex-start; }
+    .steps-list li::before {
+      content:counter(steps); background:#1a56db; color:white;
+      width:24px; height:24px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:.74rem; font-weight:700; flex-shrink:0; margin-top:1px;
+    }
+    .steps-list li .step-text { font-size:.87rem; color:#4a5568; line-height:1.5; }
+    .steps-list li .step-text strong { color:#1a202c; }
+
+    /* Owner tabs */
+    .owner-tabs { display:flex; gap:8px; margin-bottom:18px; }
+    .owner-tab {
+      flex:1; text-align:center; padding:10px 8px; border-radius:10px;
+      font-size:.85rem; font-weight:600; cursor:pointer; border:2px solid #e2e8f0;
+      background:#f7fafc; color:#718096; transition:all .2s;
+    }
+    .owner-tab.active-1 { background:#ebf8ff; border-color:#1a56db; color:#1a56db; }
+    .owner-tab.active-2 { background:#f0fff4; border-color:#38a169; color:#276749; }
+
+    .owner-content { display:none; }
+    .owner-content.visible { display:block; }
+
+    .tag { display:inline-block; background:#e9d8fd; color:#553c9a; border-radius:6px; padding:2px 8px; font-size:.73rem; font-weight:600; margin-left:6px; vertical-align:middle; }
+    .tag-blue { background:#bee3f8; color:#1a56db; }
+    .tag-green { background:#9ae6b4; color:#276749; }
+
+    .checklist { list-style:none; }
+    .checklist li { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(0,0,0,.07); font-size:.87rem; }
+    .checklist li:last-child { border-bottom:none; }
+    .checklist li strong { color:#1a202c; }
+
+    .hidden { display:none !important; }
+
+    /* ── Selector de modo ─────────────────────────── */
+    .mode-selector {
+      display:flex; gap:10px; margin-bottom:20px;
+    }
+    .mode-btn {
+      flex:1; padding:13px 10px; border-radius:12px;
+      border:2px solid #e2e8f0; background:white;
+      font-size:.88rem; font-weight:700; color:#718096;
+      cursor:pointer; transition:all .2s; text-align:center;
+    }
+    .mode-btn:hover { border-color:#1a56db; color:#1a56db; background:#f0f7ff; }
+    .mode-btn.active-declarar { background:#1a56db; color:white; border-color:#1a56db; }
+    .mode-btn.active-verificar { background:#744210; color:white; border-color:#744210; }
+
+    /* ── Verificación ─────────────────────────────── */
+    .v-steps-nav { display:flex; gap:6px; margin-bottom:20px; }
+    .v-dot {
+      flex:1; text-align:center; font-size:.7rem; font-weight:600;
+      padding:7px 4px; border-radius:8px; background:#e2e8f0; color:#718096;
+      white-space:nowrap; transition:all .3s;
+    }
+    .v-dot.active { background:#744210; color:white; }
+    .v-dot.done   { background:#fbd38d; color:#744210; }
+
+    .v-card {
+      background:white; border-radius:16px; padding:28px;
+      box-shadow:0 2px 12px rgba(0,0,0,0.08); margin-bottom:14px;
+      border-top:4px solid #d69e2e;
+    }
+    .v-card .card-title { margin-bottom:4px; }
+
+    .compare-row {
+      display:flex; align-items:center; gap:8px;
+      padding:11px 14px; border-radius:10px; margin-bottom:7px;
+      border:1px solid #e2e8f0; background:#f7fafc;
+      flex-wrap:wrap;
+    }
+    .compare-row .c-label { font-size:.84rem; color:#4a5568; flex:2; min-width:160px; }
+    .compare-row .c-label small { display:block; font-size:.73rem; color:#a0aec0; margin-top:1px; }
+    .compare-row .c-calc  { font-size:.9rem; font-weight:700; color:#1a56db; flex:1; text-align:right; white-space:nowrap; }
+    .compare-row .c-decl  { font-size:.9rem; font-weight:700; color:#4a5568; flex:1; text-align:right; white-space:nowrap; }
+    .compare-row .c-badge {
+      font-size:.72rem; font-weight:700; padding:3px 9px;
+      border-radius:100px; flex-shrink:0; white-space:nowrap;
+    }
+    .badge-ok  { background:#c6f6d5; color:#276749; }
+    .badge-err { background:#fed7d7; color:#c53030; }
+    .badge-na  { background:#e2e8f0; color:#718096; }
+
+    .compare-header {
+      display:flex; gap:8px; padding:6px 14px;
+      font-size:.72rem; font-weight:700; color:#a0aec0;
+      text-transform:uppercase; letter-spacing:.06em;
+      flex-wrap:wrap;
+    }
+    .compare-header .ch-label { flex:2; min-width:160px; }
+    .compare-header .ch-calc  { flex:1; text-align:right; }
+    .compare-header .ch-decl  { flex:1; text-align:right; }
+    .compare-header .ch-res   { width:68px; }
+
+    .v-section-title {
+      font-size:.75rem; font-weight:700; text-transform:uppercase;
+      letter-spacing:.08em; color:#d69e2e; margin:20px 0 10px;
+    }
+
+    .score-box {
+      border-radius:12px; padding:18px 20px; margin:16px 0;
+      display:flex; align-items:center; justify-content:space-between; gap:16px;
+    }
+    .score-box.ok-all  { background:#f0fff4; border:2px solid #9ae6b4; }
+    .score-box.ok-some { background:#fffbeb; border:2px solid #fbd38d; }
+    .score-box.ok-none { background:#fff5f5; border:2px solid #fed7d7; }
+    .score-box .score-label { font-size:.88rem; font-weight:600; color:#4a5568; }
+    .score-box .score-num   { font-size:1.6rem; font-weight:800; }
+    .score-box.ok-all .score-num  { color:#276749; }
+    .score-box.ok-some .score-num { color:#744210; }
+    .score-box.ok-none .score-num { color:#c53030; }
+
+    .declared-group {
+      border:2px solid #fbd38d; border-radius:12px; padding:16px;
+      margin-bottom:14px; background:#fffdf5;
+    }
+    .declared-group-title {
+      font-size:.78rem; font-weight:700; text-transform:uppercase;
+      letter-spacing:.06em; color:#744210; margin-bottom:12px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>🧾 Asistente Renta 2026</h1>
+    <p>Corredora de Seguros · Régimen Pro Pyme General · 2 dueños con retiros</p>
+  </div>
+
+  <!-- Selector de modo -->
+  <div class="mode-selector">
+    <button class="mode-btn active-declarar" id="btnDeclarar" onclick="setMode('declarar')">
+      📝 Declaración 2026
+    </button>
+    <button class="mode-btn" id="btnVerificar" onclick="setMode('verificar')">
+      🔍 Verificar algoritmo con datos 2024
+    </button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECCIÓN VERIFICACIÓN
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="verifySection" class="hidden">
+
+    <!-- Nav pasos verificación -->
+    <div class="v-steps-nav">
+      <div class="v-dot active" id="vdot1">1. Datos 2024</div>
+      <div class="v-dot"        id="vdot2">2. Lo declarado</div>
+      <div class="v-dot"        id="vdot3">3. Comparación</div>
+    </div>
+
+    <!-- ── V-Paso 1: Datos financieros 2024 ── -->
+    <div id="vstep1">
+      <div class="v-card">
+        <div class="card-title"><div class="icon icon-orange">🔍</div>Datos financieros año 2024</div>
+        <p class="card-subtitle">Ingresa los datos reales de 2024. La app calculará lo que deberías haber declarado y lo comparará con lo que efectivamente declaraste.</p>
+
+        <div class="alert alert-warn">
+          <span class="alert-icon">⚠️</span>
+          <span>Este módulo usa la tabla IGC del <b>Año Tributario 2025</b> (rentas 2024), con UTA ≈ $785.316. La tasa de 1ª Categoría Pro Pyme General fue <b>12,5%</b>.</span>
+        </div>
+
+        <!-- Participaciones -->
+        <div class="declared-group">
+          <div class="declared-group-title">👥 Participación de los dueños</div>
+          <div class="field-row">
+            <div class="field">
+              <label>Nombre Dueño 1</label>
+              <input type="text" id="v_nombre1" placeholder="Nombre dueño 1" />
+              <div class="hint">📄 Nombre tal como aparece en la cédula de identidad.</div>
+            </div>
+            <div class="field">
+              <label>RUT Dueño 1</label>
+              <input type="text" id="v_rut1" placeholder="12.345.678-9" maxlength="12" />
+              <div class="hint">📄 RUT personal del dueño 1.</div>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Nombre Dueño 2</label>
+              <input type="text" id="v_nombre2" placeholder="Nombre dueño 2" />
+              <div class="hint">📄 Nombre tal como aparece en la cédula de identidad.</div>
+            </div>
+            <div class="field">
+              <label>RUT Dueño 2</label>
+              <input type="text" id="v_rut2" placeholder="12.345.678-9" maxlength="12" />
+              <div class="hint">📄 RUT personal del dueño 2.</div>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>% participación Dueño 1</label>
+              <div class="pct-wrap">
+                <input type="number" id="v_pct1" placeholder="50" min="1" max="99" oninput="actualizarVPct()" />
+                <span class="suffix">%</span>
+              </div>
+              <div class="hint">📄 Escritura de sociedad o <span class="src">SII → Socios y Accionistas</span>.</div>
+            </div>
+            <div class="field">
+              <label>% participación Dueño 2</label>
+              <div class="pct-wrap">
+                <input type="number" id="v_pct2" placeholder="50" min="1" max="99" oninput="actualizarVPct()" />
+                <span class="suffix">%</span>
+              </div>
+              <div class="hint">📄 Escritura de sociedad o <span class="src">SII → Socios y Accionistas</span>.</div>
+            </div>
+          </div>
+          <div id="vPctCheck" class="pct-check pct-err" style="display:none;"></div>
+        </div>
+
+        <!-- Datos empresa -->
+        <div class="declared-group">
+          <div class="declared-group-title">🏢 Datos financieros empresa 2024</div>
+          <div class="field">
+            <label>Ingresos percibidos en 2024</label>
+            <div class="money-wrap"><span class="prefix">$</span>
+              <input type="number" id="v_ingresos" placeholder="0" min="0" />
+            </div>
+            <div class="hint">💰 Suma de todos los ingresos cobrados por la empresa durante 2024.<br>
+              📄 <span class="src">SII → Registro de Ventas e Ingresos (RVI)</span> o tu libro de ingresos.</div>
+          </div>
+          <div class="field">
+            <label>Gastos / egresos pagados en 2024</label>
+            <div class="money-wrap"><span class="prefix">$</span>
+              <input type="number" id="v_gastos" placeholder="0" min="0" />
+            </div>
+            <div class="hint">💰 Suma de todos los gastos del giro pagados en 2024. No incluir retiros.<br>
+              📄 Libro de egresos, comprobantes o cartola bancaria de la empresa.</div>
+          </div>
+          <div class="field">
+            <label>PPM pagados en F29 durante 2024</label>
+            <div class="money-wrap"><span class="prefix">$</span>
+              <input type="number" id="v_ppm" placeholder="0" min="0" />
+            </div>
+            <div class="hint">💰 Suma del campo <b>"PPM Determinado"</b> de los 12 F29 de enero a diciembre 2024.<br>
+              📄 <span class="src">SII → Impuestos Mensuales (F29) → Consultar declaraciones anteriores</span>.</div>
+          </div>
+        </div>
+
+        <!-- Retiros 2024 -->
+        <div class="declared-group">
+          <div class="declared-group-title">💸 Retiros de los dueños en 2024</div>
+          <div class="field">
+            <label>Retiros Dueño 1 en 2024</label>
+            <div class="money-wrap"><span class="prefix">$</span>
+              <input type="number" id="v_retiros1" placeholder="0" min="0" />
+            </div>
+            <div class="hint">💰 Dinero retirado por el dueño 1 de la empresa durante 2024.<br>
+              📄 Movimientos de la cuenta bancaria de la empresa o libro de retiros de socios.</div>
+          </div>
+          <div class="field">
+            <label>Retiros Dueño 2 en 2024</label>
+            <div class="money-wrap"><span class="prefix">$</span>
+              <input type="number" id="v_retiros2" placeholder="0" min="0" />
+            </div>
+            <div class="hint">💰 Dinero retirado por el dueño 2 de la empresa durante 2024.<br>
+              📄 Movimientos de la cuenta bancaria de la empresa o libro de retiros de socios.</div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <div></div>
+          <button class="btn-primary" style="background:#744210;" onclick="vGoStep(2)">Continuar →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── V-Paso 2: Valores declarados en 2024 ── -->
+    <div id="vstep2" class="hidden">
+      <div class="v-card">
+        <div class="card-title"><div class="icon icon-orange">📂</div>Valores que declaraste en 2024</div>
+        <p class="card-subtitle">Ingresa los valores exactos tal como quedaron en cada declaración presentada al SII. La app los contrastará con sus propios cálculos.</p>
+
+        <!-- DJ 1948 declarada -->
+        <div class="declared-group">
+          <div class="declared-group-title">📋 DJ 1948 — Lo que declaraste</div>
+          <div class="alert alert-info">
+            <span class="alert-icon">📍</span>
+            <span>Encuéntrala en <span class="src">SII → Servicios Online → Declaraciones Juradas → Consultar DJ presentadas → DJ 1948 AT 2025</span>.</span>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Retiros declarados — Dueño 1</label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_retiros1" placeholder="0" />
+              </div>
+              <div class="hint">📄 Columna "Retiros o dividendos" de la fila del Dueño 1 en la DJ 1948.</div>
+            </div>
+            <div class="field">
+              <label>Crédito 1ª Cat. declarado — Dueño 1</label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_credito1" placeholder="0" />
+              </div>
+              <div class="hint">📄 Columna "Crédito impuesto primera categoría" de la fila del Dueño 1 en la DJ 1948.</div>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Retiros declarados — Dueño 2</label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_retiros2" placeholder="0" />
+              </div>
+              <div class="hint">📄 Columna "Retiros o dividendos" de la fila del Dueño 2 en la DJ 1948.</div>
+            </div>
+            <div class="field">
+              <label>Crédito 1ª Cat. declarado — Dueño 2</label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_credito2" placeholder="0" />
+              </div>
+              <div class="hint">📄 Columna "Crédito impuesto primera categoría" de la fila del Dueño 2 en la DJ 1948.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- F22 Empresa declarado -->
+        <div class="declared-group">
+          <div class="declared-group-title">🏢 F22 Empresa — Lo que declaraste</div>
+          <div class="alert alert-info">
+            <span class="alert-icon">📍</span>
+            <span>Encuéntralo en <span class="src">SII → Servicios Online → Declaración de Renta → Consultar F22 presentados → AT 2025</span>. Busca el F22 del RUT de la empresa.</span>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Base imponible declarada</label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_base" placeholder="0" />
+              </div>
+              <div class="hint">📄 Campo "Renta Líquida Imponible" en la sección Pro Pyme General del F22.</div>
+            </div>
+            <div class="field">
+              <label>Impuesto 1ª Cat. declarado</label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_imp1cat" placeholder="0" />
+              </div>
+              <div class="hint">📄 Campo "Impuesto de Primera Categoría" del F22 de la empresa.</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Resultado final empresa <span>(positivo = pagó, negativo = le devolvieron)</span></label>
+            <div class="money-wrap"><span class="prefix">$</span>
+              <input type="number" id="vd_difEmp" placeholder="0" />
+            </div>
+            <div class="hint">📄 Campo "Impuesto a pagar" o "Devolución" en el F22. Si fue devolución, ingresa el valor en <b>negativo</b> (ej: -50000).</div>
+          </div>
+        </div>
+
+        <!-- F22 Dueño 1 declarado -->
+        <div class="declared-group">
+          <div class="declared-group-title">👤 F22 Dueño 1 — Lo que declaraste</div>
+          <div class="alert alert-info">
+            <span class="alert-icon">📍</span>
+            <span>F22 personal del Dueño 1 en <span class="src">SII → Declaración de Renta → Consultar F22 AT 2025</span>, con el RUT del dueño.</span>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>IGC declarado (antes de créditos)</label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_igc1" placeholder="0" />
+              </div>
+              <div class="hint">📄 Campo "Impuesto Global Complementario determinado" en el F22 del dueño 1.</div>
+            </div>
+            <div class="field">
+              <label>Resultado final Dueño 1 <span>(positivo = pagó, negativo = devolución)</span></label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_res1" placeholder="0" />
+              </div>
+              <div class="hint">📄 "Impuesto a pagar" o "Devolución" del F22 del dueño 1. Negativo si fue devolución.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- F22 Dueño 2 declarado -->
+        <div class="declared-group">
+          <div class="declared-group-title">👤 F22 Dueño 2 — Lo que declaraste</div>
+          <div class="alert alert-info">
+            <span class="alert-icon">📍</span>
+            <span>F22 personal del Dueño 2 en <span class="src">SII → Declaración de Renta → Consultar F22 AT 2025</span>, con el RUT del dueño 2.</span>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>IGC declarado (antes de créditos)</label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_igc2" placeholder="0" />
+              </div>
+              <div class="hint">📄 Campo "Impuesto Global Complementario determinado" en el F22 del dueño 2.</div>
+            </div>
+            <div class="field">
+              <label>Resultado final Dueño 2 <span>(positivo = pagó, negativo = devolución)</span></label>
+              <div class="money-wrap"><span class="prefix">$</span>
+                <input type="number" id="vd_res2" placeholder="0" />
+              </div>
+              <div class="hint">📄 "Impuesto a pagar" o "Devolución" del F22 del dueño 2. Negativo si fue devolución.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="vGoStep(1)">← Volver</button>
+          <button class="btn-primary" style="background:#744210;" onclick="ejecutarVerificacion()">Comparar →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── V-Paso 3: Comparación ── -->
+    <div id="vstep3" class="hidden">
+      <div class="v-card">
+        <div class="card-title"><div class="icon icon-orange">📊</div>Resultado de la verificación</div>
+        <p class="card-subtitle">Comparación entre lo que calculó el algoritmo y lo que efectivamente declaraste. Tolerancia de ±$500 por redondeos.</p>
+
+        <div id="v_scoreBox"></div>
+
+        <!-- Cabecera -->
+        <div class="compare-header">
+          <div class="ch-label">Campo</div>
+          <div class="ch-calc">Calculado</div>
+          <div class="ch-decl">Declarado</div>
+          <div class="ch-res">Estado</div>
+        </div>
+
+        <div class="v-section-title">📋 DJ 1948</div>
+        <div id="vcmp_dj"></div>
+
+        <div class="v-section-title">🏢 F22 Empresa</div>
+        <div id="vcmp_emp"></div>
+
+        <div class="v-section-title" id="v_lbl_d1">👤 F22 Dueño 1</div>
+        <div id="vcmp_d1"></div>
+
+        <div class="v-section-title" id="v_lbl_d2">👤 F22 Dueño 2</div>
+        <div id="vcmp_d2"></div>
+
+        <div class="alert alert-info" style="margin-top:16px;">
+          <span class="alert-icon">ℹ️</span>
+          <span>Diferencias pequeñas (bajo $500) son normales por redondeos. Diferencias grandes indican datos de entrada distintos a los usados en la declaración original.</span>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="vGoStep(2)">← Ajustar datos</button>
+          <button class="btn-primary" style="background:#744210;" onclick="setMode('declarar')">Ir a Declaración 2026 →</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /verifySection -->
+
+  <div class="progress-bar-wrap">
+    <div class="progress-bar" id="progressBar" style="width:20%"></div>
+  </div>
+  <div class="progress-label" id="progressLabel">Paso 1 de 5</div>
+
+  <div class="steps-nav" id="stepsNav">
+    <div class="step-dot active" id="dot1">1. Empresa</div>
+    <div class="step-dot" id="dot2">2. Finanzas</div>
+    <div class="step-dot" id="dot3">3. DJ 1948</div>
+    <div class="step-dot" id="dot4">4. F22 Empresa</div>
+    <div class="step-dot" id="dot5">5. F22 Dueños</div>
+  </div>
+
+  <!-- ══════════════ STEP 1: Empresa + Dueños ══════════════ -->
+  <div id="step1">
+    <div class="card">
+      <div class="card-title"><div class="icon icon-blue">🏢</div>Datos de la empresa</div>
+      <p class="card-subtitle">Identificación de la empresa y de sus dos dueños.</p>
+
+      <div class="field">
+        <label>Nombre o razón social</label>
+        <input type="text" id="nombreEmpresa" placeholder="Ej: Corredora de Seguros XY Ltda." />
+        <div class="hint">📄 <b>Dónde encontrarlo:</b> En la escritura de constitución de la empresa, en el Certificado de Inicio de Actividades del SII, o en <span class="src">SII → Mi SII → Mis Datos del Contribuyente</span>.</div>
+      </div>
+      <div class="field">
+        <label>RUT de la empresa</label>
+        <input type="text" id="rutEmpresa" placeholder="Ej: 76.123.456-7" maxlength="12" />
+        <div class="hint">📄 <b>Dónde encontrarlo:</b> En cualquier factura emitida por la empresa, en el Certificado de RUT, o en <span class="src">SII → Mi SII → Mis Datos del Contribuyente</span>.</div>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- Dueño 1 -->
+      <div class="owner-panel panel-1">
+        <div class="owner-label o1">👤 Dueño 1</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Nombre completo</label>
+            <input type="text" id="nombre1" placeholder="Nombre del dueño 1" />
+            <div class="hint">📄 Nombre tal como aparece en la <b>cédula de identidad</b>.</div>
+          </div>
+          <div class="field">
+            <label>RUT</label>
+            <input type="text" id="rut1" placeholder="12.345.678-9" maxlength="12" />
+            <div class="hint">📄 RUT personal, el mismo que usa para ingresar al portal SII como persona natural.</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>% de participación en la empresa</label>
+          <div class="pct-wrap">
+            <input type="number" id="pct1" placeholder="50" min="1" max="99" oninput="actualizarPct()" />
+            <span class="suffix">%</span>
+          </div>
+          <div class="hint">📄 <b>Dónde encontrarlo:</b> En la escritura o contrato de la sociedad. También en <span class="src">SII → Mi SII → Socios y Accionistas</span>, buscando por RUT de la empresa.</div>
+        </div>
+      </div>
+
+      <!-- Dueño 2 -->
+      <div class="owner-panel panel-2">
+        <div class="owner-label o2">👤 Dueño 2</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Nombre completo</label>
+            <input type="text" id="nombre2" placeholder="Nombre del dueño 2" />
+            <div class="hint">📄 Nombre tal como aparece en la <b>cédula de identidad</b>.</div>
+          </div>
+          <div class="field">
+            <label>RUT</label>
+            <input type="text" id="rut2" placeholder="12.345.678-9" maxlength="12" />
+            <div class="hint">📄 RUT personal, el mismo que usa para ingresar al portal SII como persona natural.</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>% de participación en la empresa</label>
+          <div class="pct-wrap">
+            <input type="number" id="pct2" placeholder="50" min="1" max="99" oninput="actualizarPct()" />
+            <span class="suffix">%</span>
+          </div>
+          <div class="hint">📄 <b>Dónde encontrarlo:</b> En la escritura o contrato de la sociedad. También en <span class="src">SII → Mi SII → Socios y Accionistas</span>, buscando por RUT de la empresa.</div>
+        </div>
+      </div>
+
+      <div id="pctCheck" class="pct-check pct-err" style="display:none;"></div>
+
+      <div class="btn-row">
+        <div></div>
+        <button class="btn-primary" onclick="goStep(2)">Continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ STEP 2: Finanzas ══════════════ -->
+  <div id="step2" class="hidden">
+    <div class="card">
+      <div class="card-title"><div class="icon icon-blue">💰</div>Información financiera 2025</div>
+      <p class="card-subtitle">Montos del año comercial 2025, en pesos chilenos.</p>
+
+      <div class="alert alert-info">
+        <span class="alert-icon">💡</span>
+        <span>Los ingresos, gastos y PPM son de la <strong>empresa</strong>. Los retiros se ingresan por separado para cada dueño.</span>
+      </div>
+
+      <div class="field">
+        <label>Total ingresos percibidos en 2025 <span>(empresa)</span></label>
+        <div class="money-wrap"><span class="prefix">$</span>
+          <input type="number" id="ingresos" placeholder="0" min="0" />
+        </div>
+        <div class="hint">💰 <b>Qué incluir:</b> Suma de todas las comisiones, honorarios y pagos recibidos por la empresa durante 2025.<br>
+          📄 <b>Dónde encontrarlo:</b> En tu <b>libro de ingresos</b> o en <span class="src">SII → Servicios Online → Registro de Ventas e Ingresos (RVI)</span>. Ahí puedes ver todas las facturas o boletas emitidas y cobradas.</div>
+      </div>
+
+      <div class="field">
+        <label>Total gastos / egresos pagados en 2025 <span>(empresa)</span></label>
+        <div class="money-wrap"><span class="prefix">$</span>
+          <input type="number" id="gastos" placeholder="0" min="0" />
+        </div>
+        <div class="hint">💰 <b>Qué incluir:</b> Todos los gastos necesarios para el giro efectivamente pagados: arriendo, teléfono, internet, materiales de oficina, seguros, etc. <b>No incluyas los retiros de los dueños.</b><br>
+          📄 <b>Dónde encontrarlo:</b> En tu <b>libro de egresos o registros contables</b>, comprobantes de pago o cartola bancaria de la empresa.</div>
+      </div>
+
+      <div class="field">
+        <label>Total PPM pagados en F29 durante 2025 <span>(empresa)</span></label>
+        <div class="money-wrap"><span class="prefix">$</span>
+          <input type="number" id="ppm" placeholder="0" min="0" />
+        </div>
+        <div class="hint">💰 <b>Qué incluir:</b> Suma del campo <b>"PPM Determinado"</b> de cada F29 declarado entre enero y diciembre 2025 (12 formularios).<br>
+          📄 <b>Dónde encontrarlo:</b> En <span class="src">SII → Servicios Online → Impuestos Mensuales (F29) → Consultar declaraciones anteriores</span>. Suma los PPM de los 12 meses.</div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="owner-panel panel-1">
+        <div class="owner-label o1">👤 Retiros Dueño 1 — <span id="lbl_nombre1">Dueño 1</span></div>
+        <div class="field">
+          <label>Total de retiros realizados en 2025</label>
+          <div class="money-wrap"><span class="prefix">$</span>
+            <input type="number" id="retiros1" placeholder="0" min="0" />
+          </div>
+          <div class="hint">💰 <b>Qué incluir:</b> Suma de todo el dinero que este dueño sacó de la empresa para uso personal durante 2025 (transferencias a su cuenta personal, cheques a su nombre, etc.).<br>
+            📄 <b>Dónde encontrarlo:</b> En los <b>movimientos de la cuenta bancaria de la empresa</b> (transferencias o retiros a nombre del dueño), o en el <b>libro de retiros de socios</b> si llevas uno.</div>
+        </div>
+      </div>
+
+      <div class="owner-panel panel-2">
+        <div class="owner-label o2">👤 Retiros Dueño 2 — <span id="lbl_nombre2">Dueño 2</span></div>
+        <div class="field">
+          <label>Total de retiros realizados en 2025</label>
+          <div class="money-wrap"><span class="prefix">$</span>
+            <input type="number" id="retiros2" placeholder="0" min="0" />
+          </div>
+          <div class="hint">💰 <b>Qué incluir:</b> Suma de todo el dinero que este dueño sacó de la empresa para uso personal durante 2025 (transferencias a su cuenta personal, cheques a su nombre, etc.).<br>
+            📄 <b>Dónde encontrarlo:</b> En los <b>movimientos de la cuenta bancaria de la empresa</b> (transferencias o retiros a nombre del dueño), o en el <b>libro de retiros de socios</b> si llevas uno.</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="goStep(1)">← Volver</button>
+        <button class="btn-primary" onclick="calcularYMostrar()">Calcular →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ STEP 3: DJ 1948 ══════════════ -->
+  <div id="step3" class="hidden">
+    <div class="card">
+      <div class="card-title"><div class="icon icon-orange">📋</div>Declaración Jurada 1948</div>
+      <p class="card-subtitle">La DJ 1948 se presenta <strong>una sola vez por la empresa</strong>, con una fila por cada dueño.</p>
+
+      <div class="alert alert-warn">
+        <span class="alert-icon">⚠️</span>
+        <span>El plazo venció el <strong>28 de marzo</strong>. Si aún no la presentaste, hazlo de todas formas — el sistema te aplicará una multa menor, pero es necesario presentarla para que los dueños puedan declarar su F22.</span>
+      </div>
+
+      <div class="result-section">
+        <div class="result-section-title">🏢 Declarante (empresa)</div>
+        <div class="result-row">
+          <div class="label">RUT declarante</div>
+          <div class="value" id="dj_rutEmp">—</div>
+          <button class="copy-btn" onclick="copiar(this,'dj_rutEmp')">Copiar</button>
+        </div>
+        <div class="result-row">
+          <div class="label">Razón social</div>
+          <div class="value" id="dj_nombreEmp">—</div>
+          <button class="copy-btn" onclick="copiar(this,'dj_nombreEmp')">Copiar</button>
+        </div>
+      </div>
+
+      <!-- Fila Dueño 1 -->
+      <div class="result-section">
+        <div class="result-section-title" style="color:#1a56db;">👤 Fila 1 — <span id="dj_lbl1">Dueño 1</span></div>
+        <div class="result-row rh">
+          <div class="label">RUT</div>
+          <div class="value" id="dj_rut1">—</div>
+          <button class="copy-btn" onclick="copiar(this,'dj_rut1')">Copiar</button>
+        </div>
+        <div class="result-row rh">
+          <div class="label">Retiros / dividendos distribuidos <small>Columna "Retiros o dividendos"</small></div>
+          <div class="value" id="dj_retiros1">—</div>
+          <button class="copy-btn" onclick="copiar(this,'dj_retiros1')">Copiar</button>
+        </div>
+        <div class="result-row rh">
+          <div class="label">Crédito Impuesto 1ª Categoría <small>Columna "Crédito impuesto primera categoría"</small></div>
+          <div class="value" id="dj_credito1">—</div>
+          <button class="copy-btn" onclick="copiar(this,'dj_credito1')">Copiar</button>
+        </div>
+        <div class="result-row">
+          <div class="label">% de participación</div>
+          <div class="value" id="dj_pct1">—</div>
+        </div>
+      </div>
+
+      <!-- Fila Dueño 2 -->
+      <div class="result-section">
+        <div class="result-section-title" style="color:#276749;">👤 Fila 2 — <span id="dj_lbl2">Dueño 2</span></div>
+        <div class="result-row rg">
+          <div class="label">RUT</div>
+          <div class="value" id="dj_rut2">—</div>
+          <button class="copy-btn" onclick="copiar(this,'dj_rut2')">Copiar</button>
+        </div>
+        <div class="result-row rg">
+          <div class="label">Retiros / dividendos distribuidos <small>Columna "Retiros o dividendos"</small></div>
+          <div class="value" id="dj_retiros2">—</div>
+          <button class="copy-btn" onclick="copiar(this,'dj_retiros2')">Copiar</button>
+        </div>
+        <div class="result-row rg">
+          <div class="label">Crédito Impuesto 1ª Categoría <small>Columna "Crédito impuesto primera categoría"</small></div>
+          <div class="value" id="dj_credito2">—</div>
+          <button class="copy-btn" onclick="copiar(this,'dj_credito2')">Copiar</button>
+        </div>
+        <div class="result-row">
+          <div class="label">% de participación</div>
+          <div class="value" id="dj_pct2">—</div>
+        </div>
+      </div>
+
+      <div class="summary-block orange">
+        <h3>📍 Cómo presentar la DJ 1948</h3>
+        <ol class="steps-list">
+          <li><div class="step-text">Ingresa con el RUT de la <strong>empresa</strong> en <strong>www.sii.cl</strong></div></li>
+          <li><div class="step-text">Ve a <strong>Servicios Online → Declaraciones Juradas → Declarar y Corregir</strong></div></li>
+          <li><div class="step-text">Selecciona la <strong>DJ 1948</strong></div></li>
+          <li><div class="step-text">Agrega <strong>dos filas</strong>: una por cada dueño con los valores de esta pantalla</div></li>
+          <li><div class="step-text">Envía y guarda el comprobante</div></li>
+        </ol>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="goStep(2)">← Volver</button>
+        <button class="btn-primary" onclick="goStep(4)">Ver F22 Empresa →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ STEP 4: F22 Empresa ══════════════ -->
+  <div id="step4" class="hidden">
+    <div class="card">
+      <div class="card-title">
+        <div class="icon icon-blue">🏢</div>F22 — Empresa
+        <span class="tag tag-blue">Pro Pyme General</span>
+      </div>
+      <p class="card-subtitle">Valores calculados para el Formulario 22 de la empresa. Ingresa el RUT de la empresa en el portal SII.</p>
+
+      <div class="result-section">
+        <div class="result-section-title">📊 Base imponible</div>
+        <div class="result-row">
+          <div class="label">Ingresos percibidos 2025</div>
+          <div class="value" id="e_ingresos">—</div>
+          <button class="copy-btn" onclick="copiar(this,'e_ingresos')">Copiar</button>
+        </div>
+        <div class="result-row">
+          <div class="label">Egresos / Gastos pagados 2025</div>
+          <div class="value" id="e_gastos">—</div>
+          <button class="copy-btn" onclick="copiar(this,'e_gastos')">Copiar</button>
+        </div>
+        <div class="result-row rh">
+          <div class="label"><strong>Base imponible (Renta Líquida Imponible)</strong><small>Ingresos − Gastos</small></div>
+          <div class="value" id="e_base">—</div>
+          <button class="copy-btn" onclick="copiar(this,'e_base')">Copiar</button>
+        </div>
+      </div>
+
+      <div class="result-section">
+        <div class="result-section-title">🧮 Impuesto</div>
+        <div class="result-row">
+          <div class="label">Impuesto 1ª Categoría (12,5%)<small>Base imponible × 12,5%</small></div>
+          <div class="value" id="e_imp1cat">—</div>
+          <button class="copy-btn" onclick="copiar(this,'e_imp1cat')">Copiar</button>
+        </div>
+        <div class="result-row">
+          <div class="label">PPM a descontar<small>PPM pagados en F29 durante 2025</small></div>
+          <div class="value" id="e_ppm">—</div>
+          <button class="copy-btn" onclick="copiar(this,'e_ppm')">Copiar</button>
+        </div>
+      </div>
+
+      <div id="resultado_empresa"></div>
+
+      <div class="result-section">
+        <div class="result-section-title">📤 Distribución del crédito a dueños</div>
+        <div class="result-row rh">
+          <div class="label"><span id="e_lbl1">Dueño 1</span> (<span id="e_pct1">—</span>%)<small>Crédito de 1ª Cat. que se lleva</small></div>
+          <div class="value" id="e_cred1">—</div>
+          <button class="copy-btn" onclick="copiar(this,'e_cred1')">Copiar</button>
+        </div>
+        <div class="result-row rg">
+          <div class="label"><span id="e_lbl2">Dueño 2</span> (<span id="e_pct2">—</span>%)<small>Crédito de 1ª Cat. que se lleva</small></div>
+          <div class="value" id="e_cred2">—</div>
+          <button class="copy-btn" onclick="copiar(this,'e_cred2')">Copiar</button>
+        </div>
+      </div>
+
+      <div class="alert alert-info">
+        <span class="alert-icon">ℹ️</span>
+        <span>Tasa 12,5% aplica para AT 2026 (rentas 2025) en Pro Pyme General. El crédito se distribuye según el % de participación de cada dueño.</span>
+      </div>
+
+      <div class="summary-block blue">
+        <h3>📍 Cómo presentar el F22 de la empresa</h3>
+        <ol class="steps-list">
+          <li><div class="step-text">Ingresa a <strong>renta.w.sii.cl</strong> con el RUT y clave de la <strong>empresa</strong></div></li>
+          <li><div class="step-text">Selecciona <strong>Año Tributario 2026</strong></div></li>
+          <li><div class="step-text">Revisa la propuesta del SII y corrígela con los valores de esta pantalla</div></li>
+          <li><div class="step-text">Busca la sección <strong>"Régimen Pro Pyme General (Art. 14 D N°3)"</strong></div></li>
+          <li><div class="step-text">Ingresa: ingresos, egresos, base imponible, impuesto 1ª Cat. y PPM</div></li>
+          <li><div class="step-text">Envía antes del <strong>30 de abril de 2026</strong> y guarda el comprobante</div></li>
+        </ol>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="goStep(3)">← Volver</button>
+        <button class="btn-primary" onclick="goStep(5)">Ver F22 Dueños →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ STEP 5: F22 Dueños ══════════════ -->
+  <div id="step5" class="hidden">
+    <div class="card">
+      <div class="card-title"><div class="icon icon-green">👥</div>F22 — Dueños (personas naturales)</div>
+      <p class="card-subtitle">Cada dueño debe presentar su propio F22 con el RUT personal. Selecciona para ver los valores de cada uno.</p>
+
+      <div class="owner-tabs">
+        <div class="owner-tab active-1" id="tab1" onclick="mostrarDueno(1)">👤 <span id="tab_nombre1">Dueño 1</span></div>
+        <div class="owner-tab" id="tab2" onclick="mostrarDueno(2)">👤 <span id="tab_nombre2">Dueño 2</span></div>
+      </div>
+
+      <!-- Contenido Dueño 1 -->
+      <div class="owner-content visible" id="panel_d1">
+        <div class="result-section">
+          <div class="result-section-title" style="color:#1a56db;">👤 Identificación</div>
+          <div class="result-row rh">
+            <div class="label">RUT del dueño</div>
+            <div class="value" id="d1_rut">—</div>
+            <button class="copy-btn" onclick="copiar(this,'d1_rut')">Copiar</button>
+          </div>
+          <div class="result-row rh">
+            <div class="label">Participación en empresa</div>
+            <div class="value" id="d1_pct">—</div>
+          </div>
+        </div>
+        <div class="result-section">
+          <div class="result-section-title" style="color:#1a56db;">💵 Base de tributación</div>
+          <div class="result-row rh">
+            <div class="label">Retiros del año 2025<small>Base renta bruta global</small></div>
+            <div class="value" id="d1_retiros">—</div>
+            <button class="copy-btn" onclick="copiar(this,'d1_retiros')">Copiar</button>
+          </div>
+        </div>
+        <div class="result-section">
+          <div class="result-section-title" style="color:#1a56db;">📐 Impuesto Global Complementario</div>
+          <div class="result-row">
+            <div class="label">Tramo aplicable<small>Tabla AT 2026 · UTA ≈ $825.000*</small></div>
+            <div class="value" id="d1_tramo">—</div>
+          </div>
+          <div class="result-row">
+            <div class="label">IGC calculado<small>Antes de créditos</small></div>
+            <div class="value" id="d1_igc">—</div>
+            <button class="copy-btn" onclick="copiar(this,'d1_igc')">Copiar</button>
+          </div>
+          <div class="result-row">
+            <div class="label">Crédito 1ª Categoría<small>Impuesto pagado por empresa (proporción <span id="d1_pct2">—</span>%)</small></div>
+            <div class="value" id="d1_credito">—</div>
+            <button class="copy-btn" onclick="copiar(this,'d1_credito')">Copiar</button>
+          </div>
+        </div>
+        <div id="resultado_d1"></div>
+      </div>
+
+      <!-- Contenido Dueño 2 -->
+      <div class="owner-content" id="panel_d2">
+        <div class="result-section">
+          <div class="result-section-title" style="color:#276749;">👤 Identificación</div>
+          <div class="result-row rg">
+            <div class="label">RUT del dueño</div>
+            <div class="value" id="d2_rut">—</div>
+            <button class="copy-btn" onclick="copiar(this,'d2_rut')">Copiar</button>
+          </div>
+          <div class="result-row rg">
+            <div class="label">Participación en empresa</div>
+            <div class="value" id="d2_pct">—</div>
+          </div>
+        </div>
+        <div class="result-section">
+          <div class="result-section-title" style="color:#276749;">💵 Base de tributación</div>
+          <div class="result-row rg">
+            <div class="label">Retiros del año 2025<small>Base renta bruta global</small></div>
+            <div class="value" id="d2_retiros">—</div>
+            <button class="copy-btn" onclick="copiar(this,'d2_retiros')">Copiar</button>
+          </div>
+        </div>
+        <div class="result-section">
+          <div class="result-section-title" style="color:#276749;">📐 Impuesto Global Complementario</div>
+          <div class="result-row">
+            <div class="label">Tramo aplicable<small>Tabla AT 2026 · UTA ≈ $825.000*</small></div>
+            <div class="value" id="d2_tramo">—</div>
+          </div>
+          <div class="result-row">
+            <div class="label">IGC calculado<small>Antes de créditos</small></div>
+            <div class="value" id="d2_igc">—</div>
+            <button class="copy-btn" onclick="copiar(this,'d2_igc')">Copiar</button>
+          </div>
+          <div class="result-row">
+            <div class="label">Crédito 1ª Categoría<small>Impuesto pagado por empresa (proporción <span id="d2_pct2">—</span>%)</small></div>
+            <div class="value" id="d2_credito">—</div>
+            <button class="copy-btn" onclick="copiar(this,'d2_credito')">Copiar</button>
+          </div>
+        </div>
+        <div id="resultado_d2"></div>
+      </div>
+
+      <div class="alert alert-warn" style="margin-top:4px;">
+        <span class="alert-icon">⚠️</span>
+        <span>* Valor UTA aproximado. El SII calcula el IGC automáticamente en el F22 — estos valores son referenciales para que puedas verificar.</span>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="summary-block green">
+        <h3>📍 Cómo presentar el F22 de cada dueño</h3>
+        <ol class="steps-list">
+          <li><div class="step-text">Cada dueño ingresa con <strong>su propio RUT y clave</strong> a <strong>renta.w.sii.cl</strong></div></li>
+          <li><div class="step-text">Seleccionar <strong>Año Tributario 2026</strong></div></li>
+          <li><div class="step-text">El SII mostrará propuesta con los retiros informados en la DJ 1948</div></li>
+          <li><div class="step-text">Verificar que los retiros y créditos coincidan con los valores de esta pantalla</div></li>
+          <li><div class="step-text">Enviar antes del <strong>30 de abril de 2026</strong> y guardar comprobante</div></li>
+        </ol>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- Resumen checklist -->
+      <div class="summary-block blue">
+        <h3>✅ Checklist — Todo lo que hay que presentar</h3>
+        <ul class="checklist">
+          <li><span>1. DJ 1948 (empresa, con 2 filas)</span><strong>Presentar cuanto antes</strong></li>
+          <li><span>2. F22 empresa (<span id="ck_rutEmp">—</span>)</span><strong>Hasta 30 abr.</strong></li>
+          <li><span>3. F22 <span id="ck_nombre1">Dueño 1</span> (<span id="ck_rut1">—</span>)</span><strong>Hasta 30 abr.</strong></li>
+          <li><span>4. F22 <span id="ck_nombre2">Dueño 2</span> (<span id="ck_rut2">—</span>)</span><strong>Hasta 30 abr.</strong></li>
+        </ul>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="goStep(4)">← Volver</button>
+        <button class="btn-primary" onclick="window.print()">🖨️ Imprimir resumen</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+  // ── Estado ──────────────────────────────────────────────────────
+  const S = {
+    nombreEmpresa:'', rutEmpresa:'',
+    nombre1:'', rut1:'', pct1:50,
+    nombre2:'', rut2:'', pct2:50,
+    ingresos:0, gastos:0, ppm:0,
+    retiros1:0, retiros2:0,
+    // calculados
+    base:0, imp1cat:0, difEmp:0,
+    cred1:0, cred2:0,
+    igc1:0, igc2:0,
+    tramo1:'', tramo2:'',
+    res1:0, res2:0,
+  };
+
+  const fmt = new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0});
+  const F = n => fmt.format(Math.round(n));
+  const get = id => document.getElementById(id);
+  const txt = (id,v) => { const el=get(id); if(el) el.textContent=v; };
+
+  // ── Tabla IGC AT 2026 (UTA ≈ $825.000) ─────────────────────────
+  const UTA = 825000;
+  const TRAMOS = [
+    {lim:13.5*UTA, tasa:0,     label:'Tramo exento (0%)'},
+    {lim:30*UTA,   tasa:0.04,  label:'Tramo 2 (4%)'},
+    {lim:50*UTA,   tasa:0.08,  label:'Tramo 3 (8%)'},
+    {lim:70*UTA,   tasa:0.135, label:'Tramo 4 (13,5%)'},
+    {lim:90*UTA,   tasa:0.23,  label:'Tramo 5 (23%)'},
+    {lim:120*UTA,  tasa:0.304, label:'Tramo 6 (30,4%)'},
+    {lim:150*UTA,  tasa:0.355, label:'Tramo 7 (35,5%)'},
+    {lim:Infinity, tasa:0.40,  label:'Tramo 8 (40%)'},
+  ];
+
+  function igc(base){
+    let imp=0, prev=0, lbl=TRAMOS[0].label;
+    for(const t of TRAMOS){
+      if(base<=prev) break;
+      imp += (Math.min(base,t.lim)-prev)*t.tasa;
+      if(base>prev) lbl=t.label;
+      prev=t.lim;
+    }
+    return {imp:Math.round(imp), lbl};
+  }
+
+  // ── % actualización live ────────────────────────────────────────
+  function actualizarPct(){
+    const p1=parseFloat(get('pct1').value)||0;
+    const p2=parseFloat(get('pct2').value)||0;
+    const suma=p1+p2;
+    const el=get('pctCheck');
+    el.style.display='block';
+    if(Math.abs(suma-100)<0.01){
+      el.className='pct-check pct-ok';
+      el.textContent=`✓ Suma correcta: ${p1}% + ${p2}% = 100%`;
+    } else {
+      el.className='pct-check pct-err';
+      el.textContent=`✗ Suma actual: ${suma}%. Debe sumar 100%.`;
+    }
+  }
+
+  // ── Navegación ──────────────────────────────────────────────────
+  function goStep(n){
+    if(n>=2 && !val1()) return;
+    if(n>=3 && !val2()) return;
+
+    for(let i=1;i<=5;i++){
+      get('step'+i).classList.add('hidden');
+      const d=get('dot'+i);
+      d.classList.remove('active','done');
+      if(i<n) d.classList.add('done');
+      else if(i===n) d.classList.add('active');
+    }
+    get('step'+n).classList.remove('hidden');
+    get('progressBar').style.width=(n/5*100)+'%';
+    get('progressLabel').textContent=`Paso ${n} de 5`;
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  // ── Validaciones ────────────────────────────────────────────────
+  function val1(){
+    const ids=['nombreEmpresa','rutEmpresa','nombre1','rut1','pct1','nombre2','rut2','pct2'];
+    for(const id of ids){
+      if(!get(id).value.trim()){
+        get(id).focus();
+        alert('Completa todos los campos de identificación.');
+        return false;
+      }
+    }
+    const p1=parseFloat(get('pct1').value)||0;
+    const p2=parseFloat(get('pct2').value)||0;
+    if(Math.abs(p1+p2-100)>0.01){
+      alert(`Los porcentajes deben sumar 100%. Actualmente suman ${p1+p2}%.`);
+      return false;
+    }
+    return true;
+  }
+
+  function val2(){
+    const ing=parseFloat(get('ingresos').value)||0;
+    if(ing<=0){ get('ingresos').focus(); alert('Ingresa el total de ingresos 2025.'); return false; }
+    return true;
+  }
+
+  // ── Cálculo principal ───────────────────────────────────────────
+  function calcularYMostrar(){
+    if(!val2()) return;
+
+    S.nombreEmpresa = get('nombreEmpresa').value.trim();
+    S.rutEmpresa    = get('rutEmpresa').value.trim();
+    S.nombre1 = get('nombre1').value.trim(); S.rut1 = get('rut1').value.trim();
+    S.nombre2 = get('nombre2').value.trim(); S.rut2 = get('rut2').value.trim();
+    S.pct1 = parseFloat(get('pct1').value)||0;
+    S.pct2 = parseFloat(get('pct2').value)||0;
+    S.ingresos  = parseFloat(get('ingresos').value)||0;
+    S.gastos    = parseFloat(get('gastos').value)||0;
+    S.ppm       = parseFloat(get('ppm').value)||0;
+    S.retiros1  = parseFloat(get('retiros1').value)||0;
+    S.retiros2  = parseFloat(get('retiros2').value)||0;
+
+    // Empresa
+    S.base    = Math.max(0, S.ingresos - S.gastos);
+    S.imp1cat = Math.round(S.base * 0.125);
+    S.difEmp  = S.imp1cat - S.ppm;
+
+    // Créditos por participación
+    S.cred1 = Math.round(S.imp1cat * S.pct1 / 100);
+    S.cred2 = Math.round(S.imp1cat * S.pct2 / 100);
+
+    // IGC por dueño
+    const r1=igc(S.retiros1); S.igc1=r1.imp; S.tramo1=r1.lbl;
+    const r2=igc(S.retiros2); S.igc2=r2.imp; S.tramo2=r2.lbl;
+
+    S.res1 = S.igc1 - S.cred1;
+    S.res2 = S.igc2 - S.cred2;
+
+    poblarDJ1948();
+    poblarF22Emp();
+    poblarF22Duenos();
+    actualizarChecklist();
+
+    // Actualizar labels dinámicos en step2
+    txt('lbl_nombre1', S.nombre1 || 'Dueño 1');
+    txt('lbl_nombre2', S.nombre2 || 'Dueño 2');
+
+    goStep(3);
+  }
+
+  // ── Poblar DJ 1948 ──────────────────────────────────────────────
+  function poblarDJ1948(){
+    txt('dj_rutEmp',     S.rutEmpresa);
+    txt('dj_nombreEmp',  S.nombreEmpresa);
+    txt('dj_lbl1',       S.nombre1);
+    txt('dj_rut1',       S.rut1);
+    txt('dj_retiros1',   F(S.retiros1));
+    txt('dj_credito1',   F(S.cred1));
+    txt('dj_pct1',       S.pct1+'%');
+    txt('dj_lbl2',       S.nombre2);
+    txt('dj_rut2',       S.rut2);
+    txt('dj_retiros2',   F(S.retiros2));
+    txt('dj_credito2',   F(S.cred2));
+    txt('dj_pct2',       S.pct2+'%');
+  }
+
+  // ── Poblar F22 Empresa ──────────────────────────────────────────
+  function poblarF22Emp(){
+    txt('e_ingresos', F(S.ingresos));
+    txt('e_gastos',   F(S.gastos));
+    txt('e_base',     F(S.base));
+    txt('e_imp1cat',  F(S.imp1cat));
+    txt('e_ppm',      F(S.ppm));
+    txt('e_lbl1',     S.nombre1); txt('e_pct1', S.pct1);
+    txt('e_lbl2',     S.nombre2); txt('e_pct2', S.pct2);
+    txt('e_cred1',    F(S.cred1));
+    txt('e_cred2',    F(S.cred2));
+    get('resultado_empresa').innerHTML = resultadoBox(S.difEmp,
+      `Impuesto 1ª Cat. (${F(S.imp1cat)}) − PPM (${F(S.ppm)})`,
+      `PPM (${F(S.ppm)}) − Impuesto 1ª Cat. (${F(S.imp1cat)})`
+    );
+  }
+
+  // ── Poblar F22 Dueños ───────────────────────────────────────────
+  function poblarF22Duenos(){
+    // Tab labels
+    txt('tab_nombre1', S.nombre1); txt('tab_nombre2', S.nombre2);
+
+    // Dueño 1
+    txt('d1_rut',     S.rut1);
+    txt('d1_pct',     S.pct1+'%');
+    txt('d1_pct2',    S.pct1);
+    txt('d1_retiros', F(S.retiros1));
+    txt('d1_tramo',   S.tramo1);
+    txt('d1_igc',     F(S.igc1));
+    txt('d1_credito', F(S.cred1));
+    get('resultado_d1').innerHTML = resultadoBox(S.res1,
+      `IGC (${F(S.igc1)}) − Crédito (${F(S.cred1)})`,
+      `Crédito (${F(S.cred1)}) − IGC (${F(S.igc1)})`
+    );
+
+    // Dueño 2
+    txt('d2_rut',     S.rut2);
+    txt('d2_pct',     S.pct2+'%');
+    txt('d2_pct2',    S.pct2);
+    txt('d2_retiros', F(S.retiros2));
+    txt('d2_tramo',   S.tramo2);
+    txt('d2_igc',     F(S.igc2));
+    txt('d2_credito', F(S.cred2));
+    get('resultado_d2').innerHTML = resultadoBox(S.res2,
+      `IGC (${F(S.igc2)}) − Crédito (${F(S.cred2)})`,
+      `Crédito (${F(S.cred2)}) − IGC (${F(S.igc2)})`
+    );
+  }
+
+  function actualizarChecklist(){
+    txt('ck_rutEmp',  S.rutEmpresa);
+    txt('ck_nombre1', S.nombre1); txt('ck_rut1', S.rut1);
+    txt('ck_nombre2', S.nombre2); txt('ck_rut2', S.rut2);
+  }
+
+  // ── Helper: caja resultado ──────────────────────────────────────
+  function resultadoBox(dif, subPagar, subDevolver){
+    if(dif>0) return `<div class="total-box red-box">
+      <div class="total-label">Monto a pagar al SII</div>
+      <div class="total-value">${F(dif)}</div>
+      <div class="total-sub">${subPagar}</div></div>`;
+    if(dif<0) return `<div class="total-box green-box">
+      <div class="total-label">Devolución del SII</div>
+      <div class="total-value">${F(Math.abs(dif))}</div>
+      <div class="total-sub">${subDevolver}</div></div>`;
+    return `<div class="total-box neutral">
+      <div class="total-label">Resultado</div>
+      <div class="total-value">$0</div>
+      <div class="total-sub">Impuesto y créditos se compensan exactamente</div></div>`;
+  }
+
+  // ── Tabs dueños ─────────────────────────────────────────────────
+  function mostrarDueno(n){
+    get('panel_d1').classList.toggle('visible', n===1);
+    get('panel_d2').classList.toggle('visible', n===2);
+    get('tab1').className='owner-tab'+(n===1?' active-1':'');
+    get('tab2').className='owner-tab'+(n===2?' active-2':'');
+  }
+
+  // ── Copiar al portapapeles ──────────────────────────────────────
+  function copiar(btn, id){
+    const v = get(id).textContent;
+    navigator.clipboard.writeText(v).then(()=>{
+      btn.textContent='✓ Copiado'; btn.classList.add('copied');
+      setTimeout(()=>{ btn.textContent='Copiar'; btn.classList.remove('copied'); }, 1800);
+    });
+  }
+
+  // Inicializar check de porcentajes
+  actualizarPct();
+
+  // ══════════════════════════════════════════════════════════════
+  // VERIFICACIÓN
+  // ══════════════════════════════════════════════════════════════
+
+  // UTA AT 2025 (rentas 2024) ≈ $785.316
+  const UTA_2024 = 785316;
+  const TRAMOS_2024 = [
+    {lim:13.5*UTA_2024, tasa:0,     label:'Tramo exento (0%)'},
+    {lim:30*UTA_2024,   tasa:0.04,  label:'Tramo 2 (4%)'},
+    {lim:50*UTA_2024,   tasa:0.08,  label:'Tramo 3 (8%)'},
+    {lim:70*UTA_2024,   tasa:0.135, label:'Tramo 4 (13,5%)'},
+    {lim:90*UTA_2024,   tasa:0.23,  label:'Tramo 5 (23%)'},
+    {lim:120*UTA_2024,  tasa:0.304, label:'Tramo 6 (30,4%)'},
+    {lim:150*UTA_2024,  tasa:0.355, label:'Tramo 7 (35,5%)'},
+    {lim:Infinity,      tasa:0.40,  label:'Tramo 8 (40%)'},
+  ];
+
+  function igc2024(base){
+    let imp=0, prev=0, lbl=TRAMOS_2024[0].label;
+    for(const t of TRAMOS_2024){
+      if(base<=prev) break;
+      imp += (Math.min(base,t.lim)-prev)*t.tasa;
+      if(base>prev) lbl=t.label;
+      prev=t.lim;
+    }
+    return {imp:Math.round(imp), lbl};
+  }
+
+  // ── Selector de modo ─────────────────────────────────────────
+  function setMode(mode){
+    const isVerif = mode === 'verificar';
+    get('verifySection').classList.toggle('hidden', !isVerif);
+    get('progressBar').parentElement.classList.toggle('hidden', isVerif);
+    get('progressLabel').classList.toggle('hidden', isVerif);
+    get('stepsNav').classList.toggle('hidden', isVerif);
+    for(let i=1;i<=5;i++) get('step'+i).classList.add('hidden');
+    if(!isVerif) get('step1').classList.remove('hidden');
+    get('btnDeclarar').className  = 'mode-btn' + (!isVerif ? ' active-declarar' : '');
+    get('btnVerificar').className = 'mode-btn' + (isVerif  ? ' active-verificar' : '');
+  }
+
+  // ── Navegación verificación ──────────────────────────────────
+  function vGoStep(n){
+    if(n>=2 && !vVal1()) return;
+    for(let i=1;i<=3;i++){
+      get('vstep'+i).classList.add('hidden');
+      const d=get('vdot'+i);
+      d.classList.remove('active','done');
+      if(i<n) d.classList.add('done');
+      else if(i===n) d.classList.add('active');
+    }
+    get('vstep'+n).classList.remove('hidden');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  function vVal1(){
+    const p1=parseFloat(get('v_pct1').value)||0;
+    const p2=parseFloat(get('v_pct2').value)||0;
+    if(Math.abs(p1+p2-100)>0.01){
+      alert(`Los porcentajes deben sumar 100%. Actualmente suman ${p1+p2}%.`); return false;
+    }
+    const ing=parseFloat(get('v_ingresos').value)||0;
+    if(ing<=0){ alert('Ingresa los ingresos de 2024.'); return false; }
+    return true;
+  }
+
+  function actualizarVPct(){
+    const p1=parseFloat(get('v_pct1').value)||0;
+    const p2=parseFloat(get('v_pct2').value)||0;
+    const suma=p1+p2;
+    const el=get('vPctCheck');
+    el.style.display='block';
+    if(Math.abs(suma-100)<0.01){
+      el.className='pct-check pct-ok';
+      el.textContent=`✓ Suma correcta: ${p1}% + ${p2}% = 100%`;
+    } else {
+      el.className='pct-check pct-err';
+      el.textContent=`✗ Suma actual: ${suma}%. Debe sumar 100%.`;
+    }
+  }
+
+  // ── Ejecución de la verificación ────────────────────────────
+  function ejecutarVerificacion(){
+    // Leer datos 2024
+    const pct1 = parseFloat(get('v_pct1').value)||0;
+    const pct2 = parseFloat(get('v_pct2').value)||0;
+    const ing  = parseFloat(get('v_ingresos').value)||0;
+    const gst  = parseFloat(get('v_gastos').value)||0;
+    const ppm  = parseFloat(get('v_ppm').value)||0;
+    const r1   = parseFloat(get('v_retiros1').value)||0;
+    const r2   = parseFloat(get('v_retiros2').value)||0;
+    const n1   = get('v_nombre1').value.trim() || 'Dueño 1';
+    const n2   = get('v_nombre2').value.trim() || 'Dueño 2';
+
+    // Calcular valores esperados
+    const base    = Math.max(0, ing - gst);
+    const imp1cat = Math.round(base * 0.125);
+    const difEmp  = imp1cat - ppm;
+    const cred1   = Math.round(imp1cat * pct1 / 100);
+    const cred2   = Math.round(imp1cat * pct2 / 100);
+    const igcR1   = igc2024(r1);
+    const igcR2   = igc2024(r2);
+    const igc1    = igcR1.imp;
+    const igc2v   = igcR2.imp;
+    const res1    = igc1 - cred1;
+    const res2    = igc2v - cred2;
+
+    // Leer valores declarados
+    const dc = {
+      retiros1 : parseFloat(get('vd_retiros1').value)||0,
+      credito1 : parseFloat(get('vd_credito1').value)||0,
+      retiros2 : parseFloat(get('vd_retiros2').value)||0,
+      credito2 : parseFloat(get('vd_credito2').value)||0,
+      base     : parseFloat(get('vd_base').value)||0,
+      imp1cat  : parseFloat(get('vd_imp1cat').value)||0,
+      difEmp   : parseFloat(get('vd_difEmp').value)||0,
+      igc1     : parseFloat(get('vd_igc1').value)||0,
+      res1     : parseFloat(get('vd_res1').value)||0,
+      igc2     : parseFloat(get('vd_igc2').value)||0,
+      res2     : parseFloat(get('vd_res2').value)||0,
+    };
+
+    // Actualizar labels
+    txt('v_lbl_d1', `👤 F22 ${n1}`);
+    txt('v_lbl_d2', `👤 F22 ${n2}`);
+
+    // Construir comparaciones
+    const TOL = 500; // tolerancia $500
+
+    function cmpRow(label, sublabel, calc, decl){
+      const diff = Math.abs(calc - decl);
+      const ok   = diff <= TOL;
+      const badge= decl === 0 && calc === 0 ? `<span class="c-badge badge-na">Sin dato</span>`
+                 : ok ? `<span class="c-badge badge-ok">✓ OK</span>`
+                      : `<span class="c-badge badge-err">✗ Dif. ${F(diff)}</span>`;
+      return `<div class="compare-row">
+        <div class="c-label">${label}<small>${sublabel}</small></div>
+        <div class="c-calc">${F(calc)}</div>
+        <div class="c-decl">${F(decl)}</div>
+        ${badge}
+      </div>`;
+    }
+
+    // DJ 1948
+    get('vcmp_dj').innerHTML =
+      cmpRow(`Retiros ${n1}`, 'DJ 1948 → columna "Retiros"', r1, dc.retiros1) +
+      cmpRow(`Crédito 1ª Cat. ${n1}`, 'DJ 1948 → columna "Crédito"', cred1, dc.credito1) +
+      cmpRow(`Retiros ${n2}`, 'DJ 1948 → columna "Retiros"', r2, dc.retiros2) +
+      cmpRow(`Crédito 1ª Cat. ${n2}`, 'DJ 1948 → columna "Crédito"', cred2, dc.credito2);
+
+    // F22 empresa
+    get('vcmp_emp').innerHTML =
+      cmpRow('Base imponible', 'F22 empresa → Renta Líquida Imponible', base, dc.base) +
+      cmpRow('Impuesto 1ª Categoría', 'F22 empresa → Impuesto 1ª Cat.', imp1cat, dc.imp1cat) +
+      cmpRow('Resultado (pago/devolución)', 'F22 empresa → Impuesto a pagar / Devolución', difEmp, dc.difEmp);
+
+    // F22 Dueño 1
+    get('vcmp_d1').innerHTML =
+      cmpRow('IGC antes de créditos', `F22 ${n1} → IGC determinado`, igc1, dc.igc1) +
+      cmpRow('Resultado final', `F22 ${n1} → Pago o devolución`, res1, dc.res1);
+
+    // F22 Dueño 2
+    get('vcmp_d2').innerHTML =
+      cmpRow('IGC antes de créditos', `F22 ${n2} → IGC determinado`, igc2v, dc.igc2) +
+      cmpRow('Resultado final', `F22 ${n2} → Pago o devolución`, res2, dc.res2);
+
+    // Score
+    const total = 11;
+    const checks = [
+      Math.abs(r1 - dc.retiros1) <= TOL,
+      Math.abs(cred1 - dc.credito1) <= TOL,
+      Math.abs(r2 - dc.retiros2) <= TOL,
+      Math.abs(cred2 - dc.credito2) <= TOL,
+      Math.abs(base - dc.base) <= TOL,
+      Math.abs(imp1cat - dc.imp1cat) <= TOL,
+      Math.abs(difEmp - dc.difEmp) <= TOL,
+      Math.abs(igc1 - dc.igc1) <= TOL,
+      Math.abs(res1 - dc.res1) <= TOL,
+      Math.abs(igc2v - dc.igc2) <= TOL,
+      Math.abs(res2 - dc.res2) <= TOL,
+    ];
+    const passed = checks.filter(Boolean).length;
+    const pct    = Math.round(passed/total*100);
+    const cls    = pct===100 ? 'ok-all' : pct>=60 ? 'ok-some' : 'ok-none';
+    const msg    = pct===100
+      ? '✓ El algoritmo coincide exactamente con las declaraciones. Puedes usarlo con confianza para 2026.'
+      : pct>=60
+      ? 'Hay algunas diferencias. Revisa los campos marcados en rojo — puede ser un dato de entrada distinto al usado en la declaración original.'
+      : 'Hay diferencias significativas. Verifica los datos de entrada o consulta la declaración original para identificar la diferencia.';
+
+    get('v_scoreBox').innerHTML = `
+      <div class="score-box ${cls}">
+        <div>
+          <div class="score-num">${passed}/${total} ✓</div>
+          <div class="score-label">${pct}% de coincidencia</div>
+        </div>
+        <div style="font-size:.84rem;color:#4a5568;flex:1;">${msg}</div>
+      </div>`;
+
+    vGoStep(3);
+  }
+</script>
+</body>
+</html>
