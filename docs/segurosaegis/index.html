@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seguros Aegis - Te protegemos a ti, tu familia y tus inversiones</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue-dark:  #1a3a5c;
+      --blue-mid:   #1e5799;
+      --blue-light: #2980b9;
+      --gold:       #c9a84c;
+      --gray-bg:    #f4f6f9;
+      --gray-text:  #555e6d;
+      --white:      #ffffff;
+    }
+
+    body {
+      font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      color: #222;
+      background: var(--white);
+    }
+
+    a { text-decoration: none; color: inherit; }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--blue-dark);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+    }
+
+    .logo {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .logo-name {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--white);
+      letter-spacing: 0.5px;
+    }
+
+    .logo-name span { color: var(--gold); }
+
+    .logo-tagline {
+      font-size: 0.65rem;
+      color: rgba(255,255,255,0.7);
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    nav { display: flex; gap: 6px; align-items: center; }
+
+    nav a {
+      color: rgba(255,255,255,0.85);
+      font-size: 0.88rem;
+      font-weight: 500;
+      padding: 8px 14px;
+      border-radius: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    nav a:hover, nav a.active {
+      background: rgba(255,255,255,0.12);
+      color: var(--white);
+    }
+
+    .nav-cta {
+      background: var(--gold) !important;
+      color: var(--blue-dark) !important;
+      font-weight: 700 !important;
+      margin-left: 8px;
+    }
+
+    .nav-cta:hover { background: #d4a84e !important; }
+
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(135deg, #1a3a5c 0%, #1e5799 50%, #2980b9 100%);
+      color: var(--white);
+      padding: 90px 24px 80px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+
+    .hero-inner {
+      max-width: 760px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 100px;
+      padding: 5px 16px;
+      font-size: 0.78rem;
+      letter-spacing: 0.5px;
+      margin-bottom: 24px;
+      backdrop-filter: blur(4px);
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      letter-spacing: -0.5px;
+    }
+
+    .hero h1 span { color: var(--gold); }
+
+    .hero p {
+      font-size: 1.1rem;
+      color: rgba(255,255,255,0.88);
+      max-width: 580px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
+    }
+
+    .btn-cta {
+      display: inline-block;
+      background: var(--gold);
+      color: var(--blue-dark);
+      font-weight: 700;
+      font-size: 1rem;
+      padding: 15px 36px;
+      border-radius: 8px;
+      transition: background 0.15s, transform 0.1s;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+
+    .btn-cta:hover { background: #d4a84e; transform: translateY(-2px); }
+
+    /* ── FEATURES ── */
+    .features {
+      background: var(--gray-bg);
+      padding: 72px 24px;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--blue-dark);
+      margin-bottom: 12px;
+    }
+
+    .section-sub {
+      text-align: center;
+      color: var(--gray-text);
+      font-size: 0.97rem;
+      max-width: 540px;
+      margin: 0 auto 52px;
+      line-height: 1.6;
+    }
+
+    .features-grid {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--white);
+      border-radius: 14px;
+      padding: 32px 24px;
+      text-align: center;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.12);
+    }
+
+    .feature-icon {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #e8f0fe, #c7d9f8);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      margin: 0 auto 20px;
+    }
+
+    .feature-card h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--blue-dark);
+      margin-bottom: 10px;
+    }
+
+    .feature-card p {
+      font-size: 0.87rem;
+      color: var(--gray-text);
+      line-height: 1.6;
+    }
+
+    /* ── WHY AEGIS ── */
+    .why {
+      padding: 72px 24px;
+      background: var(--white);
+    }
+
+    .why-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .why-text h2 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--blue-dark);
+      margin-bottom: 16px;
+    }
+
+    .why-text p {
+      color: var(--gray-text);
+      line-height: 1.75;
+      margin-bottom: 14px;
+    }
+
+    .why-list { list-style: none; margin-top: 20px; }
+
+    .why-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+      font-size: 0.92rem;
+      color: #333;
+    }
+
+    .why-list li::before {
+      content: '✓';
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      background: var(--blue-mid);
+      color: white;
+      border-radius: 50%;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-top: 1px;
+    }
+
+    .why-visual {
+      background: linear-gradient(135deg, #1a3a5c, #2980b9);
+      border-radius: 20px;
+      padding: 48px 36px;
+      color: white;
+      text-align: center;
+    }
+
+    .why-visual .big-stat {
+      font-size: 3rem;
+      font-weight: 800;
+      color: var(--gold);
+      line-height: 1;
+    }
+
+    .why-visual .stat-label {
+      font-size: 0.9rem;
+      opacity: 0.8;
+      margin-bottom: 28px;
+    }
+
+    .why-visual .ans-badge {
+      display: inline-block;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── PRODUCTS ── */
+    .products {
+      background: var(--gray-bg);
+      padding: 72px 24px;
+    }
+
+    .products-grid {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+
+    .product-card {
+      background: var(--white);
+      border-radius: 16px;
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+      border-top: 4px solid var(--blue-mid);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .product-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.12);
+    }
+
+    .product-icon { font-size: 2.4rem; }
+
+    .product-card h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--blue-dark);
+    }
+
+    .product-card p {
+      font-size: 0.88rem;
+      color: var(--gray-text);
+      line-height: 1.6;
+      flex: 1;
+    }
+
+    .btn-outline {
+      display: inline-block;
+      border: 2px solid var(--blue-mid);
+      color: var(--blue-mid);
+      font-weight: 600;
+      font-size: 0.88rem;
+      padding: 10px 22px;
+      border-radius: 8px;
+      transition: background 0.15s, color 0.15s;
+      align-self: flex-start;
+    }
+
+    .btn-outline:hover { background: var(--blue-mid); color: white; }
+
+    /* ── PARTNERS ── */
+    .partners {
+      background: var(--white);
+      padding: 64px 24px;
+    }
+
+    .partners-logos {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px 20px;
+    }
+
+    .partner-chip {
+      background: var(--gray-bg);
+      border: 1px solid #e0e6ed;
+      border-radius: 10px;
+      padding: 10px 22px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--blue-dark);
+      letter-spacing: 0.3px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .partner-chip:hover {
+      background: #e8f0fe;
+      border-color: var(--blue-light);
+    }
+
+    .cmf-badge {
+      text-align: center;
+      margin-top: 40px;
+    }
+
+    .cmf-badge-inner {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid #d1dae4;
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-size: 0.8rem;
+      color: var(--gray-text);
+    }
+
+    .cmf-badge-inner span.shield { font-size: 1.2rem; }
+
+    /* ── CONTACT ── */
+    .contact {
+      background: linear-gradient(135deg, #1a3a5c 0%, #1e5799 100%);
+      color: white;
+      padding: 72px 24px;
+      text-align: center;
+    }
+
+    .contact h2 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .contact p {
+      opacity: 0.85;
+      margin-bottom: 32px;
+      font-size: 0.97rem;
+    }
+
+    .contact-methods {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .contact-method {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 0.9rem;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      background: #0f2238;
+      color: rgba(255,255,255,0.65);
+      padding: 32px 24px;
+    }
+
+    .footer-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-logo {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: white;
+    }
+
+    .footer-logo span { color: var(--gold); }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .footer-links a {
+      font-size: 0.82rem;
+      color: rgba(255,255,255,0.55);
+      transition: color 0.15s;
+    }
+
+    .footer-links a:hover { color: white; }
+
+    .footer-copy {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.4);
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      nav a:not(.nav-cta) { display: none; }
+      .why-inner { grid-template-columns: 1fr; gap: 32px; }
+      .footer-inner { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-name">Seguros <span>Aegis</span></div>
+        <div class="logo-tagline">Te protegemos a ti, tu familia y tus inversiones</div>
+      </div>
+      <nav>
+        <a href="#" class="active">Inicio</a>
+        <a href="#">Nosotros</a>
+        <a href="#">Personas</a>
+        <a href="#">Empresas</a>
+        <a href="#">Comunidades</a>
+        <a href="#contacto">Contacto</a>
+        <a href="#contacto" class="nav-cta">Solicita Cotización</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-badge">🛡️ Miembro ANS · Asociación Nacional de Seguros</div>
+      <h1>Tu <span>Aliado Estratégico</span><br>en Seguros</h1>
+      <p>Asesoría experta, acceso a múltiples compañías y gestión centralizada de tus pólizas, sin costo para ti.</p>
+      <a href="#contacto" class="btn-cta">Solicita tu Cotización Gratis</a>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features">
+    <div class="section-title">¿Por qué elegir Aegis?</div>
+    <div class="section-sub">Conocemos el mercado, entendemos tus necesidades, y trabajamos contigo para encontrar las mejores condiciones disponibles.</div>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🤝</div>
+        <h3>Acompañamiento Experto</h3>
+        <p>Te acompañamos en cada etapa: contratación, siniestros y renovaciones. Siempre disponibles cuando nos necesitas.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏢</div>
+        <h3>Cotiza con Múltiples Compañías</h3>
+        <p>Acceso sin sesgos a las principales aseguradoras del mercado. Comparamos para que obtengas la mejor cobertura.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📋</div>
+        <h3>Centraliza tus Seguros</h3>
+        <p>Gestión única de todas tus pólizas en un solo lugar. Simplificamos la administración de tus seguros.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💰</div>
+        <h3>Sin Costo para Ti</h3>
+        <p>Nuestro servicio es completamente gratuito para el asegurado. Trabajamos por tu bienestar sin comisiones adicionales.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHY AEGIS -->
+  <section class="why">
+    <div class="why-inner">
+      <div class="why-text">
+        <h2>Tu corredor de seguros de confianza</h2>
+        <p>Somos una corredora de seguros comprometida con brindarte la mejor asesoría, trabajando siempre en beneficio de tus intereses y no de las compañías aseguradoras.</p>
+        <p>Nuestra misión es proteger lo que más valoras: tu familia, tu patrimonio y tu tranquilidad.</p>
+        <ul class="why-list">
+          <li>Acceso a más de 12 compañías aseguradoras líderes</li>
+          <li>Asesoría personalizada sin compromiso</li>
+          <li>Gestión integral de siniestros</li>
+          <li>Supervisados por la CMF</li>
+          <li>Miembro de la Asociación Nacional de Seguros (ANS)</li>
+        </ul>
+      </div>
+      <div class="why-visual">
+        <div class="big-stat">+12</div>
+        <div class="stat-label">Compañías aseguradoras asociadas</div>
+        <div style="margin-bottom: 20px;">
+          <div class="big-stat" style="font-size:2rem;">100%</div>
+          <div class="stat-label">Gratuito para el asegurado</div>
+        </div>
+        <div class="ans-badge">🏅 Miembro ANS</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTS -->
+  <section class="products">
+    <div class="section-title">Nuestros Seguros</div>
+    <div class="section-sub">Soluciones para personas, familias y empresas.</div>
+
+    <div class="products-grid">
+      <div class="product-card">
+        <div class="product-icon">🚗</div>
+        <h3>Seguro de Vehículo</h3>
+        <p>Protege tu automóvil con la mejor cobertura al precio más competitivo del mercado. Cotizamos en múltiples compañías por ti.</p>
+        <a href="#contacto" class="btn-outline">Cotizar ahora</a>
+      </div>
+      <div class="product-card">
+        <div class="product-icon">🏠</div>
+        <h3>Seguro de Hogar</h3>
+        <p>Asegura tu vivienda y contenido ante incendio, robo, catástrofe natural y más. Tu hogar siempre protegido.</p>
+        <a href="#contacto" class="btn-outline">Cotizar ahora</a>
+      </div>
+      <div class="product-card">
+        <div class="product-icon">❤️</div>
+        <h3>Seguro de Vida</h3>
+        <p>Garantiza el bienestar de tu familia con planes de vida diseñados a tu medida y presupuesto.</p>
+        <a href="#contacto" class="btn-outline">Cotizar ahora</a>
+      </div>
+      <div class="product-card">
+        <div class="product-icon">🏢</div>
+        <h3>Seguros para Empresas</h3>
+        <p>Protege tu negocio, activos y responsabilidad civil. Soluciones corporativas para cada industria.</p>
+        <a href="#contacto" class="btn-outline">Cotizar ahora</a>
+      </div>
+      <div class="product-card">
+        <div class="product-icon">👥</div>
+        <h3>Seguros para Comunidades</h3>
+        <p>Soluciones especiales para comunidades de copropietarios, condominios y edificios residenciales.</p>
+        <a href="#contacto" class="btn-outline">Cotizar ahora</a>
+      </div>
+      <div class="product-card">
+        <div class="product-icon">🌍</div>
+        <h3>Seguro de Viaje</h3>
+        <p>Viaja tranquilo con coberturas de asistencia médica, cancelación y equipaje para tus viajes al exterior.</p>
+        <a href="#contacto" class="btn-outline">Cotizar ahora</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- PARTNERS -->
+  <section class="partners">
+    <div class="section-title">Compañías con las que trabajamos</div>
+    <div class="section-sub">Acceso sin sesgos a los líderes del mercado asegurador chileno.</div>
+
+    <div class="partners-logos">
+      <div class="partner-chip">AVLA</div>
+      <div class="partner-chip">BCI Seguros</div>
+      <div class="partner-chip">BICE Vida</div>
+      <div class="partner-chip">Cesce</div>
+      <div class="partner-chip">Chubb</div>
+      <div class="partner-chip">Consorcio</div>
+      <div class="partner-chip">FID</div>
+      <div class="partner-chip">HDI Seguros</div>
+      <div class="partner-chip">Reale Seguros</div>
+      <div class="partner-chip">Renta Nacional</div>
+      <div class="partner-chip">Southbridge</div>
+      <div class="partner-chip">Zurich</div>
+    </div>
+
+    <div class="cmf-badge">
+      <div class="cmf-badge-inner">
+        <span class="shield">🛡️</span>
+        <span>Supervisado por la <strong>CMF</strong> · Comisión para el Mercado Financiero</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section class="contact" id="contacto">
+    <h2>¿Listo para cotizar?</h2>
+    <p>Contáctanos y recibe asesoría personalizada sin costo ni compromiso.</p>
+
+    <div class="contact-methods">
+      <div class="contact-method">
+        ✉️ <a href="mailto:contacto@segurosaegis.cl" style="color:white;">contacto@segurosaegis.cl</a>
+      </div>
+    </div>
+
+    <a href="mailto:contacto@segurosaegis.cl" class="btn-cta">Solicitar Cotización</a>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-logo">Seguros <span>Aegis</span></div>
+      <div class="footer-links">
+        <a href="#">Inicio</a>
+        <a href="#">Nosotros</a>
+        <a href="#">Personas</a>
+        <a href="#">Empresas</a>
+        <a href="#">Comunidades</a>
+        <a href="#contacto">Contacto</a>
+      </div>
+    </div>
+    <div class="footer-copy">
+      © 2026 Seguros Aegis · contacto@segurosaegis.cl · Supervisado por la CMF
+    </div>
+  </footer>
+
+</body>
+</html>
