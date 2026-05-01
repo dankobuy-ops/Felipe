@@ -3,6 +3,7 @@ import Layout from "@/layouts/Layout.astro";
 import PartnersStrip from "@/components/PartnersStrip.astro";
 import CTA from "@/components/CTA.astro";
 import { personaProducts } from "@/data/products";
+const base = import.meta.env.BASE_URL;
 
 // Mapa de íconos SVG por producto
 const iconMap: Record<string, string> = {
@@ -61,7 +62,7 @@ const iconMap: Record<string, string> = {
               <h3 style="font-family:'Cinzel',serif; font-size:17px; font-weight:600; color:#4D3B62; margin-bottom:10px;">{p.title}</h3>
               <p style="font-size:14px; color:#55556d; line-height:1.7; flex:1;">{p.shortDescription}</p>
               <a
-                href="/contacto"
+                href={`${base}contacto`}
                 style="display:inline-block; margin-top:20px; font-family:'Cinzel',serif; font-size:12px; font-weight:600; color:#C7A965; text-decoration:none; text-transform:uppercase; letter-spacing:0.05em;"
               >
                 Cotizar →

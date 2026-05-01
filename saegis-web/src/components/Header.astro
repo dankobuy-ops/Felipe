@@ -7,7 +7,7 @@ const base = import.meta.env.BASE_URL;
   <div class="container-page" style="display:flex; align-items:center; justify-content:space-between; height:80px;">
 
     <!-- Logo + tagline -->
-    <a href="/" style="display:flex; align-items:center; gap:14px; text-decoration:none; flex-shrink:0;">
+    <a href={base} style="display:flex; align-items:center; gap:14px; text-decoration:none; flex-shrink:0;">
       <img
         src={`${base}logo.png`}
         alt="Seguros Aegis"
@@ -23,7 +23,7 @@ const base = import.meta.env.BASE_URL;
     <nav class="desktop-nav" aria-label="Principal" style="display:flex; align-items:center; gap:4px;">
       {mainNav.map((item) => (
         <a
-          href={item.href}
+          href={`${base}${item.href}`}
           style="padding:8px 14px; font-family:'Cinzel',serif; font-size:0.8rem; font-weight:500; color:rgba(255,255,255,0.85); text-decoration:none; border-radius:4px; transition:color 0.15s; letter-spacing:0.3px;"
           onmouseover="this.style.color='#C7A965';"
           onmouseout="this.style.color='rgba(255,255,255,0.85)';"
@@ -55,7 +55,7 @@ const base = import.meta.env.BASE_URL;
     <nav class="container-page" style="display:flex; flex-direction:column; gap:4px; padding-block:16px;">
       {mainNav.map((item) => (
         <a
-          href={item.href}
+          href={`${base}${item.href}`}
           style="padding:12px 16px; font-family:'Cinzel',serif; font-size:13px; font-weight:500; color:rgba(255,255,255,0.85); text-decoration:none; letter-spacing:0.3px; border-radius:4px;"
         >
           {item.label}
