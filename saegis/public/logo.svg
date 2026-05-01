@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="44" viewBox="0 0 200 44" fill="none">
+  <g>
+    <path d="M20 4 L34 10 V22 C34 30 28 37 20 40 C12 37 6 30 6 22 V10 L20 4 Z" fill="#0F2747"/>
+    <path d="M20 10 L28 13 V22 C28 27 24.5 31.5 20 33.5 C15.5 31.5 12 27 12 22 V13 L20 10 Z" fill="#D4A24C"/>
+    <path d="M17 20 L19.5 22.5 L23 18.5" stroke="#0F2747" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  <g fill="#0F2747">
+    <text x="46" y="22" font-family="Fraunces, Georgia, serif" font-size="19" font-weight="600" letter-spacing="-0.5">Seguros Aegis</text>
+    <text x="46" y="36" font-family="Inter, sans-serif" font-size="9.5" font-weight="500" letter-spacing="1.5" fill="#5A6478">CORREDORES DE SEGUROS</text>
+  </g>
+</svg>
