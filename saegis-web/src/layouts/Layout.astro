@@ -15,6 +15,7 @@ const {
   canonical,
 } = Astro.props;
 
+const base = import.meta.env.BASE_URL;
 const siteName = "Seguros Aegis";
 const fullTitle = title === siteName ? title : `${title} — ${siteName}`;
 const canonicalUrl = canonical ?? new URL(Astro.url.pathname, "https://segurosaegis.cl").href;
@@ -34,7 +35,7 @@ const canonicalUrl = canonical ?? new URL(Astro.url.pathname, "https://segurosae
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:site_name" content={siteName} />
-    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="icon" type="image/png" href={`${base}logo.png`} />
     <!-- Cinzel desde Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
