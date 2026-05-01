@@ -1,0 +1,121 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import PartnersStrip from "@/components/PartnersStrip.astro";
+import CTA from "@/components/CTA.astro";
+import { company } from "@/data/company";
+const base = import.meta.env.BASE_URL;
+---
+
+<Layout
+  title="Nosotros"
+  description="Somos una empresa familiar de corretaje de seguros con más de 40 años de experiencia en Chile."
+>
+
+  <!-- HERO con imagen de fondo -->
+  <section
+    style={`position:relative; overflow:hidden; min-height:480px; display:flex; align-items:center; background-image:url('${base}images/hero-nosotros.png'); background-size:cover; background-position:top center;`}
+  >
+    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.4);"></div>
+    <div class="container-page" style="position:relative; z-index:1; padding-block:100px;">
+      <h1 style="font-family:'Cinzel',serif; font-size:clamp(36px,6vw,64px); font-weight:600; color:#fff; text-align:center; margin-bottom:16px;">
+        Sobre Nosotros
+      </h1>
+      <div style="width:60px; height:1px; background:#C7A965; margin:0 auto;"></div>
+    </div>
+  </section>
+
+  <!-- QUIÉNES SOMOS -->
+  <section style="background:#f2f4f6; padding-block:120px;">
+    <div class="container-page" style="display:grid; grid-template-columns:30% 65%; gap:60px; align-items:start;">
+      <!-- Columna izquierda -->
+      <div>
+        <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#8D99AE; margin-bottom:12px;">
+          Quiénes Somos
+        </p>
+        <h2 style="font-family:'Cinzel',serif; font-size:22px; font-weight:600; color:#4D3B62; line-height:1.4; margin-bottom:0;">
+          Somos una empresa familiar, dedicada al corretaje de seguros, con más de {company.yearsExperience} años de experiencia en el mercado.
+        </h2>
+      </div>
+      <!-- Columna derecha: icon boxes -->
+      <div style="display:flex; flex-direction:column; gap:28px;">
+        {[
+          {
+            icon: `<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>`,
+            title: "Asesoría Profesional",
+            desc: "Más que seguros, entregamos certidumbre. Evaluamos las mejores opciones del mercado para ofrecerte coberturas sólidas al precio justo. Ya sea para personas o empresas, nuestro compromiso es brindarte un respaldo efectivo y una respuesta rápida cuando más lo necesitas.",
+          },
+          {
+            icon: `<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>`,
+            title: "Protección Integral",
+            desc: "En un mundo lleno de imprevistos, contar con el respaldo adecuado marca la diferencia. Nos dedicamos a analizar el mercado para encontrar las coberturas que se adaptan exactamente a tus necesidades, ya sea para tu patrimonio, tu empresa o tu familia.",
+          },
+          {
+            icon: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`,
+            title: "Soporte Personalizado",
+            desc: "Tu tranquilidad y la de los tuyos es nuestra prioridad. Sabemos que lo que has construido con esfuerzo merece el mejor cuidado, por eso actuamos como tu aliado estratégico frente a las aseguradoras. Diseñamos un escudo de seguridad a tu medida.",
+          },
+        ].map(({ icon, title, desc }) => (
+          <div style="display:flex; gap:20px; align-items:flex-start;">
+            <div style="flex-shrink:0; width:48px; height:48px; background:#4D3B62; border-radius:6px; display:flex; align-items:center; justify-content:center;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C7A965" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" set:html={icon} />
+            </div>
+            <div>
+              <h3 style="font-family:'Cinzel',serif; font-size:16px; font-weight:600; color:#4D3B62; margin-bottom:10px;">{title}</h3>
+              <p style="font-size:14px; color:#55556d; line-height:1.75;">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <hr style="margin:0; border:none; border-top:1px solid #e2e4e8;" />
+
+  <!-- NUESTRA MISIÓN (fondo púrpura + imagen izquierda) -->
+  <section style="background:#4D3B62; position:relative; overflow:hidden; padding-block:120px;">
+    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.22);"></div>
+    <div class="container-page" style="position:relative; z-index:1; display:grid; grid-template-columns:30% 65%; gap:60px; align-items:center;">
+      <!-- Imagen izquierda -->
+      <div style={`min-height:500px; background-image:url('${base}images/mision.png'); background-size:cover; background-position:center; border-radius:6px; overflow:hidden;`}></div>
+      <!-- Texto derecho -->
+      <div>
+        <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#8D99AE; margin-bottom:12px;">
+          Nuestra Misión
+        </p>
+        <div style="width:60px; height:1px; background:#C7A965; margin-bottom:24px;"></div>
+        <h2 style="font-family:'Cinzel',serif; font-size:clamp(20px,2.5vw,30px); font-weight:600; color:#fff; line-height:1.45; margin-bottom:24px;">
+          Nuestra misión es simple: que nuestros clientes tengan un único lugar que les pueda brindar toda la protección que necesitan para poder vivir sus vidas tranquilamente.
+        </h2>
+        <div style="width:100%; height:1px; background:rgba(255,255,255,0.15); margin-block:28px;"></div>
+        <h4 style="font-family:'Cinzel',serif; font-size:16px; font-weight:600; color:#C7A965; margin-bottom:20px;">
+          Creemos en la transparencia, la integridad, el compromiso y la responsabilidad que le brindamos a nuestros clientes.
+        </h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px;">
+          {["Transparencia", "Integridad", "Compromiso", "Responsabilidad"].map((valor) => (
+            <div style="display:flex; align-items:center; gap:10px; color:rgba(255,255,255,0.8);">
+              <div style="width:8px; height:8px; background:#C7A965; border-radius:50%; flex-shrink:0;"></div>
+              <span style="font-family:'Cinzel',serif; font-size:14px;">{valor}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <PartnersStrip />
+
+  <CTA />
+
+</Layout>
+
+<style>
+  @media (max-width: 1024px) {
+    section:nth-of-type(2) .container-page,
+    section:nth-of-type(4) .container-page {
+      grid-template-columns: 1fr !important;
+    }
+    section:nth-of-type(4) .container-page > div:first-child {
+      min-height: 300px !important;
+    }
+  }
+</style>

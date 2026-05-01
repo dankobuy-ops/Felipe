@@ -1,0 +1,42 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import CoverageList from "@/components/CoverageList.astro";
+import PartnersStrip from "@/components/PartnersStrip.astro";
+import CTA from "@/components/CTA.astro";
+import { communityCoverages } from "@/data/communities";
+---
+
+<Layout
+  title="Seguros para Comunidades"
+  description="Pólizas especializadas para edificios y condominios: incendio, espacios comunes, responsabilidad civil y accidentes personales."
+>
+
+  <section style="background:#4D3B62; padding-block:100px; position:relative; overflow:hidden;">
+    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.3);"></div>
+    <div class="container-page" style="position:relative; z-index:1;">
+      <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#C7A965; margin-bottom:16px;">Comunidades</p>
+      <h1 style="font-family:'Cinzel',serif; font-size:clamp(28px,5vw,52px); font-weight:600; color:#fff; margin-bottom:20px; max-width:600px;">
+        La tranquilidad que tu edificio merece
+      </h1>
+      <p style="font-size:17px; color:rgba(255,255,255,0.8); max-width:540px; line-height:1.7;">
+        Diseñamos pólizas específicas para condominios y edificios residenciales: cuidamos la estructura, las áreas comunes, al equipo de trabajo y a cada residente.
+      </p>
+    </div>
+  </section>
+
+  <section style="background:#f2f4f6; padding-block:100px;">
+    <div class="container-page">
+      <div style="text-align:center; margin-bottom:52px;">
+        <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#8D99AE; margin-bottom:12px;">Coberturas de la comunidad</p>
+        <h2 style="font-family:'Cinzel',serif; font-size:clamp(22px,3vw,34px); font-weight:600; color:#4D3B62;">Todo lo que tu edificio necesita proteger</h2>
+      </div>
+      <CoverageList coverages={communityCoverages} />
+    </div>
+  </section>
+
+  <PartnersStrip />
+  <CTA
+    title="Asesoramos a comités y administradores"
+    subtitle="Coordinemos una reunión con el comité de administración. Preparamos una propuesta clara y comparable entre aseguradoras."
+  />
+</Layout>

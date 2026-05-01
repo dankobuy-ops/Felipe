@@ -1,0 +1,70 @@
+---
+const categories = [
+  {
+    title: "Personas",
+    description: "Auto, hogar, salud, viajes, deportivo, responsabilidad civil y más. Diseñamos el plan correcto para ti y tu familia.",
+    href: "/personas",
+    icon: `<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`,
+    bullets: ["Vehicular", "Hogar", "Salud complementaria", "Asistencia en viajes"],
+  },
+  {
+    title: "Empresas",
+    description: "Programas integrales que protegen tu operación, tu gente y tus activos más críticos.",
+    href: "/empresas",
+    icon: `<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>`,
+    bullets: ["Incendio y adicionales", "Responsabilidad civil", "Transporte de carga", "Vida colectivo"],
+  },
+  {
+    title: "Comunidades",
+    description: "Pólizas especializadas para edificios y condominios, con coberturas para áreas comunes y residentes.",
+    href: "/comunidades",
+    icon: `<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>`,
+    bullets: ["Incendio edificio", "Espacios comunes", "RC de la comunidad", "Accidentes personales"],
+  },
+];
+---
+
+<section class="section-y">
+  <div class="container-page">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="mb-3 text-sm font-medium uppercase tracking-wider text-(--color-muted-foreground)">
+        A quién asesoramos
+      </p>
+      <h2 class="font-display text-3xl text-(--color-foreground) sm:text-4xl">
+        Protección diseñada a tu medida.
+      </h2>
+    </div>
+
+    <div class="mt-14 grid gap-5 md:grid-cols-3">
+      {categories.map(({ title, description, href, icon, bullets }) => (
+        <a
+          href={href}
+          class="group flex flex-col rounded-2xl border border-(--color-border) bg-(--color-background) p-7 shadow-[var(--shadow-card)] transition-all hover:-translate-y-1 hover:border-(--color-primary)/30 hover:shadow-[var(--shadow-card-hover)]"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <span class="inline-flex size-12 items-center justify-center rounded-xl bg-(--color-primary) text-(--color-primary-foreground)">
+              <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={icon} />
+            </span>
+            <svg class="size-5 -translate-y-0.5 translate-x-0.5 text-(--color-muted-foreground) transition-all group-hover:-translate-y-1 group-hover:translate-x-1 group-hover:text-(--color-primary)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 7h10v10"/><path d="M7 17 17 7"/>
+            </svg>
+          </div>
+          <h3 class="mt-6 font-display text-2xl text-(--color-foreground)">{title}</h3>
+          <p class="mt-2 text-sm leading-relaxed text-(--color-muted-foreground)">{description}</p>
+          <ul class="mt-6 space-y-1.5 text-sm text-(--color-foreground)/80">
+            {bullets.map((b) => (
+              <li class="flex items-center gap-2">
+                <span class="size-1 rounded-full bg-(--color-accent)"></span>
+                {b}
+              </li>
+            ))}
+          </ul>
+          <span class="mt-6 inline-flex items-center gap-1 text-sm font-medium text-(--color-primary)">
+            Ver cobertura
+            <span class="transition-transform group-hover:translate-x-0.5">→</span>
+          </span>
+        </a>
+      ))}
+    </div>
+  </div>
+</section>

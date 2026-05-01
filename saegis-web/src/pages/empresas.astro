@@ -1,0 +1,72 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import PartnersStrip from "@/components/PartnersStrip.astro";
+import CTA from "@/components/CTA.astro";
+import { InsuranceAccordion } from "@/components/InsuranceAccordion";
+import { businessInsurances } from "@/data/businessInsurances";
+import { businessPillars } from "@/data/business";
+---
+
+<Layout
+  title="Seguros para Empresas"
+  description="Programas integrales de seguros para empresas: incendio, responsabilidad civil, transporte, vida colectivo, D&amp;O y más."
+>
+
+  <section style="background:#4D3B62; padding-block:100px; position:relative; overflow:hidden;">
+    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.3);"></div>
+    <div class="container-page" style="position:relative; z-index:1;">
+      <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#C7A965; margin-bottom:16px;">Empresas</p>
+      <h1 style="font-family:'Cinzel',serif; font-size:clamp(28px,5vw,52px); font-weight:600; color:#fff; margin-bottom:20px; max-width:600px;">
+        Protege lo que tu negocio ha construido
+      </h1>
+      <p style="font-size:17px; color:rgba(255,255,255,0.8); max-width:540px; line-height:1.7;">
+        Diseñamos programas de seguros para PyMEs y empresas grandes. Un portafolio que equilibra riesgo, protección y costo, con gestión activa durante todo el año.
+      </p>
+    </div>
+  </section>
+
+  <!-- Cómo trabajamos -->
+  <section style="background:#f2f4f6; padding-block:100px;">
+    <div class="container-page">
+      <div style="text-align:center; margin-bottom:60px;">
+        <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#8D99AE; margin-bottom:12px;">Cómo trabajamos</p>
+        <h2 style="font-family:'Cinzel',serif; font-size:clamp(22px,3vw,34px); font-weight:600; color:#4D3B62;">Un programa a la medida de tu operación</h2>
+      </div>
+      <ol style="list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(3,1fr); gap:24px;">
+        {businessPillars.map((p, i) => (
+          <li style="background:#fff; border:1px solid #e2e4e8; border-radius:6px; padding:40px 32px;">
+            <span style="font-family:'Cinzel',serif; font-size:48px; font-weight:600; color:#C7A965; display:block; margin-bottom:16px; line-height:1;">0{i + 1}</span>
+            <h3 style="font-family:'Cinzel',serif; font-size:18px; font-weight:600; color:#4D3B62; margin-bottom:12px;">{p.title}</h3>
+            <p style="font-size:14px; color:#55556d; line-height:1.7;">{p.description}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <!-- Seguros -->
+  <section style="background:#fff; padding-block:100px;">
+    <div class="container-page">
+      <div style="text-align:center; margin-bottom:52px;">
+        <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#8D99AE; margin-bottom:12px;">Seguros para tu empresa</p>
+        <h2 style="font-family:'Cinzel',serif; font-size:clamp(22px,3vw,34px); font-weight:600; color:#4D3B62; margin-bottom:16px;">Protección integral del negocio</h2>
+        <p style="font-size:15px; color:#55556d; max-width:560px; margin:0 auto; line-height:1.7;">
+          Selecciona cualquier seguro para ver sus coberturas, funcionamiento y condiciones.
+        </p>
+      </div>
+      <InsuranceAccordion insurances={businessInsurances} client:load />
+    </div>
+  </section>
+
+  <PartnersStrip />
+  <CTA
+    title="Construyamos el programa de tu empresa"
+    subtitle="Un asesor senior te contacta para entender tu operación y preparar una propuesta con las aseguradoras correctas."
+  />
+</Layout>
+
+<style>
+  @media (max-width: 767px) {
+    section:nth-of-type(2) ol { grid-template-columns: 1fr !important; }
+  }
+</style>
