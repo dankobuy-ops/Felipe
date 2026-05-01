@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta real de www.segurosaegis.cl */
+  --color-primary: #4D3B62;
+  --color-primary-dark: #261c30;
+  --color-primary-foreground: #FFFFFF;
+
+  --color-accent: #C7A965;
+  --color-accent-hover: #b89550;
+  --color-accent-foreground: #261c30;
+
+  --color-secondary: #8D99AE;
+
+  --color-background: #FFFFFF;
+  --color-foreground: #1b1b1b;
+
+  --color-surface: #f2f4f6;
+  --color-surface-dark: #e2e4e8;
+
+  --color-muted: #55556d;
+  --color-border: #e2e4e8;
+
+  --font-sans: 'Cinzel', Georgia, serif;
+  --font-display: 'Cinzel', Georgia, serif;
+
+  --shadow-card: 0 2px 8px 0 rgba(77, 59, 98, 0.08), 0 1px 2px 0 rgba(0,0,0,0.04);
+  --shadow-card-hover: 0 8px 24px 0 rgba(77, 59, 98, 0.15);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    font-family: 'Cinzel', Georgia, serif;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 1.65em;
+    background-color: #FFFFFF;
+    color: #1b1b1b;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Cinzel', Georgia, serif;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  a {
+    color: #4D3B62;
+    transition: color 0.2s;
+  }
+  a:hover {
+    color: #C7A965;
+  }
+}
+
+@layer utilities {
+  .container-page {
+    width: 100%;
+    max-width: 1440px;
+    margin-inline: auto;
+    padding-inline: 40px;
+  }
+  @media (max-width: 1024px) {
+    .container-page { padding-inline: 32px; }
+  }
+  @media (max-width: 767px) {
+    .container-page { padding-inline: 24px; }
+  }
+
+  .section-pad {
+    padding-block: 120px;
+  }
+  @media (max-width: 1024px) {
+    .section-pad { padding-block: 72px; }
+  }
+  @media (max-width: 767px) {
+    .section-pad { padding-block: 48px; }
+  }
+
+  .overlay-dark::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0,0,0,0.4);
+    z-index: 0;
+  }
+  .overlay-dark > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .overlay-medium::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0,0,0,0.22);
+    z-index: 0;
+  }
+  .overlay-medium > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .overlay-accent::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: rgba(141, 153, 174, 0.18);
+    z-index: 0;
+  }
+  .overlay-accent > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .divider-gold {
+    width: 60px;
+    height: 1px;
+    background-color: #C7A965;
+  }
+  .divider-white {
+    width: 60px;
+    height: 1px;
+    background-color: #FFFFFF;
+  }
+}

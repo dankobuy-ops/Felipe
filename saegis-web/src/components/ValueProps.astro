@@ -1,0 +1,49 @@
+---
+const values = [
+  {
+    icon: `<path d="M3 22v-1"/><path d="M6 18v-4"/><path d="M10 18v-8"/><path d="M14 18v-6"/><path d="M18 18V9"/><path d="M22 22H2"/><polygon points="12 2 20 7 4 7"/>`,
+    title: "40+ años de trayectoria",
+    description: "Una firma familiar con memoria del mercado y visión de largo plazo.",
+  },
+  {
+    icon: `<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>`,
+    title: "Regulados por la CMF",
+    description: "Miembros de la Asociación Nacional de Seguros. Operamos bajo los estándares más exigentes.",
+  },
+  {
+    icon: `<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`,
+    title: "Asesoría personalizada",
+    description: "Escuchamos, entendemos tu riesgo y diseñamos la cobertura correcta — no plantillas.",
+  },
+  {
+    icon: `<path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-1"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/>`,
+    title: "Acompañamiento ante siniestros",
+    description: "Gestionamos denuncias, trámites y reclamos para que tú te enfoques en lo importante.",
+  },
+];
+---
+
+<section class="section-y bg-(--color-surface)">
+  <div class="container-page">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="mb-3 text-sm font-medium uppercase tracking-wider text-(--color-muted-foreground)">
+        Por qué Seguros Aegis
+      </p>
+      <h2 class="font-display text-3xl text-(--color-foreground) sm:text-4xl">
+        Más que pólizas. Certeza para tus decisiones.
+      </h2>
+    </div>
+
+    <ul class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {values.map(({ icon, title, description }) => (
+        <li class="group rounded-2xl border border-(--color-border) bg-(--color-background) p-6 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]">
+          <span class="inline-flex size-11 items-center justify-center rounded-xl bg-(--color-primary)/5 text-(--color-primary) transition-colors group-hover:bg-(--color-primary) group-hover:text-(--color-primary-foreground)">
+            <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={icon} />
+          </span>
+          <p class="mt-5 font-display text-lg leading-snug text-(--color-foreground)">{title}</p>
+          <p class="mt-2 text-sm leading-relaxed text-(--color-muted-foreground)">{description}</p>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>

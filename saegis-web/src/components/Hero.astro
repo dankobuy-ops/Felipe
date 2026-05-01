@@ -1,0 +1,90 @@
+---
+import { company } from "@/data/company";
+---
+
+<section class="relative overflow-hidden bg-(--color-primary) text-(--color-primary-foreground)">
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute inset-0 opacity-60"
+    style="background: radial-gradient(ellipse 60% 50% at 85% 15%, oklch(0.72 0.12 75 / 0.18), transparent 60%), radial-gradient(ellipse 70% 60% at 10% 90%, oklch(0.32 0.09 258 / 0.6), transparent 60%);"
+  ></div>
+
+  <div class="container-page relative grid items-center gap-14 py-24 md:py-32 lg:grid-cols-[1.15fr_1fr]">
+    <div class="space-y-8">
+      <span class="inline-flex items-center gap-2 rounded-full border border-(--color-primary-foreground)/15 bg-(--color-primary-foreground)/5 px-3 py-1 text-xs font-medium text-(--color-primary-foreground)/75 backdrop-blur">
+        <span class="size-1.5 rounded-full bg-(--color-accent)"></span>
+        Corredora de seguros · Más de 40 años en Chile
+      </span>
+
+      <h1 class="font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-[4rem]">
+        Te protegemos a ti,<br />
+        <span class="text-(--color-accent)">tu familia</span> y tus inversiones.
+      </h1>
+
+      <p class="max-w-xl text-lg leading-relaxed text-(--color-primary-foreground)/75">
+        Asesoría independiente con respaldo de las principales aseguradoras del país. Construimos la cobertura correcta para cada etapa de tu vida, tu negocio o tu comunidad.
+      </p>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <a
+          href="/contacto"
+          class="inline-flex items-center justify-center rounded-md px-6 py-3 text-base font-medium bg-(--color-accent) text-(--color-accent-foreground) transition-colors hover:bg-(--color-accent-hover)"
+        >
+          Cotizar ahora
+        </a>
+        <a
+          href="/personas"
+          class="inline-flex items-center justify-center rounded-md px-6 py-3 text-base font-medium text-(--color-primary-foreground) transition-colors hover:bg-(--color-primary-foreground)/10"
+        >
+          Conoce nuestros seguros →
+        </a>
+      </div>
+
+      <dl class="grid max-w-xl grid-cols-3 gap-6 border-t border-(--color-primary-foreground)/15 pt-7 text-sm">
+        <div>
+          <dt class="text-(--color-primary-foreground)/60">Experiencia</dt>
+          <dd class="mt-1 font-display text-2xl text-(--color-primary-foreground)">
+            {company.yearsExperience}+ años
+          </dd>
+        </div>
+        <div>
+          <dt class="text-(--color-primary-foreground)/60">Aseguradoras</dt>
+          <dd class="mt-1 font-display text-2xl text-(--color-primary-foreground)">
+            {company.insurers}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-(--color-primary-foreground)/60">Respaldo</dt>
+          <dd class="mt-1 font-display text-2xl text-(--color-primary-foreground)">
+            CMF & ANS
+          </dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="relative hidden lg:block">
+      <div class="relative mx-auto aspect-[4/5] w-full max-w-md overflow-hidden rounded-3xl shadow-2xl ring-1 ring-(--color-primary-foreground)/10">
+        <img
+          src="/hero-family.png"
+          alt="Familia chilena frente a su hogar al atardecer"
+          class="absolute inset-0 h-full w-full object-cover"
+          loading="eager"
+        />
+        <div
+          aria-hidden="true"
+          class="absolute inset-0"
+          style="background: linear-gradient(to top, oklch(0.18 0.04 258 / 0.35) 0%, transparent 40%);"
+        ></div>
+        <div class="absolute bottom-6 left-6 right-6 flex items-end justify-between gap-4 text-(--color-primary-foreground)">
+          <p class="font-display text-base leading-snug">
+            Protección que cuida<br />
+            <span class="text-(--color-accent)">lo que más importa.</span>
+          </p>
+          <span class="rounded-full border border-(--color-primary-foreground)/25 bg-(--color-primary-foreground)/10 px-3 py-1 text-[0.7rem] uppercase tracking-wider backdrop-blur">
+            Familias · Chile
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
