@@ -1,10 +1,10 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import PageHero from "@/components/PageHero.astro";
 import PartnersStrip from "@/components/PartnersStrip.astro";
 import CTA from "@/components/CTA.astro";
 import { InsuranceAccordion } from "@/components/InsuranceAccordion";
 import { personasInsurances } from "@/data/personasInsurances";
-const base = import.meta.env.BASE_URL;
 ---
 
 <Layout
@@ -12,19 +12,13 @@ const base = import.meta.env.BASE_URL;
   description="Vehicular, hogar, salud, viajes, bicicleta, deportivo y responsabilidad civil. Asesoría independiente para ti y tu familia."
 >
 
-  <!-- HERO -->
-  <section style={`position:relative; overflow:hidden; min-height:480px; display:flex; align-items:center; background-image:url('${base}/images/fondo-inicio.webp'); background-size:cover; background-position:center 20%;`}>
-    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.28);"></div>
-    <div class="container-page" style="position:relative; z-index:1; padding-block:100px;">
-      <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#C7A965; margin-bottom:16px;">Personas</p>
-      <h1 style="font-family:'Cinzel',serif; font-size:clamp(28px,5vw,52px); font-weight:600; color:#fff; margin-bottom:20px; max-width:600px;">
-        Seguros Para Personas
-      </h1>
-      <p style="font-size:17px; color:rgba(255,255,255,0.8); max-width:540px; line-height:1.7;">
-        Coberturas flexibles que acompañan cada etapa de tu vida. Selecciona cualquier seguro para ver sus coberturas y condiciones.
-      </p>
-    </div>
-  </section>
+  <PageHero
+    label="Personas"
+    title="Seguros Para Personas"
+    subtitle="Coberturas flexibles que acompañan cada etapa de tu vida. Selecciona cualquier seguro para ver sus coberturas y condiciones."
+    image="fondo-inicio.webp"
+    overlayOpacity={0.28}
+  />
 
   <!-- ACORDEÓN DE SEGUROS -->
   <section style="background:#fff; padding-block:80px;">
