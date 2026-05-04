@@ -3,18 +3,18 @@ import { mainNav } from "@/data/navigation";
 const base = import.meta.env.BASE_URL;
 ---
 
-<header id="site-header" style="background:#261c30; position:sticky; top:0; z-index:40;">
-  <div class="container-page" style="display:flex; align-items:center; justify-content:space-between; height:80px;">
+<header id="site-header" style="background:transparent; position:fixed; top:0; left:0; right:0; z-index:40; transition:background 0.3s ease;">
+  <div class="container-page" style="display:flex; align-items:center; justify-content:space-between; height:88px;">
 
     <!-- Logo + tagline -->
     <a href={base} style="display:flex; align-items:center; gap:14px; text-decoration:none; flex-shrink:0;">
       <img
         src={`${base}/logo.png`}
         alt="Seguros Aegis"
-        style="width:73px; height:73px; object-fit:contain; border-radius:8px;"
+        style="width:108px; height:108px; object-fit:contain; border-radius:8px;"
         loading="eager"
       />
-      <span style="color:rgba(255,255,255,0.8); font-family:'Cinzel',serif; font-size:1.16rem; font-weight:400; letter-spacing:0.4px; line-height:1.45; max-width:220px; display:none;" class="header-tagline">
+      <span style="color:rgba(255,255,255,0.9); font-family:'Cinzel',serif; font-size:1.16rem; font-weight:400; letter-spacing:0.4px; line-height:1.45; max-width:260px; display:none;" class="header-tagline">
         Te protegemos a ti, tu familia y tus inversiones
       </span>
     </a>
@@ -24,9 +24,9 @@ const base = import.meta.env.BASE_URL;
       {mainNav.map((item) => (
         <a
           href={`${base}${item.href}`}
-          style="padding:8px 14px; font-family:'Cinzel',serif; font-size:1.36rem; font-weight:500; color:rgba(255,255,255,0.85); text-decoration:none; border-radius:4px; transition:color 0.15s; letter-spacing:0.3px;"
+          style="padding:8px 14px; font-family:'Cinzel',serif; font-size:1.36rem; font-weight:500; color:rgba(255,255,255,0.92); text-decoration:none; border-radius:4px; transition:color 0.15s; letter-spacing:0.3px;"
           onmouseover="this.style.color='#C7A965';"
-          onmouseout="this.style.color='rgba(255,255,255,0.85)';"
+          onmouseout="this.style.color='rgba(255,255,255,0.92)';"
         >
           {item.label}
         </a>
@@ -41,10 +41,10 @@ const base = import.meta.env.BASE_URL;
       aria-label="Abrir menú"
       aria-expanded="false"
     >
-      <svg id="icon-menu" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round">
+      <svg id="icon-menu" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="2" stroke-linecap="round">
         <line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/>
       </svg>
-      <svg id="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" style="display:none;">
+      <svg id="icon-close" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="2" stroke-linecap="round" style="display:none;">
         <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
       </svg>
     </button>
@@ -56,7 +56,7 @@ const base = import.meta.env.BASE_URL;
       {mainNav.map((item) => (
         <a
           href={`${base}${item.href}`}
-          style="padding:12px 16px; font-family:'Cinzel',serif; font-size:20px; font-weight:500; color:rgba(255,255,255,0.85); text-decoration:none; letter-spacing:0.3px; border-radius:4px;"
+          style="padding:12px 16px; font-family:'Cinzel',serif; font-size:20px; font-weight:500; color:rgba(255,255,255,0.92); text-decoration:none; letter-spacing:0.3px; border-radius:4px;"
         >
           {item.label}
         </a>
@@ -78,13 +78,24 @@ const base = import.meta.env.BASE_URL;
 <script>
   const btn = document.getElementById("mobile-menu-btn")!;
   const menu = document.getElementById("mobile-menu")!;
+  const header = document.getElementById("site-header")!;
   const iconMenu = document.getElementById("icon-menu")!;
   const iconClose = document.getElementById("icon-close")!;
+
   btn.addEventListener("click", () => {
     const isOpen = menu.style.display !== "none";
     menu.style.display = isOpen ? "none" : "block";
     iconMenu.style.display = isOpen ? "block" : "none";
     iconClose.style.display = isOpen ? "none" : "block";
     btn.setAttribute("aria-expanded", String(!isOpen));
+  });
+
+  // Fondo oscuro al hacer scroll
+  window.addEventListener("scroll", () => {
+    if (window.scrollY > 60) {
+      header.style.background = "#261c30";
+    } else {
+      header.style.background = "transparent";
+    }
   });
 </script>
