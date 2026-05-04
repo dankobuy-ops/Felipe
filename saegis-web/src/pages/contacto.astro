@@ -1,5 +1,6 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import PageHero from "@/components/PageHero.astro";
 import PartnersStrip from "@/components/PartnersStrip.astro";
 import { company } from "@/data/company";
 ---
@@ -9,18 +10,11 @@ import { company } from "@/data/company";
   description="Cotiza tu seguro con Seguros Aegis. Teléfono, email y formulario de contacto directo."
 >
 
-  <section style="background:#4D3B62; padding-block:100px; position:relative; overflow:hidden;">
-    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.15);"></div>
-    <div class="container-page" style="position:relative; z-index:1;">
-      <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#C7A965; margin-bottom:16px;">Contacto</p>
-      <h1 style="font-family:'Cinzel',serif; font-size:clamp(28px,5vw,52px); font-weight:600; color:#fff; margin-bottom:20px; max-width:600px;">
-        Conversemos sobre tu protección
-      </h1>
-      <p style="font-size:17px; color:rgba(255,255,255,0.8); max-width:540px; line-height:1.7;">
-        Cuéntanos qué necesitas y te respondemos el mismo día hábil.
-      </p>
-    </div>
-  </section>
+  <PageHero
+    label="Contacto"
+    title="Conversemos sobre tu protección"
+    subtitle="Cuéntanos qué necesitas y te respondemos el mismo día hábil."
+  />
 
   <section style="background:#f2f4f6; padding-block:100px;">
     <div class="container-page" style="display:grid; grid-template-columns:1fr 1.6fr; gap:64px; align-items:start;">

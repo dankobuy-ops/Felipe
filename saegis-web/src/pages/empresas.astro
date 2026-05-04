@@ -1,5 +1,6 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import PageHero from "@/components/PageHero.astro";
 import PartnersStrip from "@/components/PartnersStrip.astro";
 import CTA from "@/components/CTA.astro";
 import { InsuranceAccordion } from "@/components/InsuranceAccordion";
@@ -12,18 +13,11 @@ import { businessPillars } from "@/data/business";
   description="Programas integrales de seguros para empresas: incendio, responsabilidad civil, transporte, vida colectivo, D&amp;O y más."
 >
 
-  <section style="background:#4D3B62; padding-block:100px; position:relative; overflow:hidden;">
-    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.15);"></div>
-    <div class="container-page" style="position:relative; z-index:1;">
-      <p style="font-family:'Cinzel',serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:#C7A965; margin-bottom:16px;">Empresas</p>
-      <h1 style="font-family:'Cinzel',serif; font-size:clamp(28px,5vw,52px); font-weight:600; color:#fff; margin-bottom:20px; max-width:600px;">
-        Protege lo que tu negocio ha construido
-      </h1>
-      <p style="font-size:17px; color:rgba(255,255,255,0.8); max-width:540px; line-height:1.7;">
-        Diseñamos programas de seguros para PyMEs y empresas grandes. Un portafolio que equilibra riesgo, protección y costo, con gestión activa durante todo el año.
-      </p>
-    </div>
-  </section>
+  <PageHero
+    label="Empresas"
+    title="Protege lo que tu negocio ha construido"
+    subtitle="Diseñamos programas de seguros para PyMEs y empresas grandes. Un portafolio que equilibra riesgo, protección y costo, con gestión activa durante todo el año."
+  />
 
   <!-- Cómo trabajamos -->
   <section style="background:#f2f4f6; padding-block:100px;">
