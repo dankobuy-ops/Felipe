@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — Seguros Aegis</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    [v-cloak] { display: none; }
+    body { font-family: 'Segoe UI', sans-serif; }
+    .gold { color: #C7A965; }
+    .bg-aegis { background: #261c30; }
+    .border-gold { border-color: #C7A965; }
+    textarea, input, select { outline: none; }
+    .tab-active { border-bottom: 2px solid #C7A965; color: #C7A965; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen" v-cloak>
+
+<div id="app">
+
+  <!-- ── SETUP (primera vez) ──────────────────────────── -->
+  <div v-if="view === 'setup'" class="min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+      <div class="text-center mb-6">
+        <h1 class="text-2xl font-bold" style="color:#261c30">Configurar Supabase</h1>
+        <p class="text-gray-500 text-sm mt-1">Solo se hace una vez. Se guarda en tu navegador.</p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Supabase URL</label>
+          <input v-model="setup.url" type="url" placeholder="https://xxx.supabase.co"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-yellow-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Anon Key (pública)</label>
+          <input v-model="setup.anonKey" type="text" placeholder="eyJ..."
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-yellow-500" />
+        </div>
+        <button @click="saveSetup"
+          class="w-full py-2 rounded-lg text-white font-semibold text-sm"
+          style="background:#C7A965; color:#261c30">
+          Guardar y continuar →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LOGIN ────────────────────────────────────────── -->
+  <div v-else-if="view === 'login'" class="min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3" style="background:#261c30">
+          <span class="text-2xl">🛡️</span>
+        </div>
+        <h1 class="text-2xl font-bold" style="color:#261c30">Seguros Aegis</h1>
+        <p class="text-gray-500 text-sm">Panel de Administración</p>
+      </div>
+      <div class="space-y-4">
+        <input v-model="loginForm.email" type="email" placeholder="Email"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+        <input v-model="loginForm.password" type="password" placeholder="Contraseña"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          @keyup.enter="doLogin" />
+        <p v-if="loginError" class="text-red-500 text-xs">{{ loginError }}</p>
+        <button @click="doLogin" :disabled="loginLoading"
+          class="w-full py-2 rounded-lg font-semibold text-sm disabled:opacity-50"
+          style="background:#C7A965; color:#261c30">
+          {{ loginLoading ? 'Ingresando...' : 'Ingresar' }}
+        </button>
+        <button @click="view='setup'" class="w-full text-xs text-gray-400 hover:text-gray-600">
+          Reconfigurar Supabase
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD ─────────────────────────────────────── -->
+  <div v-else-if="view === 'dashboard'" class="flex min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="w-56 flex-shrink-0 flex flex-col" style="background:#261c30">
+      <div class="p-5 border-b border-white/10">
+        <p class="text-xs text-white/50 uppercase tracking-widest mb-1">Seguros Aegis</p>
+        <p class="text-white font-semibold text-sm">Admin Panel</p>
+      </div>
+      <nav class="flex-1 p-3 space-y-1">
+        <button v-for="tab in tabs" :key="tab.id"
+          @click="activeTab = tab.id"
+          :class="['w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors',
+            activeTab === tab.id ? 'bg-yellow-500/20 text-yellow-400' : 'text-white/70 hover:bg-white/5']">
+          <span>{{ tab.icon }}</span>
+          <span>{{ tab.label }}</span>
+          <span v-if="tab.id === 'changes' && pendingCount > 0"
+            class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            {{ pendingCount }}
+          </span>
+        </button>
+      </nav>
+      <div class="p-3 border-t border-white/10">
+        <p class="text-white/50 text-xs mb-2 truncate">{{ user?.email }}</p>
+        <button @click="doLogout" class="w-full text-left text-xs text-white/40 hover:text-white/70">
+          Cerrar sesión
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-auto">
+      <div class="p-6">
+
+        <!-- ── PÁGINAS ── -->
+        <div v-if="activeTab === 'pages'">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h2 class="text-xl font-bold text-gray-800">Páginas</h2>
+              <p class="text-sm text-gray-500">Configura las páginas del sitio web</p>
+            </div>
+          </div>
+
+          <div v-if="loadingPages" class="text-center py-12 text-gray-400">Cargando...</div>
+
+          <div v-else class="space-y-3">
+            <div v-for="page in pages" :key="page.id"
+              class="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between hover:border-yellow-300 transition-colors">
+              <div class="flex items-center gap-4">
+                <div class="w-2 h-2 rounded-full" :class="page.status === 'published' ? 'bg-green-400' : 'bg-gray-300'"></div>
+                <div>
+                  <p class="font-semibold text-gray-800 text-sm">{{ page.title }}</p>
+                  <p class="text-xs text-gray-400">/{{ page.slug }}</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span :class="['text-xs px-2 py-1 rounded-full', page.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500']">
+                  {{ page.status === 'published' ? 'Publicado' : 'Borrador' }}
+                </span>
+                <button @click="openEditor(page)"
+                  class="text-xs px-3 py-1 rounded-lg border border-gray-200 hover:border-yellow-400 hover:text-yellow-600 transition-colors">
+                  Editar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── CAMBIOS PENDIENTES ── -->
+        <div v-if="activeTab === 'changes'">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h2 class="text-xl font-bold text-gray-800">Cambios Pendientes</h2>
+              <p class="text-sm text-gray-500">Cola de cambios listos para sincronizar con Claude</p>
+            </div>
+            <div class="flex gap-2">
+              <button @click="generateSyncFile" v-if="pendingCount > 0"
+                class="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2"
+                style="background:#C7A965; color:#261c30">
+                ⚡ Generar instrucciones para Claude
+              </button>
+            </div>
+          </div>
+
+          <!-- Instrucciones generadas -->
+          <div v-if="syncOutput" class="mb-6 bg-gray-900 rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-green-400 text-sm font-semibold">✅ Instrucciones generadas</p>
+              <button @click="copySync" class="text-xs text-gray-400 hover:text-white">📋 Copiar todo</button>
+            </div>
+            <pre class="text-green-300 text-xs whitespace-pre-wrap overflow-auto max-h-64">{{ syncOutput }}</pre>
+            <div class="mt-3 pt-3 border-t border-white/10">
+              <p class="text-gray-400 text-xs mb-2">Una vez que Claude aplique los cambios, marca como aplicados:</p>
+              <div class="flex gap-2">
+                <input v-model="commitHash" placeholder="Hash del commit (ej: a1b2c3d)"
+                  class="flex-1 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-600" />
+                <button @click="markApplied"
+                  class="text-xs px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700">
+                  Marcar como aplicado
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="loadingChanges" class="text-center py-12 text-gray-400">Cargando...</div>
+          <div v-else-if="pendingChanges.length === 0" class="text-center py-12 text-gray-400">
+            <p class="text-4xl mb-3">✅</p>
+            <p>No hay cambios pendientes.</p>
+          </div>
+          <div v-else class="space-y-3">
+            <div v-for="change in pendingChanges" :key="change.id"
+              class="bg-white rounded-xl border border-gray-200 p-4">
+              <div class="flex items-start justify-between">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">{{ change.change_type }}</span>
+                    <span v-if="change.target_page" class="text-xs text-gray-400">/{{ change.target_page }}</span>
+                  </div>
+                  <p class="text-sm font-semibold text-gray-800">{{ change.description }}</p>
+                  <p class="text-xs text-gray-500 mt-1">{{ change.astro_file }}</p>
+                </div>
+                <button @click="deleteChange(change.id)" class="text-gray-300 hover:text-red-400 ml-4 text-lg">×</button>
+              </div>
+              <div class="mt-3 bg-gray-50 rounded-lg p-3">
+                <p class="text-xs text-gray-600 font-mono whitespace-pre-wrap">{{ change.instructions }}</p>
+              </div>
+              <p class="text-xs text-gray-400 mt-2">{{ formatDate(change.created_at) }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── HISTORIAL ── -->
+        <div v-if="activeTab === 'history'">
+          <h2 class="text-xl font-bold text-gray-800 mb-6">Historial de Cambios</h2>
+          <div v-if="loadingHistory" class="text-center py-12 text-gray-400">Cargando...</div>
+          <div v-else-if="history.length === 0" class="text-center py-12 text-gray-400">
+            <p>Aún no hay historial.</p>
+          </div>
+          <div v-else class="space-y-3">
+            <div v-for="h in history" :key="h.id" class="bg-white rounded-xl border border-gray-200 p-4">
+              <div class="flex items-center justify-between">
+                <p class="text-sm font-semibold text-gray-800">{{ h.description }}</p>
+                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded font-mono">
+                  {{ h.commit_hash ? h.commit_hash.slice(0,7) : '—' }}
+                </span>
+              </div>
+              <div class="flex items-center gap-4 mt-2">
+                <span class="text-xs text-gray-400">{{ h.changes_count }} cambios aplicados</span>
+                <span class="text-xs text-gray-400">{{ formatDate(h.created_at) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── CONFIGURACIÓN ── -->
+        <div v-if="activeTab === 'settings'">
+          <h2 class="text-xl font-bold text-gray-800 mb-6">Configuración Global</h2>
+          <div class="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
+            <div>
+              <h3 class="font-semibold text-gray-700 mb-3 text-sm">Colores</h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div v-for="(val, key) in siteColors" :key="key">
+                  <label class="block text-xs text-gray-500 mb-1 capitalize">{{ key }}</label>
+                  <div class="flex items-center gap-2">
+                    <input type="color" v-model="siteColors[key]"
+                      class="w-8 h-8 rounded cursor-pointer border border-gray-200" />
+                    <input type="text" v-model="siteColors[key]"
+                      class="flex-1 border border-gray-200 rounded px-2 py-1 text-xs font-mono" />
+                  </div>
+                </div>
+              </div>
+              <button @click="saveColors" class="mt-4 px-4 py-2 text-xs rounded-lg font-semibold" style="background:#C7A965; color:#261c30">
+                Guardar colores (genera cambio pendiente)
+              </button>
+            </div>
+            <div class="pt-4 border-t border-gray-100">
+              <p class="text-xs text-gray-400">Los cambios de configuración se añaden a la cola de cambios pendientes para que Claude los aplique en el código.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ── MODAL EDITOR DE PÁGINA ─────────────────────────── -->
+  <div v-if="editorOpen" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-gray-800">Editar: {{ editingPage?.title }}</h3>
+          <p class="text-xs text-gray-400">/{{ editingPage?.slug }}</p>
+        </div>
+        <button @click="closeEditor" class="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+      </div>
+
+      <div class="p-6 space-y-6">
+
+        <!-- Hero config -->
+        <div v-if="editForm.hero_config?.type !== 'custom'">
+          <h4 class="font-semibold text-sm text-gray-700 mb-3 flex items-center gap-2">
+            🎨 Hero Banner
+          </h4>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Etiqueta (label)</label>
+              <input v-model="editForm.hero_config.label" type="text" placeholder="ej: Empresas"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Alineación</label>
+              <select v-model="editForm.hero_config.align"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="left">Izquierda</option>
+                <option value="center">Centro</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="block text-xs text-gray-500 mb-1">Título principal</label>
+            <input v-model="editForm.hero_config.title" type="text"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div class="mt-3">
+            <label class="block text-xs text-gray-500 mb-1">Subtítulo</label>
+            <textarea v-model="editForm.hero_config.subtitle" rows="2"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"></textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-4 mt-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Imagen de fondo</label>
+              <input v-model="editForm.hero_config.image" type="text" placeholder="hero-nosotros.png (vacío = color)"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Color fondo (si no hay imagen)</label>
+              <div class="flex items-center gap-2">
+                <input type="color" v-model="editForm.hero_config.bgColor" class="w-8 h-8 rounded border border-gray-200" />
+                <input v-model="editForm.hero_config.bgColor" type="text"
+                  class="flex-1 border border-gray-200 rounded-lg px-2 py-2 text-sm font-mono" />
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4 mt-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Opacidad overlay (0–1)</label>
+              <input v-model.number="editForm.hero_config.overlayOpacity" type="range" min="0" max="1" step="0.05"
+                class="w-full" />
+              <span class="text-xs text-gray-400">{{ editForm.hero_config.overlayOpacity }}</span>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Altura mínima (px)</label>
+              <input v-model.number="editForm.hero_config.minHeight" type="number" min="300" max="900"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-700">
+          ⚡ Esta página tiene un hero personalizado. Edítala directamente en el código (index.astro).
+        </div>
+
+        <!-- Layout config -->
+        <div>
+          <h4 class="font-semibold text-sm text-gray-700 mb-3">⚙️ Opciones de layout</h4>
+          <div class="flex gap-6">
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="checkbox" v-model="editForm.layout_config.showPartners" class="w-4 h-4 rounded" />
+              Mostrar logos compañías
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="checkbox" v-model="editForm.layout_config.showCTA" class="w-4 h-4 rounded" />
+              Mostrar CTA "Cotiza ahora"
+            </label>
+          </div>
+        </div>
+
+        <!-- SEO -->
+        <div>
+          <h4 class="font-semibold text-sm text-gray-700 mb-3">🔍 SEO</h4>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Meta descripción</label>
+            <textarea v-model="editForm.meta_description" rows="2"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"></textarea>
+          </div>
+        </div>
+
+        <!-- Estado -->
+        <div class="flex items-center gap-4">
+          <label class="text-sm font-semibold text-gray-700">Estado:</label>
+          <select v-model="editForm.status" class="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+            <option value="published">Publicado</option>
+            <option value="draft">Borrador</option>
+          </select>
+        </div>
+
+        <!-- Cambio personalizado -->
+        <div class="border-t border-gray-100 pt-4">
+          <h4 class="font-semibold text-sm text-gray-700 mb-2">📝 Cambio personalizado (opcional)</h4>
+          <textarea v-model="customInstruction" rows="3" placeholder="Describe un cambio específico que Claude debe hacer en el código..."
+            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"></textarea>
+        </div>
+
+      </div>
+
+      <div class="p-6 border-t border-gray-100 flex gap-3 justify-end">
+        <button @click="closeEditor" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Cancelar</button>
+        <button @click="savePage" :disabled="saving"
+          class="px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+          style="background:#C7A965; color:#261c30">
+          {{ saving ? 'Guardando...' : '💾 Guardar cambio' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, reactive } = Vue;
+const { createClient } = supabase;
+
+createApp({
+  setup() {
+    // ── State ──────────────────────────────────────────
+    const view       = ref('login');    // setup | login | dashboard
+    const activeTab  = ref('pages');
+    const user       = ref(null);
+    const loginError = ref('');
+    const loginLoading = ref(false);
+
+    const setup = reactive({ url: '', anonKey: '' });
+    const loginForm = reactive({ email: '', password: '' });
+
+    const pages          = ref([]);
+    const pendingChanges = ref([]);
+    const history        = ref([]);
+    const siteColors     = reactive({ primary: '#4D3B62', accent: '#C7A965', dark: '#261c30' });
+
+    const loadingPages   = ref(false);
+    const loadingChanges = ref(false);
+    const loadingHistory = ref(false);
+
+    const editorOpen       = ref(false);
+    const editingPage      = ref(null);
+    const editForm         = reactive({ hero_config: {}, content_config: {}, layout_config: {}, status: 'published', meta_description: '' });
+    const customInstruction = ref('');
+    const saving           = ref(false);
+
+    const syncOutput  = ref('');
+    const commitHash  = ref('');
+
+    let sb = null;
+
+    const tabs = [
+      { id: 'pages',    label: 'Páginas',    icon: '📄' },
+      { id: 'changes',  label: 'Pendientes', icon: '⚡' },
+      { id: 'history',  label: 'Historial',  icon: '🕐' },
+      { id: 'settings', label: 'Config',     icon: '⚙️' },
+    ];
+
+    const pendingCount = computed(() => pendingChanges.value.filter(c => c.status === 'pending').length);
+
+    // ── Init ───────────────────────────────────────────
+    onMounted(() => {
+      const savedUrl = localStorage.getItem('sb_url');
+      const savedKey = localStorage.getItem('sb_key');
+      if (!savedUrl || !savedKey) { view.value = 'setup'; return; }
+      setup.url = savedUrl; setup.anonKey = savedKey;
+      initSupabase(savedUrl, savedKey);
+      checkSession();
+    });
+
+    function initSupabase(url, key) {
+      sb = createClient(url, key);
+    }
+
+    async function checkSession() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) { user.value = session.user; view.value = 'dashboard'; loadAll(); }
+      else { view.value = 'login'; }
+    }
+
+    // ── Setup ──────────────────────────────────────────
+    function saveSetup() {
+      if (!setup.url || !setup.anonKey) return alert('Completa ambos campos.');
+      localStorage.setItem('sb_url', setup.url);
+      localStorage.setItem('sb_key', setup.anonKey);
+      initSupabase(setup.url, setup.anonKey);
+      view.value = 'login';
+    }
+
+    // ── Auth ───────────────────────────────────────────
+    async function doLogin() {
+      loginError.value = ''; loginLoading.value = true;
+      const { data, error } = await sb.auth.signInWithPassword({ email: loginForm.email, password: loginForm.password });
+      loginLoading.value = false;
+      if (error) { loginError.value = error.message; return; }
+      user.value = data.user; view.value = 'dashboard'; loadAll();
+    }
+
+    async function doLogout() {
+      await sb.auth.signOut(); user.value = null; view.value = 'login';
+    }
+
+    // ── Load data ──────────────────────────────────────
+    function loadAll() { loadPages(); loadChanges(); loadHistory(); loadSettings(); }
+
+    async function loadPages() {
+      loadingPages.value = true;
+      const { data } = await sb.from('pages').select('*').order('slug');
+      pages.value = data || []; loadingPages.value = false;
+    }
+
+    async function loadChanges() {
+      loadingChanges.value = true;
+      const { data } = await sb.from('pending_changes').select('*').eq('status', 'pending').order('created_at');
+      pendingChanges.value = data || []; loadingChanges.value = false;
+    }
+
+    async function loadHistory() {
+      loadingHistory.value = true;
+      const { data } = await sb.from('change_history').select('*').order('created_at', { ascending: false }).limit(20);
+      history.value = data || []; loadingHistory.value = false;
+    }
+
+    async function loadSettings() {
+      const { data } = await sb.from('settings').select('*').eq('key', 'colors').single();
+      if (data?.value) Object.assign(siteColors, data.value);
+    }
+
+    // ── Editor ─────────────────────────────────────────
+    function openEditor(page) {
+      editingPage.value = page;
+      Object.assign(editForm, {
+        hero_config:    JSON.parse(JSON.stringify(page.hero_config || {})),
+        content_config: JSON.parse(JSON.stringify(page.content_config || {})),
+        layout_config:  JSON.parse(JSON.stringify(page.layout_config || {})),
+        status:         page.status,
+        meta_description: page.meta_description || '',
+      });
+      customInstruction.value = '';
+      editorOpen.value = true;
+    }
+
+    function closeEditor() { editorOpen.value = false; editingPage.value = null; }
+
+    async function savePage() {
+      if (!editingPage.value) return;
+      saving.value = true;
+
+      const page = editingPage.value;
+      const old  = page;
+      const changes = [];
+
+      // Detectar qué cambió
+      if (editForm.hero_config.title !== old.hero_config?.title) {
+        changes.push({
+          field: 'hero_config.title',
+          old: old.hero_config?.title,
+          new: editForm.hero_config.title,
+        });
+      }
+      if (editForm.hero_config.subtitle !== old.hero_config?.subtitle) {
+        changes.push({ field: 'hero_config.subtitle', old: old.hero_config?.subtitle, new: editForm.hero_config.subtitle });
+      }
+      if (editForm.hero_config.label !== old.hero_config?.label) {
+        changes.push({ field: 'hero_config.label', old: old.hero_config?.label, new: editForm.hero_config.label });
+      }
+      if (editForm.hero_config.image !== old.hero_config?.image) {
+        changes.push({ field: 'hero_config.image', old: old.hero_config?.image, new: editForm.hero_config.image });
+      }
+      if (editForm.hero_config.overlayOpacity !== old.hero_config?.overlayOpacity) {
+        changes.push({ field: 'hero_config.overlayOpacity', old: old.hero_config?.overlayOpacity, new: editForm.hero_config.overlayOpacity });
+      }
+      if (editForm.layout_config.showCTA !== old.layout_config?.showCTA) {
+        changes.push({ field: 'layout_config.showCTA', old: old.layout_config?.showCTA, new: editForm.layout_config.showCTA });
+      }
+      if (editForm.layout_config.showPartners !== old.layout_config?.showPartners) {
+        changes.push({ field: 'layout_config.showPartners', old: old.layout_config?.showPartners, new: editForm.layout_config.showPartners });
+      }
+
+      // Guardar en DB
+      await sb.from('pages').update({
+        hero_config:    editForm.hero_config,
+        content_config: editForm.content_config,
+        layout_config:  editForm.layout_config,
+        status:         editForm.status,
+        meta_description: editForm.meta_description,
+        updated_at:     new Date().toISOString(),
+      }).eq('id', page.id);
+
+      // Crear cambio pendiente si hay diferencias
+      if (changes.length > 0 || customInstruction.value.trim()) {
+        const astroFile = pageToFile(page.slug);
+        const instrLines = changes.map(c => buildInstruction(page.slug, c)).join('\n');
+        const finalInstr = [instrLines, customInstruction.value.trim()].filter(Boolean).join('\n\n');
+        const desc = changes.length > 0
+          ? `Actualizar ${changes.map(c => c.field.split('.').pop()).join(', ')} en "${page.title}"`
+          : customInstruction.value.slice(0, 80);
+
+        await sb.from('pending_changes').insert({
+          change_type: 'page_update',
+          target_page: page.slug,
+          description: desc,
+          payload:     { changes, custom: customInstruction.value },
+          astro_file:  astroFile,
+          instructions: finalInstr,
+          status:      'pending',
+        });
+      }
+
+      saving.value = false;
+      closeEditor();
+      loadPages();
+      loadChanges();
+    }
+
+    function pageToFile(slug) {
+      if (slug === 'inicio') return 'saegis-web/src/pages/index.astro';
+      if (slug === 'personas') return 'saegis-web/src/pages/personas/index.astro';
+      return `saegis-web/src/pages/${slug}.astro`;
+    }
+
+    function buildInstruction(slug, change) {
+      const file = pageToFile(slug);
+      const prop = change.field.includes('label') ? 'label' :
+                   change.field.includes('title') ? 'title' :
+                   change.field.includes('subtitle') ? 'subtitle' :
+                   change.field.includes('image') ? 'image' :
+                   change.field.includes('overlayOpacity') ? 'overlayOpacity' :
+                   change.field.includes('showCTA') ? 'showCTA' :
+                   change.field.includes('showPartners') ? 'showPartners' : change.field;
+
+      if (prop === 'showCTA' || prop === 'showPartners') {
+        const action = change.new ? 'agregar' : 'eliminar';
+        const comp = prop === 'showCTA' ? '<CTA />' : '<PartnersStrip />';
+        return `En ${file}: ${action} el componente ${comp}`;
+      }
+      return `En ${file}: En el componente <PageHero>, cambiar la prop "${prop}" de "${change.old}" a "${change.new}"`;
+    }
+
+    // ── Cambios pendientes ─────────────────────────────
+    async function deleteChange(id) {
+      if (!confirm('¿Eliminar este cambio?')) return;
+      await sb.from('pending_changes').delete().eq('id', id);
+      loadChanges();
+    }
+
+    function generateSyncFile() {
+      const lines = [
+        '╔══════════════════════════════════════════════════════╗',
+        '║   SEGUROS AEGIS — CAMBIOS PENDIENTES PARA CLAUDE     ║',
+        '╚══════════════════════════════════════════════════════╝',
+        `Generado: ${new Date().toLocaleString('es-CL')}`,
+        `Total: ${pendingCount.value} cambios`,
+        '',
+        'INSTRUCCIONES: Aplica TODOS los cambios de esta lista,',
+        'luego haz build (npm run build) y push a GitHub.',
+        '',
+        '══════════════════════════════════════════════════════',
+      ];
+
+      pendingChanges.value.filter(c => c.status === 'pending').forEach((c, i) => {
+        lines.push(`\nCAMBIO ${i + 1}: ${c.description}`);
+        if (c.astro_file) lines.push(`Archivo: ${c.astro_file}`);
+        lines.push('───────────────────────────────────────────');
+        lines.push(c.instructions);
+      });
+
+      lines.push('\n══════════════════════════════════════════════════════');
+      lines.push('FIN DE CAMBIOS PENDIENTES');
+
+      syncOutput.value = lines.join('\n');
+    }
+
+    async function copySync() {
+      await navigator.clipboard.writeText(syncOutput.value);
+      alert('¡Copiado al portapapeles!');
+    }
+
+    async function markApplied() {
+      if (!commitHash.value.trim()) return alert('Ingresa el hash del commit.');
+      const ids = pendingChanges.value.filter(c => c.status === 'pending').map(c => c.id);
+
+      await sb.from('pending_changes').update({
+        status:      'applied',
+        applied_at:  new Date().toISOString(),
+        commit_hash: commitHash.value.trim(),
+      }).in('id', ids);
+
+      await sb.from('change_history').insert({
+        description:    `Sincronización: ${pendingChanges.value.length} cambios`,
+        changes_count:  ids.length,
+        commit_hash:    commitHash.value.trim(),
+      });
+
+      syncOutput.value = ''; commitHash.value = '';
+      loadChanges(); loadHistory();
+    }
+
+    // ── Configuración ──────────────────────────────────
+    async function saveColors() {
+      await sb.from('settings').upsert({ key: 'colors', value: { ...siteColors }, updated_at: new Date().toISOString() });
+
+      await sb.from('pending_changes').insert({
+        change_type:  'settings_update',
+        target_page:  null,
+        description:  'Actualizar colores globales del sitio',
+        payload:      { colors: { ...siteColors } },
+        astro_file:   'saegis-web/src/styles/global.css',
+        instructions: `En saegis-web/src/styles/global.css, actualizar las variables CSS:\n--color-primary: ${siteColors.primary}\n--color-accent: ${siteColors.accent}\n--color-primary-dark: ${siteColors.dark}`,
+        status:       'pending',
+      });
+
+      alert('Colores guardados. Cambio añadido a la cola de pendientes.');
+      loadChanges();
+    }
+
+    // ── Utils ──────────────────────────────────────────
+    function formatDate(str) {
+      return new Date(str).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    return {
+      view, activeTab, user, loginError, loginLoading, setup, loginForm,
+      pages, pendingChanges, history, siteColors,
+      loadingPages, loadingChanges, loadingHistory,
+      editorOpen, editingPage, editForm, customInstruction, saving,
+      syncOutput, commitHash, tabs, pendingCount,
+      saveSetup, doLogin, doLogout,
+      openEditor, closeEditor, savePage,
+      deleteChange, generateSyncFile, copySync, markApplied,
+      saveColors, formatDate,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
