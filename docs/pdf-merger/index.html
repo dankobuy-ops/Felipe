@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Merger</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy: #1B3A6B;
+      --blue: #2E5F9E;
+      --gold: #C7A965;
+      --gold-light: #F5EDD4;
+      --bg: #F0F4F8;
+      --white: #ffffff;
+      --gray: #64748B;
+      --light: #E2E8F0;
+      --danger: #EF4444;
+      --radius: 14px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: #1a202c;
+      min-height: 100vh;
+      padding: 0 0 60px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--navy);
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+    header a {
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      font-size: 0.85rem;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 5px 12px;
+      border-radius: 8px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    header a:hover { background: rgba(255,255,255,0.1); color: white; }
+    header h1 { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.3px; }
+    header span { color: var(--gold); font-size: 0.85rem; }
+
+    /* ── Main layout ── */
+    .container { max-width: 780px; margin: 0 auto; padding: 28px 20px; }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2.5px dashed var(--blue);
+      border-radius: var(--radius);
+      background: white;
+      padding: 44px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 20px;
+    }
+    .drop-zone.drag-over {
+      background: #EFF6FF;
+      border-color: var(--gold);
+      transform: scale(1.01);
+    }
+    .drop-zone .dz-icon { font-size: 3rem; margin-bottom: 12px; }
+    .drop-zone h2 { font-size: 1.1rem; color: var(--navy); font-weight: 700; margin-bottom: 6px; }
+    .drop-zone p { font-size: 0.85rem; color: var(--gray); margin-bottom: 16px; }
+    .drop-zone .formats {
+      display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    }
+    .drop-zone .formats span {
+      font-size: 0.75rem; font-weight: 600; padding: 3px 10px;
+      border-radius: 100px; background: var(--light); color: var(--gray);
+    }
+    #fileInput { display: none; }
+
+    .btn-add {
+      display: inline-block;
+      background: var(--navy); color: white;
+      padding: 10px 22px; border-radius: 10px;
+      font-size: 0.9rem; font-weight: 700;
+      cursor: pointer; border: none;
+      transition: background 0.15s;
+      margin-bottom: 12px;
+    }
+    .btn-add:hover { background: var(--blue); }
+
+    /* ── File list ── */
+    .section-title {
+      font-size: 0.75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--gray); margin-bottom: 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .count-badge {
+      background: var(--navy); color: white;
+      font-size: 0.7rem; font-weight: 800;
+      padding: 2px 7px; border-radius: 100px;
+    }
+
+    #fileList { list-style: none; margin-bottom: 24px; }
+
+    #fileList li {
+      background: white;
+      border-radius: 10px;
+      padding: 11px 14px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      cursor: grab;
+      transition: box-shadow 0.15s, opacity 0.15s;
+      border: 2px solid transparent;
+      user-select: none;
+    }
+    #fileList li:active { cursor: grabbing; }
+    #fileList li.drag-over-item { border-color: var(--gold); background: var(--gold-light); }
+    #fileList li.dragging { opacity: 0.4; }
+
+    .file-icon { font-size: 1.5rem; flex-shrink: 0; width: 32px; text-align: center; }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name {
+      font-size: 0.9rem; font-weight: 600; color: #1a202c;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .file-meta { font-size: 0.75rem; color: var(--gray); margin-top: 2px; }
+
+    .btn-remove {
+      background: none; border: none; color: #CBD5E1;
+      font-size: 1.2rem; cursor: pointer; padding: 4px 6px;
+      border-radius: 6px; line-height: 1; transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-remove:hover { background: #FEE2E2; color: var(--danger); }
+
+    .drag-hint {
+      font-size: 0.75rem; color: #CBD5E1; flex-shrink: 0;
+    }
+
+    /* ── Quality options ── */
+    .quality-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .quality-options {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .quality-option input[type="radio"] { display: none; }
+    .quality-option label {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 6px; padding: 14px 10px;
+      border: 2px solid var(--light); border-radius: 12px;
+      cursor: pointer; transition: all 0.15s; text-align: center;
+    }
+    .quality-option input:checked + label {
+      border-color: var(--gold); background: var(--gold-light);
+    }
+    .quality-option label:hover { border-color: var(--blue); }
+    .quality-icon { font-size: 1.6rem; }
+    .quality-name { font-size: 0.85rem; font-weight: 700; color: var(--navy); }
+    .quality-desc { font-size: 0.72rem; color: var(--gray); }
+
+    /* ── Generate button ── */
+    #btnGenerate {
+      width: 100%;
+      background: var(--gold);
+      color: var(--navy);
+      border: none;
+      border-radius: var(--radius);
+      padding: 16px;
+      font-size: 1.05rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      letter-spacing: 0.02em;
+    }
+    #btnGenerate:hover:not(:disabled) { background: #b8942f; transform: translateY(-1px); }
+    #btnGenerate:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    /* ── Progress ── */
+    .progress-wrap { margin-top: 16px; display: none; }
+    .progress-wrap.visible { display: block; }
+    .progress-bar-bg {
+      background: var(--light); border-radius: 100px; height: 8px; overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%; background: linear-gradient(90deg, var(--navy), var(--blue));
+      border-radius: 100px; width: 0%;
+      transition: width 0.3s ease;
+    }
+    .progress-label {
+      font-size: 0.8rem; color: var(--gray); margin-top: 8px; text-align: center;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #1a202c; color: white;
+      padding: 12px 22px; border-radius: 12px;
+      font-size: 0.9rem; font-weight: 600;
+      transition: transform 0.3s; z-index: 999;
+      white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.success { background: #166534; }
+    #toast.error { background: #991b1b; }
+
+    /* ── Empty state ── */
+    #emptyState {
+      text-align: center; padding: 24px; color: var(--gray);
+      font-size: 0.85rem; display: none;
+    }
+
+    @media (max-width: 480px) {
+      .quality-options { grid-template-columns: 1fr 1fr 1fr; }
+      .quality-name { font-size: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="../">← Volver</a>
+  <h1>PDF Merger</h1>
+  <span>une archivos en un solo PDF</span>
+</header>
+
+<div class="container">
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="dropZone">
+    <div class="dz-icon">📎</div>
+    <h2>Arrastra tus archivos aquí</h2>
+    <p>o haz clic para seleccionarlos</p>
+    <button class="btn-add" onclick="document.getElementById('fileInput').click()">
+      ＋ Seleccionar archivos
+    </button>
+    <div class="formats">
+      <span>JPG</span><span>PNG</span><span>JPEG</span>
+      <span>TXT</span><span>DOCX</span>
+    </div>
+  </div>
+  <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.bmp,.gif,.webp,.txt,.docx">
+
+  <!-- File list -->
+  <div id="fileListSection" style="display:none">
+    <div class="section-title">
+      Archivos a unir
+      <span class="count-badge" id="countBadge">0</span>
+      <span style="font-size:0.7rem; color:#CBD5E1; font-weight:400; margin-left:4px">arrastra para reordenar</span>
+    </div>
+    <ul id="fileList"></ul>
+    <div id="emptyState">Sin archivos. Agrega al menos uno.</div>
+  </div>
+
+  <!-- Quality (visible only when there are images) -->
+  <div class="quality-card" id="qualityCard" style="display:none">
+    <div class="section-title">Calidad de imágenes</div>
+    <div class="quality-options">
+      <div class="quality-option">
+        <input type="radio" name="quality" id="qMax" value="max" checked>
+        <label for="qMax">
+          <span class="quality-icon">🔬</span>
+          <span class="quality-name">Máxima</span>
+          <span class="quality-desc">Alta fidelidad · PDF pesado</span>
+        </label>
+      </div>
+      <div class="quality-option">
+        <input type="radio" name="quality" id="qMed" value="med">
+        <label for="qMed">
+          <span class="quality-icon">⚖️</span>
+          <span class="quality-name">Media</span>
+          <span class="quality-desc">Balance calidad / peso</span>
+        </label>
+      </div>
+      <div class="quality-option">
+        <input type="radio" name="quality" id="qLow" value="low">
+        <label for="qLow">
+          <span class="quality-icon">🪶</span>
+          <span class="quality-name">Baja</span>
+          <span class="quality-desc">Mínimo tamaño</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generate -->
+  <button id="btnGenerate" onclick="generatePDF()" disabled>
+    <span>🖨</span> Generar PDF
+  </button>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-label" id="progressLabel">Procesando...</div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const files = []  // {id, file, name, size, type}
+let idCounter = 0
+let dragSrcIdx = null
+
+const IMG_EXTS = ['jpg','jpeg','png','bmp','gif','webp']
+const IMG_QUALITY = { max: { dim: 1920, q: 0.95 }, med: { dim: 1200, q: 0.72 }, low: { dim: 800, q: 0.45 } }
+
+// ── Drop Zone ────────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone')
+const fileInput = document.getElementById('fileInput')
+
+dropZone.addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') fileInput.click()
+})
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over') })
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'))
+dropZone.addEventListener('drop', e => {
+  e.preventDefault()
+  dropZone.classList.remove('drag-over')
+  addFiles([...e.dataTransfer.files])
+})
+fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fileInput.value = '' })
+
+// ── Add files ────────────────────────────────────────────────────────────────
+function addFiles(newFiles) {
+  newFiles.forEach(f => {
+    const ext = f.name.split('.').pop().toLowerCase()
+    const allowed = [...IMG_EXTS, 'txt', 'docx']
+    if (!allowed.includes(ext)) { showToast(`Formato no soportado: .${ext}`, 'error'); return }
+    if (files.some(x => x.name === f.name && x.size === f.size)) return // duplicado
+    files.push({ id: ++idCounter, file: f, name: f.name, size: f.size, ext })
+  })
+  renderList()
+}
+
+// ── Render list ───────────────────────────────────────────────────────────────
+function renderList() {
+  const ul = document.getElementById('fileList')
+  ul.innerHTML = ''
+  document.getElementById('fileListSection').style.display = files.length ? 'block' : 'none'
+  document.getElementById('countBadge').textContent = files.length
+  document.getElementById('btnGenerate').disabled = !files.length
+
+  const hasImages = files.some(f => IMG_EXTS.includes(f.ext))
+  document.getElementById('qualityCard').style.display = hasImages ? 'block' : 'none'
+
+  files.forEach((item, idx) => {
+    const li = document.createElement('li')
+    li.dataset.idx = idx
+    li.draggable = true
+
+    const icon = getIcon(item.ext)
+    const kb = (item.size / 1024).toFixed(0)
+
+    li.innerHTML = `
+      <span class="drag-hint" title="Arrastra para reordenar">⠿</span>
+      <span class="file-icon">${icon}</span>
+      <div class="file-info">
+        <div class="file-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>
+        <div class="file-meta">${item.ext.toUpperCase()} · ${kb} KB</div>
+      </div>
+      <button class="btn-remove" title="Quitar" onclick="removeFile(${idx})">✕</button>
+    `
+
+    // Drag & drop reorder
+    li.addEventListener('dragstart', e => {
+      dragSrcIdx = idx
+      li.classList.add('dragging')
+      e.dataTransfer.effectAllowed = 'move'
+    })
+    li.addEventListener('dragend', () => {
+      li.classList.remove('dragging')
+      document.querySelectorAll('#fileList li').forEach(el => el.classList.remove('drag-over-item'))
+    })
+    li.addEventListener('dragover', e => {
+      e.preventDefault()
+      document.querySelectorAll('#fileList li').forEach(el => el.classList.remove('drag-over-item'))
+      li.classList.add('drag-over-item')
+    })
+    li.addEventListener('drop', e => {
+      e.preventDefault()
+      if (dragSrcIdx === null || dragSrcIdx === idx) return
+      const moved = files.splice(dragSrcIdx, 1)[0]
+      files.splice(idx, 0, moved)
+      renderList()
+    })
+
+    ul.appendChild(li)
+  })
+}
+
+function removeFile(idx) { files.splice(idx, 1); renderList() }
+function getIcon(ext) {
+  if (IMG_EXTS.includes(ext)) return '🖼️'
+  if (ext === 'txt') return '📄'
+  if (ext === 'docx') return '📝'
+  return '📎'
+}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+// ── Progress ──────────────────────────────────────────────────────────────────
+function setProgress(pct, label) {
+  document.getElementById('progressWrap').classList.add('visible')
+  document.getElementById('progressBar').style.width = pct + '%'
+  document.getElementById('progressLabel').textContent = label
+}
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast')
+  t.textContent = msg
+  t.className = 'show ' + type
+  setTimeout(() => t.className = '', 3200)
+}
+
+// ── Image helpers ─────────────────────────────────────────────────────────────
+function compressImage(file, qualityKey) {
+  return new Promise((resolve, reject) => {
+    const cfg = IMG_QUALITY[qualityKey]
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      let w = img.naturalWidth, h = img.naturalHeight
+      const maxDim = cfg.dim
+      if (w > maxDim || h > maxDim) {
+        const r = Math.min(maxDim / w, maxDim / h)
+        w = Math.round(w * r); h = Math.round(h * r)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h)
+      URL.revokeObjectURL(url)
+      resolve({ dataUrl: canvas.toDataURL('image/jpeg', cfg.q), w, h })
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+// ── Text reader ───────────────────────────────────────────────────────────────
+function readText(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = e => resolve(e.target.result)
+    fr.onerror = reject
+    fr.readAsText(file, 'UTF-8')
+  })
+}
+
+// ── DOCX reader (via mammoth) ─────────────────────────────────────────────────
+function readDocx(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = e => {
+      mammoth.extractRawText({ arrayBuffer: e.target.result })
+        .then(r => resolve(r.value))
+        .catch(reject)
+    }
+    fr.onerror = reject
+    fr.readAsArrayBuffer(file)
+  })
+}
+
+// ── Generate PDF ──────────────────────────────────────────────────────────────
+async function generatePDF() {
+  if (!files.length) return
+  const btn = document.getElementById('btnGenerate')
+  btn.disabled = true
+  setProgress(2, 'Iniciando...')
+
+  const qualityKey = document.querySelector('input[name="quality"]:checked').value
+  const { jsPDF } = window.jspdf
+
+  // A4 in mm
+  const PW = 210, PH = 297, M = 12
+
+  let doc = null
+  let firstPage = true
+
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const item = files[i]
+      const pct = Math.round(5 + (i / files.length) * 85)
+      setProgress(pct, `Procesando: ${item.name}`)
+
+      // ── IMAGE ────────────────────────────────────────────────────────────
+      if (IMG_EXTS.includes(item.ext)) {
+        const { dataUrl, w, h } = await compressImage(item.file, qualityKey)
+
+        // Calculate fit within page content area
+        const maxW = PW - M * 2
+        const maxH = PH - M * 2
+        const ratio = Math.min(maxW / w, maxH / h)
+        const fw = w * ratio, fh = h * ratio
+        const x = M + (maxW - fw) / 2
+        const y = M + (maxH - fh) / 2
+
+        if (!doc) {
+          doc = new jsPDF({ orientation: fh > fw ? 'portrait' : 'landscape', unit: 'mm', format: 'a4' })
+          firstPage = false
+        } else {
+          doc.addPage()
+        }
+        doc.addImage(dataUrl, 'JPEG', x, y, fw, fh)
+
+      // ── TXT ──────────────────────────────────────────────────────────────
+      } else if (item.ext === 'txt') {
+        const text = await readText(item.file)
+        await addTextToPdf(doc, text, item.name, PW, PH, M, () => {
+          if (!doc) { doc = new jsPDF({ unit: 'mm', format: 'a4' }); return false }
+          doc.addPage(); return true
+        }, firstPage)
+        if (!doc) doc = new jsPDF({ unit: 'mm', format: 'a4' })
+        firstPage = false
+
+      // ── DOCX ─────────────────────────────────────────────────────────────
+      } else if (item.ext === 'docx') {
+        let text
+        try { text = await readDocx(item.file) }
+        catch { text = '[No se pudo leer el archivo DOCX]' }
+        await addTextToPdf(doc, text, item.name, PW, PH, M, () => {
+          if (!doc) { doc = new jsPDF({ unit: 'mm', format: 'a4' }); return false }
+          doc.addPage(); return true
+        }, firstPage)
+        if (!doc) doc = new jsPDF({ unit: 'mm', format: 'a4' })
+        firstPage = false
+      }
+    }
+
+    if (!doc) throw new Error('Sin contenido para generar el PDF.')
+
+    setProgress(95, 'Guardando PDF...')
+    await new Promise(r => setTimeout(r, 200)) // let UI update
+
+    doc.save('documento_unido.pdf')
+    setProgress(100, `¡PDF generado! ${files.length} archivo${files.length > 1 ? 's' : ''} unido${files.length > 1 ? 's' : ''}.`)
+    showToast('✅ PDF descargado correctamente', 'success')
+
+  } catch (err) {
+    setProgress(0, '')
+    document.getElementById('progressWrap').classList.remove('visible')
+    showToast('Error: ' + err.message, 'error')
+    console.error(err)
+  } finally {
+    btn.disabled = false
+  }
+}
+
+async function addTextToPdf(doc, text, filename, PW, PH, M, addPageFn, isFirst) {
+  if (!doc) doc = new jsPDF({ unit: 'mm', format: 'a4' })
+
+  const lines_raw = text.split('\n')
+  const fontSize = 10
+  const lineH = 5.5
+  const maxW = PW - M * 2
+  const maxH = PH - M * 2
+
+  let pageLines = []
+  doc.setFontSize(fontSize)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(30, 30, 30)
+
+  // Split each line to fit width
+  const allLines = []
+
+  // File header
+  allLines.push({ text: filename, bold: true })
+  allLines.push({ text: '' })
+
+  lines_raw.forEach(raw => {
+    if (!raw.trim()) { allLines.push({ text: '' }); return }
+    const wrapped = doc.splitTextToSize(raw, maxW)
+    wrapped.forEach(l => allLines.push({ text: l }))
+  })
+
+  let y = M + 6
+  let newPage = isFirst ? false : true
+
+  for (let i = 0; i < allLines.length; i++) {
+    if (newPage || (i > 0 && y + lineH > PH - M)) {
+      addPageFn()
+      y = M + 6
+      newPage = false
+    }
+
+    const line = allLines[i]
+    if (line.bold) {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(fontSize + 2)
+      doc.text(line.text, M, y)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(fontSize)
+    } else {
+      doc.text(line.text, M, y)
+    }
+    y += lineH
+  }
+}
+</script>
+</body>
+</html>
