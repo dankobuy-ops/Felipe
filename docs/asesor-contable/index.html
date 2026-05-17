@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asesor Contable · Cartola Bancaria</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root { --navy: #1B3A6B; --gold: #C7A965; }
+        .btn-navy { background: var(--navy); color: white; transition: background .15s; }
+        .btn-navy:hover { background: #142d54; }
+        .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+        .tag-green  { background:#d1fae5; color:#065f46; }
+        .tag-blue   { background:#dbeafe; color:#1e40af; }
+        .tag-purple { background:#ede9fe; color:#5b21b6; }
+        .tag-red    { background:#fee2e2; color:#991b1b; }
+        .tag-yellow { background:#fef3c7; color:#92400e; }
+        .tag-gray   { background:#f3f4f6; color:#6b7280; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen">
+
+    <!-- Header -->
+    <div class="bg-[#1B3A6B] text-white px-6 py-4 flex items-center justify-between shadow-md">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl">📊</span>
+            <div>
+                <h1 class="text-lg font-bold leading-tight">Asesor Contable</h1>
+                <p class="text-white/60 text-xs">Analiza tu cartola bancaria CSV</p>
+            </div>
+        </div>
+        <a href="../" class="text-white/70 hover:text-white text-sm transition-colors">← Volver</a>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 py-8 space-y-6">
+
+        <!-- Zona de carga -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h2 class="font-bold text-gray-800 mb-1">Subir Cartola Bancaria</h2>
+            <p class="text-sm text-gray-500 mb-4">Sube un CSV exportado desde tu banco. Se detectan automáticamente las columnas de fecha, detalle y monto.</p>
+            <div id="dropZone" class="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#1B3A6B] hover:bg-blue-50/30 transition-all">
+                <div class="text-4xl mb-2">📂</div>
+                <p class="text-gray-400 text-sm mb-3">Arrastra tu CSV aquí, o haz clic para seleccionar</p>
+                <input type="file" id="csvFileInput" accept=".csv" class="hidden" />
+                <button onclick="document.getElementById('csvFileInput').click()" class="btn-navy px-5 py-2 rounded-lg text-sm font-semibold">
+                    Seleccionar archivo
+                </button>
+            </div>
+            <div id="estadoCarga" class="hidden mt-3 text-sm text-center font-medium text-blue-600 animate-pulse">
+                Procesando...
+            </div>
+        </div>
+
+        <!-- Dashboard (oculto hasta que haya datos) -->
+        <div id="dashboard" class="hidden space-y-6">
+
+            <!-- Banda informativa -->
+            <div class="bg-[#1B3A6B]/5 border border-[#1B3A6B]/20 rounded-xl px-4 py-3 text-sm text-[#1B3A6B] flex flex-wrap gap-x-6 gap-y-1">
+                <span id="infoArchivo"></span>
+                <span id="infoFechas"></span>
+                <span id="infoTransacciones"></span>
+            </div>
+
+            <!-- Tarjetas de resumen -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-green-400 p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Ingresos Operativos</p>
+                    <p id="totalIngresos" class="text-xl font-bold text-green-600 mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Comisiones y profits</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-blue-400 p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Gastos Fijos</p>
+                    <p id="totalGastosFijos" class="text-xl font-bold text-blue-600 mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Egresos operativos</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-[#1B3A6B] p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Flujo de Caja Libre</p>
+                    <p id="flujoCaja" class="text-xl font-bold text-[#1B3A6B] mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Tras gastos e impuestos</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-red-400 p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Retiros Socios</p>
+                    <p id="totalRetiros" class="text-xl font-bold text-red-600 mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Salidas de capital</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-yellow-400 p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Gastos Innecesarios</p>
+                    <p id="totalInnecesarios" class="text-xl font-bold text-yellow-600 mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Fugas detectadas</p>
+                </div>
+            </div>
+
+            <!-- Gráfico + Asesor -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                <!-- Donut de egresos -->
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
+                    <h2 class="font-bold text-gray-800 mb-4">Distribución de Egresos</h2>
+                    <div class="flex justify-center flex-1">
+                        <canvas id="graficoEgresos" width="260" height="260"></canvas>
+                    </div>
+                    <div id="leyendaGrafico" class="mt-4 grid grid-cols-2 gap-1.5 text-xs text-gray-600"></div>
+                </div>
+
+                <!-- Asesor financiero -->
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
+                    <h2 class="font-bold text-gray-800 mb-0.5">Asesor Financiero</h2>
+                    <p class="text-xs text-gray-400 mb-4">Proyecciones basadas en tu historial</p>
+                    <div class="space-y-3 mb-4">
+                        <div>
+                            <label class="text-xs font-semibold text-gray-600 block mb-1">Meta de ahorro ($)</label>
+                            <input type="number" id="metaMonto" placeholder="Ej. 1500000"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3A6B]/30">
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-gray-600 block mb-1">Plazo en meses</label>
+                            <input type="number" id="metaPlazo" placeholder="Ej. 3"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3A6B]/30">
+                        </div>
+                        <button onclick="calcularConsejo()" class="btn-navy w-full py-2 rounded-lg text-sm font-bold">
+                            Generar analisis
+                        </button>
+                    </div>
+                    <div id="consejoSalida" class="flex-1 p-4 bg-gray-50 rounded-xl text-sm text-gray-600 border border-gray-100 min-h-[120px]">
+                        <em class="text-gray-400">Ingresa tu meta y plazo.</em>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabla completa de transacciones -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h2 class="font-bold text-gray-800">Todas las Transacciones</h2>
+                    <select id="filtroCategoria" onchange="filtrarTabla()"
+                        class="border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600 focus:outline-none bg-white">
+                        <option value="">Todas las categorias</option>
+                        <option value="ingreso_operativo">Ingreso Operativo</option>
+                        <option value="gasto_fijo">Gasto Fijo</option>
+                        <option value="impuesto">Impuesto</option>
+                        <option value="retiro_socio">Retiro Socio</option>
+                        <option value="gasto_innecesario">Gasto Innecesario</option>
+                        <option value="transito">Transito</option>
+                        <option value="sin_categorizar">Sin Categorizar</option>
+                    </select>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                                <th class="py-2.5 px-4 text-left font-semibold">Fecha</th>
+                                <th class="py-2.5 px-4 text-left font-semibold">Detalle</th>
+                                <th class="py-2.5 px-4 text-right font-semibold">Monto</th>
+                                <th class="py-2.5 px-4 text-center font-semibold">Categoria</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaTransacciones" class="divide-y divide-gray-50"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+    // ── Estado global ────────────────────────────────────────────────────────────
+    let estado = {
+        ingresosOperativos: 0, gastosFijos: 0, impuestos: 0,
+        retiros: 0, gastosInnecesarios: 0, transito: 0, sinCategorizar: 0,
+        mesesHistoricos: 1,
+        transacciones: [],
+    };
+    let grafico = null;
+
+    // ── Definición de categorías ─────────────────────────────────────────────────
+    const CATS = {
+        ingreso_operativo: { label: 'Ingreso Operativo', cls: 'tag-green',
+            kw: ['comision', 'profit', 'honorario', 'bono'] },
+        gasto_fijo: { label: 'Gasto Fijo', cls: 'tag-blue',
+            kw: ['microsoft', 'creattiva', 'cowork', 'brzovic', 'patente', 'arriendo', 'seguro', 'licencia'] },
+        impuesto: { label: 'Impuesto', cls: 'tag-purple',
+            kw: ['iva', 'tesoreri', 'impto', 'sii', 'impuesto', 'ppm'] },
+        retiro_socio: { label: 'Retiro Socio', cls: 'tag-red',
+            kw: ['retiro', 'danko', 'patricia', 'patricio'] },
+        gasto_innecesario: { label: 'Gasto Innecesario', cls: 'tag-yellow',
+            kw: ['capuccino', 'cappuccino', 'pan de molde', 'cafe ', 'cafe,', 'almuerzo', 'cena', 'restau', 'snack'] },
+        transito: { label: 'Transito', cls: 'tag-gray', kw: [] },
+        sin_categorizar: { label: 'Sin Categorizar', cls: 'tag-gray', kw: [] },
+    };
+
+    function categorizar(detalle, categoria) {
+        const d = (detalle || '').toLowerCase();
+        const c = (categoria || '').toLowerCase();
+        if (c === 'cliente' || d.includes('devoluci') && d.includes('pago')) return 'transito';
+        for (const [key, cat] of Object.entries(CATS)) {
+            if (key === 'transito' || key === 'sin_categorizar') continue;
+            if (cat.kw.some(k => d.includes(k))) return key;
+        }
+        return 'sin_categorizar';
+    }
+
+    // ── Detección automática de columnas ────────────────────────────────────────
+    function detectCol(headers, candidates) {
+        const lower = headers.map(h => (h || '').toLowerCase().trim());
+        for (const c of candidates) {
+            const idx = lower.findIndex(h => h.includes(c));
+            if (idx >= 0) return headers[idx];
+        }
+        return null;
+    }
+
+    function parseMonto(raw) {
+        if (raw === null || raw === undefined || raw === '') return 0;
+        // Eliminar $, puntos de miles y convertir coma decimal
+        const s = String(raw).replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.').trim();
+        return Math.abs(parseFloat(s) || 0);
+    }
+
+    // ── Eventos de carga ─────────────────────────────────────────────────────────
+    document.getElementById('csvFileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];   // FIX: files[0], no files
+        if (!file) return;
+        cargarCSV(file);
+    });
+
+    const dz = document.getElementById('dropZone');
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('border-[#1B3A6B]', 'bg-blue-50/40'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('border-[#1B3A6B]', 'bg-blue-50/40'));
+    dz.addEventListener('drop', e => {
+        e.preventDefault();
+        dz.classList.remove('border-[#1B3A6B]', 'bg-blue-50/40');
+        const file = e.dataTransfer.files[0];
+        if (file) cargarCSV(file);
+    });
+
+    function cargarCSV(file) {
+        document.getElementById('estadoCarga').classList.remove('hidden');
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: r => {
+                document.getElementById('estadoCarga').classList.add('hidden');
+                if (!r.data.length) { alert('El archivo no tiene datos o el formato no es compatible.'); return; }
+                procesarDatos(r.data, file.name);
+            },
+            error: () => {
+                document.getElementById('estadoCarga').classList.add('hidden');
+                alert('Error al leer el archivo CSV.');
+            }
+        });
+    }
+
+    // ── Procesamiento central ────────────────────────────────────────────────────
+    function procesarDatos(filas, nombreArchivo) {
+        const headers   = Object.keys(filas[0]);
+        const colFecha   = detectCol(headers, ['fecha', 'date']);
+        const colDetalle = detectCol(headers, ['detalle', 'descripci', 'glosa', 'concepto', 'description']);
+        const colMonto   = detectCol(headers, ['monto', 'importe', 'cargo', 'abono', 'valor', 'amount']);
+        const colCat     = detectCol(headers, ['categor']);
+
+        estado = { ingresosOperativos:0, gastosFijos:0, impuestos:0, retiros:0,
+                   gastosInnecesarios:0, transito:0, sinCategorizar:0, mesesHistoricos:1, transacciones:[] };
+
+        const meses = new Set();
+        const fechas = [];
+
+        filas.forEach(row => {
+            const fecha   = colFecha   ? (row[colFecha]   || '') : '';
+            const detalle = colDetalle ? (row[colDetalle] || '') : '';
+            const cat     = colCat     ? (row[colCat]    || '') : '';
+            const monto   = parseMonto(colMonto ? row[colMonto] : '0');
+
+            if (fecha) {
+                fechas.push(fecha);
+                // Detecta YYYY-MM-DD y DD/MM/YYYY
+                const clave = fecha.includes('-') ? fecha.substring(0, 7) : fecha.substring(3, 10);
+                meses.add(clave);
+            }
+
+            const catKey = categorizar(detalle, cat);
+            switch (catKey) {
+                case 'ingreso_operativo': estado.ingresosOperativos += monto; break;
+                case 'gasto_fijo':        estado.gastosFijos        += monto; break;
+                case 'impuesto':          estado.impuestos          += monto; break;
+                case 'retiro_socio':      estado.retiros            += monto; break;
+                case 'gasto_innecesario': estado.gastosInnecesarios += monto; break;
+                case 'transito':          estado.transito           += monto; break;
+                default:                  estado.sinCategorizar     += monto;
+            }
+            estado.transacciones.push({ fecha, detalle, monto, catKey });
+        });
+
+        estado.mesesHistoricos = meses.size || 1;
+        const fechaMin = fechas.length ? fechas.reduce((a, b) => a < b ? a : b) : '';
+        const fechaMax = fechas.length ? fechas.reduce((a, b) => a > b ? a : b) : '';
+
+        document.getElementById('infoArchivo').textContent = '  ' + nombreArchivo;
+        document.getElementById('infoFechas').textContent  = fechaMin ? ('  ' + fechaMin + ' a ' + fechaMax) : '';
+        document.getElementById('infoTransacciones').textContent = '  ' + filas.length + ' transacciones  |  ' + meses.size + ' mes' + (meses.size !== 1 ? 'es' : '');
+
+        actualizarDashboard();
+    }
+
+    // ── Formateo ─────────────────────────────────────────────────────────────────
+    function clp(n) {
+        return new Intl.NumberFormat('es-CL', { style:'currency', currency:'CLP', maximumFractionDigits:0 }).format(Math.round(n));
+    }
+
+    // ── Dashboard ─────────────────────────────────────────────────────────────────
+    function actualizarDashboard() {
+        const fcl = estado.ingresosOperativos - estado.gastosFijos - estado.impuestos;
+        document.getElementById('totalIngresos').textContent    = clp(estado.ingresosOperativos);
+        document.getElementById('totalGastosFijos').textContent = clp(estado.gastosFijos);
+        document.getElementById('totalRetiros').textContent      = clp(estado.retiros);
+        document.getElementById('totalInnecesarios').textContent = clp(estado.gastosInnecesarios);
+
+        const el = document.getElementById('flujoCaja');
+        el.textContent = clp(fcl);
+        el.className = 'text-xl font-bold mt-1 ' + (fcl >= 0 ? 'text-[#1B3A6B]' : 'text-red-600');
+
+        actualizarGrafico();
+        renderTabla(estado.transacciones);
+        document.getElementById('dashboard').classList.remove('hidden');
+        document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ── Gráfico ───────────────────────────────────────────────────────────────────
+    function actualizarGrafico() {
+        const vals   = [estado.gastosFijos, estado.impuestos, estado.retiros, estado.gastosInnecesarios, estado.sinCategorizar];
+        const labels = ['Gastos Fijos', 'Impuestos', 'Retiros', 'Innecesarios', 'Sin categorizar'];
+        const colors = ['#3b82f6', '#8b5cf6', '#ef4444', '#f59e0b', '#9ca3af'];
+        const total  = vals.reduce((a, b) => a + b, 0);
+
+        const ctx = document.getElementById('graficoEgresos').getContext('2d');
+        if (grafico) grafico.destroy();
+        grafico = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data: vals.map(Math.round), backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+            options: {
+                responsive: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: c => ' ' + clp(c.raw) } }
+                },
+                cutout: '66%',
+            }
+        });
+
+        document.getElementById('leyendaGrafico').innerHTML = labels.map((l, i) => `
+            <div class="flex items-center gap-1.5">
+                <span style="background:${colors[i]}" class="w-2.5 h-2.5 rounded-full flex-shrink-0 inline-block"></span>
+                <span>${l}</span>
+                <span class="ml-auto text-gray-400">${total ? Math.round(vals[i]/total*100) : 0}%</span>
+            </div>`).join('');
+    }
+
+    // ── Tabla de transacciones ────────────────────────────────────────────────────
+    function renderTabla(txs) {
+        const tbody = document.getElementById('tablaTransacciones');
+        if (!txs.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-gray-400 text-sm">Sin transacciones.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = txs.map(t => {
+            const cat = CATS[t.catKey] || CATS.sin_categorizar;
+            const esIngreso = t.catKey === 'ingreso_operativo';
+            return `<tr class="hover:bg-gray-50/80 transition-colors">
+                <td class="py-2 px-4 text-xs text-gray-400 whitespace-nowrap">${t.fecha}</td>
+                <td class="py-2 px-4 text-xs text-gray-700 max-w-xs truncate" title="${t.detalle}">${t.detalle}</td>
+                <td class="py-2 px-4 text-xs text-right font-mono font-semibold whitespace-nowrap ${esIngreso ? 'text-green-600' : 'text-gray-700'}">${esIngreso ? '+' : ''}${clp(t.monto)}</td>
+                <td class="py-2 px-4 text-center"><span class="tag ${cat.cls}">${cat.label}</span></td>
+            </tr>`;
+        }).join('');
+    }
+
+    function filtrarTabla() {
+        const f = document.getElementById('filtroCategoria').value;
+        renderTabla(f ? estado.transacciones.filter(t => t.catKey === f) : estado.transacciones);
+    }
+
+    // ── Asesor financiero ─────────────────────────────────────────────────────────
+    function calcularConsejo() {
+        const meta  = parseFloat(document.getElementById('metaMonto').value);
+        const plazo = parseInt(document.getElementById('metaPlazo').value);
+        const salida = document.getElementById('consejoSalida');
+
+        if (!meta || meta <= 0 || !plazo || plazo <= 0) {
+            salida.innerHTML = '<span class="text-red-500">Ingresa un monto y un plazo validos.</span>';
+            return;
+        }
+        if (!estado.transacciones.length) {
+            salida.innerHTML = '<span class="text-yellow-600">Primero sube una cartola para tener datos historicos.</span>';
+            return;
+        }
+
+        const m              = estado.mesesHistoricos;
+        const flujoMensual   = (estado.ingresosOperativos - estado.gastosFijos - estado.impuestos) / m;
+        const retirosMensual = estado.retiros / m;
+        const requerido      = meta / plazo;
+
+        let html = `<p class="mb-3">Para <strong>${clp(meta)}</strong> en <strong>${plazo} mes${plazo!==1?'es':''}</strong> necesitas <strong>${clp(requerido)}/mes</strong>.</p>`;
+        html += '<ul class="space-y-2">';
+
+        if (requerido <= flujoMensual) {
+            html += `<li class="text-green-700">Meta viable. Tu flujo libre promedio es ${clp(flujoMensual)}/mes.`;
+            const margen = flujoMensual - requerido;
+            if (retirosMensual > margen) {
+                html += ` Para lograrlo, los retiros no deberian superar ${clp(margen)}/mes.`;
+            }
+            html += '</li>';
+        } else {
+            const deficit = requerido - flujoMensual;
+            html += `<li class="text-red-600">Deficit de ${clp(deficit)}/mes. El ahorro supera tu flujo actual (${clp(flujoMensual)}/mes).</li>`;
+            html += '<li class="text-gray-700">Plan de accion:<ul class="list-disc pl-4 mt-1 space-y-1">';
+            if (estado.gastosInnecesarios > 0) {
+                html += `<li>Eliminar gastos innecesarios te ahorra ${clp(estado.gastosInnecesarios/m)}/mes.</li>`;
+            }
+            html += '<li>Reducir retiros de socios temporalmente.</li>';
+            if (flujoMensual > 0) {
+                html += `<li>Con el flujo actual, la meta se alcanza en <strong>${Math.ceil(meta/flujoMensual)} meses</strong>.</li>`;
+            }
+            html += '</ul></li>';
+        }
+
+        html += '</ul>';
+        salida.innerHTML = html;
+    }
+    </script>
+</body>
+</html>
