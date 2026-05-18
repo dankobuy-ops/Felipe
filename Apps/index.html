@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Herramientas web standalone de dankobuy — 100% local, sin servidor.">
   <title>Apps — dankobuy</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -30,20 +32,20 @@
     }
 
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       padding: 3rem 1.5rem 5rem;
     }
 
-    .container { max-width: 860px; margin: 0 auto; }
+    .container { max-width: 960px; margin: 0 auto; }
 
-    /* Header */
-    .hero { text-align: center; margin-bottom: 3rem; }
+    /* Hero */
+    .hero { text-align: center; margin-bottom: 2.5rem; }
     .hero h1 {
-      font-size: 2.2rem;
-      font-weight: 700;
+      font-size: 2.4rem;
+      font-weight: 800;
       letter-spacing: -.5px;
       background: linear-gradient(135deg, var(--text) 30%, var(--accent));
       -webkit-background-clip: text;
@@ -51,6 +53,33 @@
       background-clip: text;
     }
     .hero p { margin-top: .5rem; color: var(--muted); font-size: .95rem; }
+
+    /* Category bar */
+    .category-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin-bottom: 2rem;
+      justify-content: center;
+    }
+    .cat-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .45rem 1.1rem;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: .85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, color .15s;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .cat-btn:hover { border-color: var(--accent); color: var(--text); }
+    .cat-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     /* Grid */
     .grid {
@@ -70,12 +99,17 @@
       padding: 1.4rem 1.25rem;
       text-decoration: none;
       color: var(--text);
-      transition: border-color .2s, transform .15s, box-shadow .2s;
+      transition: border-color .2s, transform .2s, box-shadow .2s, opacity .25s;
     }
     .card:hover {
       border-color: var(--accent);
       transform: translateY(-3px);
-      box-shadow: 0 8px 28px rgba(124,106,247,.2);
+      box-shadow: 0 8px 28px rgba(124,106,247,.15);
+    }
+    .card.hidden {
+      opacity: 0.1;
+      pointer-events: none;
+      transform: scale(0.97);
     }
     .card__icon { font-size: 2rem; line-height: 1; }
     .card__title { font-weight: 600; font-size: 1rem; margin-top: .25rem; }
@@ -84,7 +118,7 @@
       display: inline-block;
       font-size: .72rem;
       font-weight: 600;
-      background: rgba(124,106,247,.15);
+      background: rgba(124,106,247,.12);
       color: var(--accent);
       border-radius: 20px;
       padding: .2rem .65rem;
@@ -92,8 +126,12 @@
       margin-top: .25rem;
     }
 
-    /* Footer */
     footer { text-align: center; margin-top: 4rem; font-size: .78rem; color: var(--muted); }
+
+    @media (max-width: 480px) {
+      .category-bar { gap: .35rem; }
+      .cat-btn { font-size: .78rem; padding: .4rem .85rem; }
+    }
   </style>
 </head>
 <body>
@@ -104,37 +142,45 @@
       <p>Herramientas web standalone · 100% local · Sin servidor</p>
     </header>
 
+    <nav class="category-bar" id="catBar">
+      <button class="cat-btn active" data-filter="all">✦ Mostrar Todas</button>
+      <button class="cat-btn" data-filter="utility">🛠️ Oficina y Utilidades</button>
+      <button class="cat-btn" data-filter="game">🕹️ Juegos y Simulaciones</button>
+      <button class="cat-btn" data-filter="insurance">🛡️ Corretaje de Seguros</button>
+      <button class="cat-btn" data-filter="tech">💻 Desarrollo Tecnológico</button>
+    </nav>
+
     <div class="grid" id="appGrid">
 
-      <a href="csv-consolidador/" class="card">
+      <a href="csv-consolidador/" class="card" data-category="utility">
         <span class="card__icon">⚡</span>
         <span class="card__title">CSV Consolidador</span>
         <span class="card__desc">Fusiona múltiples archivos CSV en uno solo, añadiendo automáticamente una columna con el nombre del archivo de origen.</span>
         <span class="card__tag">Datos</span>
       </a>
 
-      <a href="pdf-merger/" class="card">
+      <a href="pdf-merger/" class="card" data-category="utility">
         <span class="card__icon">🖨️</span>
         <span class="card__title">PDF Merger</span>
         <span class="card__desc">Une imágenes JPG/PNG y documentos TXT/DOCX en un solo PDF, con control de calidad de imagen.</span>
         <span class="card__tag">PDF</span>
       </a>
 
-      <a href="asesor-contable/" class="card">
+      <a href="asesor-contable/" class="card" data-category="utility">
         <span class="card__icon">📊</span>
         <span class="card__title">Asesor Contable</span>
         <span class="card__desc">Analiza cartolas bancarias en CSV, Excel o PDF y clasifica automáticamente ingresos, comisiones y honorarios.</span>
         <span class="card__tag">Finanzas</span>
       </a>
 
-      <a href="renta2026/" class="card">
+      <a href="renta2026/" class="card" data-category="insurance">
         <span class="card__icon">📋</span>
         <span class="card__title">Asistente Renta 2026</span>
         <span class="card__desc">Guía paso a paso para la declaración de renta 2026, orientada a corredoras de seguros en Chile.</span>
         <span class="card__tag">SII · Chile</span>
       </a>
 
-      <a href="snake/" class="card">
+      <a href="snake/" class="card" data-category="game">
         <span class="card__icon">🐍</span>
         <span class="card__title">Snake</span>
         <span class="card__desc">El clásico juego de la serpiente. Teclado, WASD, botones en pantalla o desliza en móvil.</span>
@@ -144,6 +190,28 @@
     </div>
 
   </div>
+
   <footer>dankobuy-ops · GitHub Pages</footer>
+
+  <script>
+    const btns  = document.querySelectorAll('#catBar .cat-btn');
+    const cards = document.querySelectorAll('#appGrid .card');
+
+    btns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        btns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const filter = btn.dataset.filter;
+        cards.forEach(card => {
+          if (filter === 'all' || card.dataset.category === filter) {
+            card.classList.remove('hidden');
+          } else {
+            card.classList.add('hidden');
+          }
+        });
+      });
+    });
+  </script>
 </body>
 </html>
