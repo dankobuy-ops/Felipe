@@ -16,6 +16,21 @@
       --muted:   #8b949e;
       --radius:  12px;
     }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:      #ffffff;
+        --surface: #f6f8fa;
+        --border:  #d0d7de;
+        --text:    #1f2328;
+        --muted:   #656d76;
+      }
+      .hero h1 {
+        background: linear-gradient(135deg, #1f2328 30%, var(--accent));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+    }
 
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
