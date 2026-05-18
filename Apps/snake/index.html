@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="color-scheme" content="light dark">
+  <meta name="description" content="El clásico juego de la serpiente. Controles por teclado, WASD, botones en pantalla o desliza en móvil.">
   <title>Snake</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐍</text></svg>">
   <style>
     /* === Variables: Modo Claro (default) === */
     :root {
@@ -177,10 +179,12 @@
 <body>
   <a href="../" class="back-link">← Volver al inicio</a>
 
-  <header>
+  <header class="app-header">
     <h1>🐍 Snake</h1>
+    <p>Usa las flechas, WASD, los botones o desliza en móvil</p>
   </header>
 
+  <main>
   <div class="score-bar">
     <div class="score-box">
       <div class="label">Puntos</div>
@@ -209,6 +213,7 @@
   </div>
 
   <p class="hint">Teclado: flechas o WASD · Móvil: desliza o usa los botones</p>
+  </main>
 
 <script>
 const canvas = document.getElementById('canvas');

@@ -4,12 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
+    <meta name="description" content="Analiza cartolas bancarias en CSV, Excel o PDF y clasifica automáticamente ingresos, comisiones y honorarios.">
     <title>Asesor Contable · Cartola Bancaria</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* === Variables: Modo Claro (default) === */
         :root {
@@ -70,19 +68,16 @@
 <body class="bg-gray-50 font-sans min-h-screen">
 <a href="../" class="back-link">← Volver al inicio</a>
 
-    <!-- Header -->
-    <div class="bg-[#1B3A6B] text-white px-6 py-4 flex items-center justify-between shadow-md">
-        <div class="flex items-center gap-3">
-            <span class="text-2xl">📊</span>
-            <div>
-                <h1 class="text-lg font-bold leading-tight">Asesor Contable</h1>
-                <p class="text-white/60 text-xs">Multi-cartola — CSV, Excel y PDF</p>
-            </div>
+    <header class="bg-[#1B3A6B] text-white px-6 py-4 flex items-center gap-3 shadow-md">
+        <span class="text-2xl">📊</span>
+        <div>
+            <h1 class="text-lg font-bold leading-tight">📊 Asesor Contable</h1>
+            <p class="text-white/60 text-xs">Analiza cartolas bancarias en CSV, Excel o PDF</p>
         </div>
-        <a href="../" class="text-white/70 hover:text-white text-sm transition-colors">← Volver</a>
-    </div>
+    </header>
 
     <div class="max-w-7xl mx-auto px-4 py-8 space-y-6">
+    <main>
 
         <!-- Zona de carga -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -250,6 +245,13 @@
         </div>
     </div>
 
+    </main>
+    </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';

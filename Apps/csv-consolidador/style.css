@@ -67,11 +67,6 @@ body {
 
 /* === Header universal === */
 .app-header { margin-bottom: 1rem; text-align: center; padding: 1rem 0; }
-.app-header__icon {
-  font-size: 2.8rem;
-  margin-bottom: .5rem;
-  filter: drop-shadow(0 0 18px var(--accent));
-}
 .app-header h1 {
   font-size: 2.25rem;
   font-weight: 800;

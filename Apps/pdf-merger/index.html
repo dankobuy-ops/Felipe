@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Une imágenes JPG/PNG y documentos TXT/DOCX en un único PDF. Control de calidad de imagen: máxima, media o baja. 100% local.">
   <title>PDF Merger</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>">
   <style>
     /* === Variables: Modo Claro (default) === */
     :root {
@@ -247,13 +247,13 @@
 <body>
   <a href="../" class="back-link" style="padding: .5rem 1.5rem; display:block;">← Volver al inicio</a>
 
-<header>
-  <a href="../">← Volver</a>
-  <h1>PDF Merger</h1>
-  <span>une archivos en un solo PDF</span>
+<header class="app-header" style="background:var(--navy);color:#fff;padding:1rem 1.5rem;margin-bottom:0;flex-direction:row;align-items:center;gap:1rem;display:flex;">
+  <h1 style="font-size:1.3rem;font-weight:800;letter-spacing:normal;margin:0;">🖨️ PDF Merger</h1>
+  <span style="color:rgba(255,255,255,.6);font-size:.85rem;">une archivos en un solo PDF</span>
 </header>
 
 <div class="container">
+<main>
 
   <div class="drop-zone" id="dropZone">
     <div class="dz-icon">📎</div>
@@ -324,9 +324,13 @@
     </div>
   </div>
 </div>
+</main>
+</div>
 
 <div id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // STATE
