@@ -43,21 +43,31 @@
       background-color: var(--bg);
       color: var(--text);
       line-height: 1.5;
-      padding: 2rem 1.5rem;
+      padding: 56px 0 48px;
       min-height: 100vh;
     }
 
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 2rem;
+    /* === INSURANCE layout === */
+    .insurance-app { min-height: 100vh; display: flex; flex-direction: column; }
+
+    .app-navbar {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 1.5rem; gap: 1rem; z-index: 100;
+    }
+    .navbar-title { flex: 1; text-align: center; font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+    .navbar-spacer { width: 120px; }
+
+    .container-wide { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; flex: 1; }
+
+    .app-footer {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 48px;
+      background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 1.5rem; font-size: 0.75rem; color: var(--muted); z-index: 100;
     }
 
-    .app-header { margin-bottom: 1rem; }
-    .app-header h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: 0.5rem; }
-    .app-header p { color: var(--muted); font-size: 1.1rem; }
+    .app-main { display: flex; flex-direction: column; gap: 1.5rem; }
 
     .card, .input-group, fieldset {
       background-color: var(--surface);
@@ -373,15 +383,16 @@
   </style>
 </head>
 <body>
-  <a href="../" class="back-link">← Volver al inicio</a>
-<div class="container">
+  <div class="insurance-app">
 
-  <header class="app-header">
-    <h1>📋 Asistente Renta 2026</h1>
-    <p>Corredora de Seguros · Régimen Pro Pyme General · 2 dueños con retiros</p>
-  </header>
+    <nav class="app-navbar">
+      <a href="../" class="back-link">← Volver al inicio</a>
+      <h1 class="navbar-title">📋 Asistente Renta 2026</h1>
+      <div class="navbar-spacer"></div>
+    </nav>
 
-  <main>
+    <div class="container-wide">
+    <main class="app-main">
   <!-- Selector de modo -->
   <div class="mode-selector">
     <button class="mode-btn active-declarar" id="btnDeclarar" onclick="setMode('declarar')">
@@ -1166,8 +1177,15 @@
     </div>
   </div>
 
-  </main>
-</div><!-- /container -->
+    </main>
+    </div><!-- /container-wide -->
+
+    <footer class="app-footer">
+      <span class="footer-disclaimer">Información orientativa. No constituye asesoría legal ni financiera.</span>
+      <span class="footer-copy">© Aegis Apps</span>
+    </footer>
+
+  </div><!-- /insurance-app -->
 
 <script>
   // ── Estado ──────────────────────────────────────────────────────

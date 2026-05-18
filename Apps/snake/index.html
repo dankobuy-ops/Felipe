@@ -85,39 +85,49 @@
     button:hover, .btn:hover { filter: brightness(1.1); }
     button:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
 
-    /* === App-specific: Snake (game layout override) === */
+    /* === GAME layout === */
     body {
+      overflow: hidden;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .game-wrapper {
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 1rem;
       gap: 1rem;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 1rem;
       width: 100%;
-      max-width: 420px;
+      max-width: 480px;
     }
 
-    h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: .05em; color: #4ade80; }
-
-    .score-bar {
-      display: flex; gap: 16px;
-      width: 100%; max-width: 420px;
+    .game-header {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
     }
+    .game-header h1 { font-size: 1.5rem; font-weight: 800; color: #4ade80; }
 
-    .score-box {
-      flex: 1; background: var(--surface);
+    .scoreboard { display: flex; gap: 1rem; width: 100%; }
+    .score-item {
+      flex: 1;
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 16px; text-align: center;
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      text-align: center;
     }
-    .score-box .label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
-    .score-box .value { font-size: 1.5rem; font-weight: 800; color: #4ade80; }
-    .score-box.best .value { color: #fbbf24; }
+    .score-label { display: block; font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .score-value { display: block; font-size: 1.5rem; font-weight: 800; color: var(--accent); }
+    .score-item--best .score-value { color: #f59e0b; }
+
+    .game-container { position: relative; }
+    .canvas-wrap { position: relative; }
 
     canvas {
       border-radius: 16px;
@@ -126,29 +136,6 @@
       touch-action: none;
       border: 1px solid var(--border);
     }
-
-    .controls {
-      display: grid;
-      grid-template-columns: repeat(3, 52px);
-      grid-template-rows: repeat(2, 52px);
-      gap: 6px;
-    }
-
-    .ctrl-btn {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      color: var(--muted); font-size: 1.2rem; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      width: 52px; height: 52px;
-      transition: background .1s, transform .1s;
-      user-select: none; -webkit-user-select: none;
-    }
-    .ctrl-btn:active { background: var(--border); transform: scale(.93); }
-    .ctrl-up    { grid-column: 2; grid-row: 1; }
-    .ctrl-left  { grid-column: 1; grid-row: 2; }
-    .ctrl-down  { grid-column: 2; grid-row: 2; }
-    .ctrl-right { grid-column: 3; grid-row: 2; }
 
     .overlay {
       position: absolute; inset: 0;
@@ -172,48 +159,76 @@
     .btn-start:hover { background: #86efac; }
     .btn-start:active { transform: scale(.96); }
 
-    .canvas-wrap { position: relative; }
+    .game-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .ctrl-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 52px);
+      grid-template-rows: repeat(2, 52px);
+      gap: 6px;
+    }
+    .ctrl-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--muted); font-size: 1.2rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      width: 52px; height: 52px;
+      transition: background .1s, transform .1s;
+      user-select: none; -webkit-user-select: none;
+    }
+    .ctrl-btn:active { background: var(--border); transform: scale(.93); }
+    .ctrl-up    { grid-column: 2; grid-row: 1; }
+    .ctrl-left  { grid-column: 1; grid-row: 2; }
+    .ctrl-down  { grid-column: 2; grid-row: 2; }
+    .ctrl-right { grid-column: 3; grid-row: 2; }
+
     .hint { font-size: .76rem; color: var(--muted); text-align: center; }
   </style>
 </head>
 <body>
-  <a href="../" class="back-link">← Volver al inicio</a>
+  <div class="game-wrapper">
+    <a href="../" class="back-link">← Volver al inicio</a>
 
-  <header class="app-header">
-    <h1>🐍 Snake</h1>
-    <p>Usa las flechas, WASD, los botones o desliza en móvil</p>
-  </header>
+    <header class="game-header">
+      <h1>🐍 Snake</h1>
+      <div class="scoreboard">
+        <div class="score-item">
+          <span class="score-label">Puntos</span>
+          <span class="score-value" id="score">0</span>
+        </div>
+        <div class="score-item score-item--best">
+          <span class="score-label">Récord</span>
+          <span class="score-value" id="best">0</span>
+        </div>
+      </div>
+    </header>
 
-  <main>
-  <div class="score-bar">
-    <div class="score-box">
-      <div class="label">Puntos</div>
-      <div class="value" id="scoreDisplay">0</div>
-    </div>
-    <div class="score-box best">
-      <div class="label">Récord</div>
-      <div class="value" id="bestDisplay">0</div>
-    </div>
+    <main class="game-container">
+      <div class="canvas-wrap">
+        <canvas id="canvas"></canvas>
+        <div class="overlay" id="overlay">
+          <h2>🐍 Snake</h2>
+          <p class="sub">Usa las flechas, WASD o los botones</p>
+          <button class="btn-start" id="startBtn">Jugar</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="game-controls">
+      <div class="ctrl-grid">
+        <button class="ctrl-btn ctrl-up"    data-dir="UP">▲</button>
+        <button class="ctrl-btn ctrl-left"  data-dir="LEFT">◀</button>
+        <button class="ctrl-btn ctrl-down"  data-dir="DOWN">▼</button>
+        <button class="ctrl-btn ctrl-right" data-dir="RIGHT">▶</button>
+      </div>
+      <p class="hint">Teclado: flechas o WASD · Móvil: desliza</p>
+    </footer>
   </div>
-
-  <div class="canvas-wrap">
-    <canvas id="canvas"></canvas>
-    <div class="overlay" id="overlay">
-      <h2>🐍 Snake</h2>
-      <p class="sub">Usa las flechas, WASD o los botones</p>
-      <button class="btn-start" id="startBtn">Jugar</button>
-    </div>
-  </div>
-
-  <div class="controls">
-    <button class="ctrl-btn ctrl-up"    data-dir="UP">▲</button>
-    <button class="ctrl-btn ctrl-left"  data-dir="LEFT">◀</button>
-    <button class="ctrl-btn ctrl-down"  data-dir="DOWN">▼</button>
-    <button class="ctrl-btn ctrl-right" data-dir="RIGHT">▶</button>
-  </div>
-
-  <p class="hint">Teclado: flechas o WASD · Móvil: desliza o usa los botones</p>
-  </main>
 
 <script>
 const canvas = document.getElementById('canvas');
@@ -245,7 +260,7 @@ const OPPOSITE = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
 let snake, dir, nextDir, food, score, best, running, animId, speed;
 
 best = parseInt(localStorage.getItem('snake_best') || '0');
-document.getElementById('bestDisplay').textContent = best;
+document.getElementById('best').textContent = best;
 
 function initGame() {
   const mid = Math.floor(COLS / 2);
@@ -268,11 +283,11 @@ function spawnFood() {
 
 function updateScore(n) {
   score = n;
-  document.getElementById('scoreDisplay').textContent = score;
+  document.getElementById('score').textContent = score;
   if (score > best) {
     best = score;
     localStorage.setItem('snake_best', best);
-    document.getElementById('bestDisplay').textContent = best;
+    document.getElementById('best').textContent = best;
   }
 }
 

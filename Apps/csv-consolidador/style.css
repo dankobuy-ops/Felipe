@@ -120,6 +120,13 @@ button, .btn {
 button:hover, .btn:hover { filter: brightness(1.1); }
 button:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
 
+/* === UTILITY layout === */
+.app-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 /* === App-specific: CSV Consolidador === */
 
 .step__label {

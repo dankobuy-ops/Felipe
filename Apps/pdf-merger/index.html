@@ -90,17 +90,8 @@
     button:hover, .btn:hover { filter: brightness(1.1); }
     button:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
 
-    /* Header */
-    header { background: var(--navy); color: white; padding: 16px 24px;
-      display: flex; align-items: center; gap: 16px; box-shadow: 0 2px 12px rgba(0,0,0,.2); }
-    header a { color: rgba(255,255,255,.6); text-decoration: none; font-size: .85rem;
-      border: 1px solid rgba(255,255,255,.2); padding: 5px 12px; border-radius: 8px;
-      transition: all .15s; white-space: nowrap; }
-    header a:hover { background: rgba(255,255,255,.1); color: white; }
-    header h1 { font-size: 1.3rem; font-weight: 800; }
-    header span { color: var(--gold); font-size: .85rem; }
-
-    .container { max-width: 800px; margin: 0 auto; padding: 28px 20px; }
+    /* === UTILITY layout === */
+    .app-main { display: flex; flex-direction: column; gap: 1.5rem; }
 
     /* Drop zone */
     .drop-zone { border: 2.5px dashed var(--blue); border-radius: var(--radius);
@@ -245,15 +236,15 @@
   </style>
 </head>
 <body>
-  <a href="../" class="back-link" style="padding: .5rem 1.5rem; display:block;">← Volver al inicio</a>
-
-<header class="app-header" style="background:var(--navy);color:#fff;padding:1rem 1.5rem;margin-bottom:0;flex-direction:row;align-items:center;gap:1rem;display:flex;">
-  <h1 style="font-size:1.3rem;font-weight:800;letter-spacing:normal;margin:0;">🖨️ PDF Merger</h1>
-  <span style="color:rgba(255,255,255,.6);font-size:.85rem;">une archivos en un solo PDF</span>
-</header>
-
 <div class="container">
-<main>
+  <a href="../" class="back-link">← Volver al inicio</a>
+
+  <header class="app-header">
+    <h1>🖨️ PDF Merger</h1>
+    <p>Une imágenes y documentos de distintos tipos en un solo PDF</p>
+  </header>
+
+  <main class="app-main">
 
   <div class="drop-zone" id="dropZone">
     <div class="dz-icon">📎</div>
