@@ -3,71 +3,107 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSV Consolidador</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Apps — dankobuy</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --accent:  #7c6af7;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --radius:  12px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 3rem 1.5rem 5rem;
+    }
+
+    .container { max-width: 860px; margin: 0 auto; }
+
+    /* Header */
+    .hero { text-align: center; margin-bottom: 3rem; }
+    .hero h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -.5px;
+      background: linear-gradient(135deg, #fff 30%, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p { margin-top: .5rem; color: var(--muted); font-size: .95rem; }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+
+    /* Card */
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem 1.25rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color .2s, transform .15s, box-shadow .2s;
+    }
+    .card:hover {
+      border-color: var(--accent);
+      transform: translateY(-3px);
+      box-shadow: 0 8px 28px rgba(124,106,247,.2);
+    }
+    .card__icon { font-size: 2rem; line-height: 1; }
+    .card__title { font-weight: 600; font-size: 1rem; margin-top: .25rem; }
+    .card__desc { font-size: .83rem; color: var(--muted); line-height: 1.5; flex: 1; }
+    .card__tag {
+      display: inline-block;
+      font-size: .72rem;
+      font-weight: 600;
+      background: rgba(124,106,247,.15);
+      color: var(--accent);
+      border-radius: 20px;
+      padding: .2rem .65rem;
+      width: fit-content;
+      margin-top: .25rem;
+    }
+
+    /* Footer */
+    footer { text-align: center; margin-top: 4rem; font-size: .78rem; color: var(--muted); }
+  </style>
 </head>
 <body>
   <div class="container">
 
     <header class="hero">
-      <div class="hero__icon">⚡</div>
-      <h1>CSV Consolidador</h1>
-      <p class="hero__subtitle">Unifica múltiples archivos CSV por lotes — 100% local, sin subir datos a ningún servidor</p>
+      <h1>⚡ Apps</h1>
+      <p>Herramientas web standalone · 100% local · Sin servidor</p>
     </header>
 
-    <main>
-      <!-- Step 1: Schema name -->
-      <section class="card step">
-        <div class="step__label"><span class="step__num">1</span> Nombre del Esquema o Grupo</div>
-        <input
-          type="text"
-          id="schema-name"
-          class="form-input"
-          placeholder="ej: gestion, contabilidad, ventas_2025"
-          autocomplete="off"
-          spellcheck="false"
-        >
-        <p class="hint">Se usará como prefijo del archivo descargado: <code id="preview-name">esquema_consolidado.csv</code></p>
-      </section>
+    <div class="grid" id="appGrid">
 
-      <!-- Step 2: Drop zone -->
-      <section class="card step">
-        <div class="step__label"><span class="step__num">2</span> Archivos CSV</div>
-        <div class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Zona de arrastrar y soltar archivos CSV">
-          <div class="drop-zone__icon">📂</div>
-          <p class="drop-zone__main">Arrastra y suelta tus archivos <strong>CSV</strong> aquí</p>
-          <p class="drop-zone__sub">o haz clic para seleccionarlos</p>
-          <input type="file" id="file-input" accept=".csv" multiple hidden>
-        </div>
+      <a href="csv-consolidador/" class="card">
+        <span class="card__icon">📊</span>
+        <span class="card__title">CSV Consolidador</span>
+        <span class="card__desc">Unifica múltiples archivos CSV por lotes con columna de origen automática.</span>
+        <span class="card__tag">Datos</span>
+      </a>
 
-        <ul class="file-list" id="file-list" hidden></ul>
-      </section>
-
-      <!-- Actions -->
-      <div class="actions">
-        <button class="btn btn--ghost" id="clear-btn" disabled>✕ Limpiar todo</button>
-        <button class="btn btn--primary" id="process-btn" disabled>⬇ Consolidar y descargar</button>
-      </div>
-
-      <!-- Log -->
-      <section class="log-card" id="log-card" hidden>
-        <div class="log-header">
-          <span id="log-status-icon">🔄</span>
-          <strong id="log-title">Procesando…</strong>
-        </div>
-        <ul class="log-list" id="log-list"></ul>
-        <div class="log-footer" id="log-footer" hidden>
-          <span id="log-summary"></span>
-        </div>
-      </section>
-
-    </main>
-
-    <footer class="site-footer">
-      CSV Consolidador · Herramienta local · No se envían datos a ningún servidor
-    </footer>
+    </div>
 
   </div>
-  <script src="script.js"></script>
+  <footer>dankobuy-ops · GitHub Pages</footer>
 </body>
 </html>

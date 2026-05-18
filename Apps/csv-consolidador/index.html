@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSV Consolidador</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+
+    <a href="../" class="back-link">← Volver al inicio</a>
+
+    <header class="hero">
+      <div class="hero__icon">⚡</div>
+      <h1>CSV Consolidador</h1>
+      <p class="hero__subtitle">Unifica múltiples archivos CSV por lotes — 100% local, sin subir datos a ningún servidor</p>
+    </header>
+
+    <main>
+      <!-- Step 1: Schema name -->
+      <section class="card step">
+        <div class="step__label"><span class="step__num">1</span> Nombre del Esquema o Grupo</div>
+        <input
+          type="text"
+          id="schema-name"
+          class="form-input"
+          placeholder="ej: gestion, contabilidad, ventas_2025"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <p class="hint">Se usará como prefijo del archivo descargado: <code id="preview-name">esquema_consolidado.csv</code></p>
+      </section>
+
+      <!-- Step 2: Drop zone -->
+      <section class="card step">
+        <div class="step__label"><span class="step__num">2</span> Archivos CSV</div>
+        <div class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Zona de arrastrar y soltar archivos CSV">
+          <div class="drop-zone__icon">📂</div>
+          <p class="drop-zone__main">Arrastra y suelta tus archivos <strong>CSV</strong> aquí</p>
+          <p class="drop-zone__sub">o haz clic para seleccionarlos</p>
+          <input type="file" id="file-input" accept=".csv" multiple hidden>
+        </div>
+
+        <ul class="file-list" id="file-list" hidden></ul>
+      </section>
+
+      <!-- Actions -->
+      <div class="actions">
+        <button class="btn btn--ghost" id="clear-btn" disabled>✕ Limpiar todo</button>
+        <button class="btn btn--primary" id="process-btn" disabled>⬇ Consolidar y descargar</button>
+      </div>
+
+      <!-- Log -->
+      <section class="log-card" id="log-card" hidden>
+        <div class="log-header">
+          <span id="log-status-icon">🔄</span>
+          <strong id="log-title">Procesando…</strong>
+        </div>
+        <ul class="log-list" id="log-list"></ul>
+        <div class="log-footer" id="log-footer" hidden>
+          <span id="log-summary"></span>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="site-footer">
+      CSV Consolidador · Herramienta local · No se envían datos a ningún servidor
+    </footer>
+
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

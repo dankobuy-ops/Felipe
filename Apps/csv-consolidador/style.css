@@ -1,3 +1,16 @@
+/* ===== Back link ===== */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--muted, #8b949e);
+  font-size: .85rem;
+  text-decoration: none;
+  padding: .4rem 0;
+  transition: color .15s;
+}
+.back-link:hover { color: var(--text, #e6edf3); }
+
 /* ===== Reset & Base ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
