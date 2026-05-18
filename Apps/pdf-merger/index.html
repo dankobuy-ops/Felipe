@@ -4,35 +4,34 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Une imágenes JPG/PNG y documentos TXT/DOCX en un único PDF. Control de calidad de imagen: máxima, media o baja. 100% local.">
+  <meta name="description" content="Une imágenes JPG/PNG y documentos TXT/DOCX en un solo PDF. Control de calidad. 100% local.">
   <title>PDF Merger</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>">
   <style>
-    /* === Variables: Modo Claro (default) === */
     :root {
       color-scheme: light dark;
-      --bg:      #ffffff;
-      --surface: #f6f8fa;
-      --border:  #d0d7de;
-      --text:    #24292f;
-      --muted:   #57606a;
-      --accent:  #0969da;
-      --navy: #1B3A6B; --blue: #2E5F9E; --gold: #C7A965; --gold-light: #F5EDD4;
-      --gray: #64748B; --light: #E2E8F0; --danger: #EF4444; --radius: 14px;
+      --bg:       #ffffff;
+      --surface:  #f6f8fa;
+      --border:   #d0d7de;
+      --text:     #24292f;
+      --muted:    #57606a;
+      --accent:   #0969da;
+      --danger:   #cf222e;
+      --surface2: #eaeef2;
     }
-    /* === Modo Oscuro (automático) === */
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg:      #0d1117;
-        --surface: #161b22;
-        --border:  #30363d;
-        --text:    #e6edf3;
-        --muted:   #8b949e;
-        --accent:  #7c6af7;
-        --light: #21262d;
+        --bg:       #0d1117;
+        --surface:  #161b22;
+        --border:   #30363d;
+        --text:     #e6edf3;
+        --muted:    #8b949e;
+        --accent:   #7c6af7;
+        --danger:   #f85149;
+        --surface2: #21262d;
       }
     }
-    /* === Back link === */
+
     .back-link {
       display: inline-flex; align-items: center; gap: .4rem;
       color: var(--muted); font-size: .85rem; text-decoration: none;
@@ -40,199 +39,210 @@
     }
     .back-link:hover { color: var(--text); }
 
-    /* === Reset & Tipografía === */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
-      line-height: 1.5;
-      min-height: 100vh;
-      padding: 0 0 60px;
+      background-color: var(--bg); color: var(--text);
+      line-height: 1.5; padding: 2rem 1.5rem; min-height: 100vh;
     }
+    .container { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem; }
 
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 2rem;
-    }
-
-    .app-header { margin-bottom: 1rem; }
-    .app-header h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: 0.5rem; }
+    .app-header { margin-bottom: 0; }
+    .app-header h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: .5rem; }
     .app-header p { color: var(--muted); font-size: 1.1rem; }
 
-    .card, .input-group, fieldset {
-      background-color: var(--surface);
-      border: 1px solid rgba(0, 0, 0, 0.06);
-      border-radius: 8px;
-      padding: 1.5rem;
+    .card {
+      background-color: var(--surface); border: 1px solid rgba(0,0,0,.06);
+      border-radius: 8px; padding: 1.5rem;
     }
-    @media (prefers-color-scheme: dark) {
-      .card, .input-group, fieldset { border-color: rgba(255, 255, 255, 0.1); }
-    }
+    @media (prefers-color-scheme: dark) { .card { border-color: rgba(255,255,255,.1); } }
 
-    input, select, textarea {
-      width: 100%; padding: 0.75rem; border-radius: 6px;
-      border: 1px solid var(--border); background: transparent;
-      color: var(--text); font-size: 1rem; transition: border-color 0.15s;
+    input[type="text"], select, textarea {
+      width: 100%; padding: .75rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 1rem; font-family: inherit; transition: border-color .15s;
     }
-    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    input[type="text"]:focus, select:focus { outline: none; border-color: var(--accent); }
 
-    button, .btn {
+    button {
       display: inline-flex; align-items: center; justify-content: center;
-      background-color: var(--accent); color: #ffffff; font-weight: 600;
-      padding: 0.75rem 1.5rem; border-radius: 6px; border: none;
-      cursor: pointer; transition: filter 0.15s;
+      background-color: var(--accent); color: #fff; font-weight: 600;
+      padding: .75rem 1.5rem; border-radius: 6px; border: none;
+      cursor: pointer; transition: filter .15s; font-family: inherit; font-size: .95rem;
     }
-    button:hover, .btn:hover { filter: brightness(1.1); }
-    button:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: .4; cursor: not-allowed; filter: none; }
 
-    /* === UTILITY layout === */
+    /* template-tool */
     .app-main { display: flex; flex-direction: column; gap: 1.5rem; }
 
     /* Drop zone */
-    .drop-zone { border: 2.5px dashed var(--blue); border-radius: var(--radius);
-      background: white; padding: 40px 24px; text-align: center; cursor: pointer;
-      transition: all .2s; margin-bottom: 20px; }
-    .drop-zone.drag-over { background: #EFF6FF; border-color: var(--gold); transform: scale(1.01); }
-    .drop-zone .dz-icon { font-size: 3rem; margin-bottom: 12px; }
-    .drop-zone h2 { font-size: 1.05rem; color: var(--navy); font-weight: 700; margin-bottom: 6px; }
-    .drop-zone p { font-size: .85rem; color: var(--gray); margin-bottom: 14px; }
-    .drop-zone .formats { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-    .drop-zone .formats span { font-size: .72rem; font-weight: 600; padding: 3px 10px;
-      border-radius: 100px; background: var(--light); color: var(--gray); }
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: 6px;
+      padding: 2.5rem 1.5rem; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s; outline: none;
+      display: flex; flex-direction: column; align-items: center; gap: .6rem;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent); background: rgba(9,105,218,.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      .drop-zone:hover, .drop-zone.drag-over { background: rgba(124,106,247,.06); }
+    }
+    .dz-icon { font-size: 2.2rem; }
+    .drop-zone h2 { font-size: 1rem; font-weight: 600; color: var(--text); }
+    .drop-zone p { font-size: .85rem; color: var(--muted); }
+    .formats { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: center; margin-top: .25rem; }
+    .formats span {
+      font-size: .72rem; font-weight: 600; padding: 2px 9px;
+      border-radius: 100px; background: var(--surface2); color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-add {
+      background: var(--accent); color: #fff; border: none;
+      padding: 8px 18px; border-radius: 6px; font-size: .88rem;
+      font-weight: 600; cursor: pointer; margin-top: .25rem;
+      transition: filter .15s;
+    }
+    .btn-add:hover { filter: brightness(1.1); }
     #fileInput { display: none; }
-    .btn-add { display: inline-block; background: var(--navy); color: white;
-      padding: 9px 20px; border-radius: 10px; font-size: .88rem; font-weight: 700;
-      cursor: pointer; border: none; transition: background .15s; margin-bottom: 12px; }
-    .btn-add:hover { background: var(--blue); }
 
     /* Section header */
-    .section-title { font-size: .72rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .06em; color: var(--gray); margin-bottom: 10px;
-      display: flex; align-items: center; gap: 8px; }
-    .count-badge { background: var(--navy); color: white; font-size: .68rem;
-      font-weight: 800; padding: 2px 7px; border-radius: 100px; }
+    .section-title {
+      font-size: .78rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted); margin-bottom: .75rem;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .count-badge {
+      background: var(--accent); color: #fff;
+      font-size: .68rem; font-weight: 800; padding: 2px 7px; border-radius: 100px;
+    }
 
     /* File list */
-    #fileList { list-style: none; margin-bottom: 24px; }
-    #fileList li { background: white; border-radius: 10px; padding: 10px 12px;
-      margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.06); transition: box-shadow .15s, opacity .15s;
-      border: 2px solid transparent; user-select: none; }
-    #fileList li.drag-over-item { border-color: var(--gold); background: var(--gold-light); }
+    #fileList { list-style: none; }
+    #fileList li {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; margin-bottom: 6px;
+      display: flex; align-items: center; gap: 10px;
+      transition: border-color .15s, opacity .15s; user-select: none;
+    }
+    #fileList li.drag-over-item { border-color: var(--accent); }
     #fileList li.dragging { opacity: .4; }
 
-    .drag-handle { color: #CBD5E1; cursor: grab; font-size: .9rem; flex-shrink: 0; padding: 2px 4px; }
+    .drag-handle { color: var(--border); cursor: grab; font-size: .9rem; flex-shrink: 0; padding: 2px 4px; }
     .drag-handle:active { cursor: grabbing; }
 
-    /* Thumbnail */
-    .thumb-wrap { width: 44px; height: 44px; border-radius: 6px; overflow: hidden;
-      flex-shrink: 0; background: var(--light); display: flex; align-items: center; justify-content: center; }
+    .thumb-wrap {
+      width: 42px; height: 42px; border-radius: 6px; overflow: hidden; flex-shrink: 0;
+      background: var(--surface2); display: flex; align-items: center; justify-content: center;
+    }
     .thumb-wrap img { width: 100%; height: 100%; object-fit: cover; }
-    .thumb-wrap .file-icon-big { font-size: 1.5rem; }
+    .file-icon-big { font-size: 1.4rem; }
 
     .file-info { flex: 1; min-width: 0; }
-    .file-name { font-size: .88rem; font-weight: 600; white-space: nowrap;
-      overflow: hidden; text-overflow: ellipsis; }
-    .file-meta { font-size: .72rem; color: var(--gray); margin-top: 3px;
-      display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .file-name { font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-meta { font-size: .72rem; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 
-    /* State badges in meta */
-    .badge-rot { background: #DBEAFE; color: #1E40AF; font-size: .68rem; font-weight: 700;
-      padding: 1px 6px; border-radius: 100px; }
-    .badge-crop { background: #D1FAE5; color: #065F46; font-size: .68rem; font-weight: 700;
-      padding: 1px 6px; border-radius: 100px; }
+    .badge-rot { background: rgba(9,105,218,.12); color: var(--accent); font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 100px; }
+    .badge-crop { background: rgba(26,127,55,.12); color: #1a7f37; font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 100px; }
+    @media (prefers-color-scheme: dark) {
+      .badge-crop { color: #3fb950; }
+    }
 
-    /* Action buttons */
-    .file-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
-    .btn-act { background: none; border: 1px solid var(--light); color: var(--gray);
-      font-size: .8rem; cursor: pointer; padding: 5px 8px; border-radius: 7px;
-      line-height: 1; transition: all .15s; white-space: nowrap; }
-    .btn-act:hover { background: var(--light); color: #1a202c; border-color: #CBD5E1; }
-    .btn-act.act-crop:hover { background: #D1FAE5; color: #065F46; border-color: #6EE7B7; }
-    .btn-act.act-del:hover { background: #FEE2E2; color: var(--danger); border-color: #FCA5A5; }
+    .file-actions { display: flex; gap: 3px; flex-shrink: 0; align-items: center; }
+    .btn-act {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      font-size: .8rem; cursor: pointer; padding: 5px 8px; border-radius: 6px;
+      line-height: 1; transition: all .15s; white-space: nowrap;
+    }
+    .btn-act:hover { background: var(--surface2); color: var(--text); }
+    .btn-act.act-crop:hover { background: rgba(26,127,55,.1); color: #1a7f37; border-color: rgba(26,127,55,.3); }
+    .btn-act.act-del:hover { background: rgba(207,34,46,.1); color: var(--danger); border-color: rgba(207,34,46,.3); }
 
     /* Quality */
-    .quality-card { background: white; border-radius: var(--radius); padding: 18px 20px;
-      margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
-    .quality-options { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 12px; }
+    .quality-card { background: var(--surface); border: 1px solid rgba(0,0,0,.06); border-radius: 8px; padding: 1.25rem; }
+    @media (prefers-color-scheme: dark) { .quality-card { border-color: rgba(255,255,255,.1); } }
+    .quality-options { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: .75rem; }
     .quality-option input[type="radio"] { display: none; }
-    .quality-option label { display: flex; flex-direction: column; align-items: center;
-      gap: 6px; padding: 14px 10px; border: 2px solid var(--light); border-radius: 12px;
-      cursor: pointer; transition: all .15s; text-align: center; }
-    .quality-option input:checked + label { border-color: var(--gold); background: var(--gold-light); }
-    .quality-option label:hover { border-color: var(--blue); }
-    .quality-icon { font-size: 1.5rem; }
-    .quality-name { font-size: .83rem; font-weight: 700; color: var(--navy); }
-    .quality-desc { font-size: .7rem; color: var(--gray); }
+    .quality-option label {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      padding: 12px 8px; border: 1px solid var(--border); border-radius: 8px;
+      cursor: pointer; transition: all .15s; text-align: center;
+    }
+    .quality-option input:checked + label { border-color: var(--accent); background: rgba(9,105,218,.06); }
+    @media (prefers-color-scheme: dark) {
+      .quality-option input:checked + label { background: rgba(124,106,247,.08); }
+    }
+    .quality-option label:hover { border-color: var(--accent); }
+    .quality-icon { font-size: 1.4rem; }
+    .quality-name { font-size: .83rem; font-weight: 700; color: var(--text); }
+    .quality-desc { font-size: .7rem; color: var(--muted); }
 
     /* Generate button */
-    #btnGenerate { width: 100%; background: var(--gold); color: var(--navy); border: none;
-      border-radius: var(--radius); padding: 16px; font-size: 1.05rem; font-weight: 800;
-      cursor: pointer; transition: all .15s; display: flex; align-items: center;
-      justify-content: center; gap: 10px; }
-    #btnGenerate:hover:not(:disabled) { background: #b8942f; transform: translateY(-1px); }
-    #btnGenerate:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+    #btnGenerate { width: 100%; padding: 14px; font-size: 1rem; font-weight: 700; }
 
     /* Progress */
-    .progress-wrap { margin-top: 16px; display: none; }
+    .progress-wrap { display: none; }
     .progress-wrap.visible { display: block; }
-    .progress-bar-bg { background: var(--light); border-radius: 100px; height: 8px; overflow: hidden; }
-    .progress-bar { height: 100%; background: linear-gradient(90deg, var(--navy), var(--blue));
-      border-radius: 100px; width: 0%; transition: width .3s ease; }
-    .progress-label { font-size: .8rem; color: var(--gray); margin-top: 8px; text-align: center; }
+    .progress-bar-bg { background: var(--surface2); border-radius: 100px; height: 6px; overflow: hidden; }
+    .progress-bar { height: 100%; background: var(--accent); border-radius: 100px; width: 0%; transition: width .3s ease; }
+    .progress-label { font-size: .8rem; color: var(--muted); margin-top: 6px; text-align: center; }
 
     /* Toast */
-    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
-      background: #1a202c; color: white; padding: 12px 22px; border-radius: 12px;
-      font-size: .9rem; font-weight: 600; transition: transform .3s; z-index: 9999; white-space: nowrap; }
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border);
+      padding: 10px 20px; border-radius: 8px; font-size: .88rem; font-weight: 600;
+      transition: transform .3s; z-index: 9999; white-space: nowrap;
+    }
     #toast.show { transform: translateX(-50%) translateY(0); }
-    #toast.success { background: #166534; }
-    #toast.error { background: #991b1b; }
+    #toast.success { background: #1a7f37; color: #fff; border-color: transparent; }
+    #toast.error { background: var(--danger); color: #fff; border-color: transparent; }
 
-    /* ═══ CROP MODAL ═══ */
-    #cropModal { display: none; position: fixed; inset: 0; z-index: 1000;
-      align-items: center; justify-content: center; }
+    /* Crop modal */
+    #cropModal { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center; }
     #cropModal.open { display: flex; }
-    .crop-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(3px); }
-    .crop-box { position: relative; z-index: 1; background: white; border-radius: 18px;
-      box-shadow: 0 24px 60px rgba(0,0,0,.4); width: min(680px, 96vw);
-      max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
-    .crop-header { padding: 16px 20px; border-bottom: 1px solid var(--light);
-      display: flex; align-items: center; justify-content: space-between; background: var(--navy); }
-    .crop-header h3 { color: white; font-size: 1rem; font-weight: 700; }
-    .crop-header button { background: rgba(255,255,255,.15); border: none; color: white;
-      width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 1.1rem;
-      display: flex; align-items: center; justify-content: center; transition: background .15s; }
-    .crop-header button:hover { background: rgba(255,255,255,.3); }
-
-    .crop-hint { padding: 10px 20px; background: #FFFBEB; border-bottom: 1px solid #FDE68A;
-      font-size: .78rem; color: #92400E; }
-
-    .crop-canvas-wrap { flex: 1; overflow: auto; display: flex; align-items: center;
-      justify-content: center; padding: 20px; background: #111; min-height: 200px; }
+    .crop-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(3px); }
+    .crop-box {
+      position: relative; z-index: 1; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 12px;
+      width: min(680px, 96vw); max-height: 92vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .crop-header {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--surface2);
+    }
+    .crop-header h3 { font-size: 1rem; font-weight: 700; color: var(--text); }
+    .crop-header button {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 1rem;
+      display: flex; align-items: center; justify-content: center; padding: 0;
+    }
+    .crop-header button:hover { background: var(--surface); color: var(--text); filter: none; }
+    .crop-hint { padding: 8px 18px; font-size: .78rem; color: var(--muted); border-bottom: 1px solid var(--border); }
+    .crop-canvas-wrap { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 16px; background: #111; min-height: 200px; }
     #cropCanvas { cursor: crosshair; display: block; max-width: 100%; border-radius: 4px; }
+    .crop-footer { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .crop-info { font-size: .78rem; color: var(--muted); }
+    .crop-footer-btns { display: flex; gap: 6px; }
+    .btn-secondary {
+      padding: 7px 14px; border: 1px solid var(--border); border-radius: 6px;
+      background: transparent; color: var(--muted); font-size: .85rem; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .btn-secondary:hover { background: var(--surface2); color: var(--text); filter: none; }
+    .btn-primary { padding: 7px 16px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: .85rem; font-weight: 600; cursor: pointer; transition: filter .15s; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-clear { padding: 7px 12px; border: 1px solid rgba(207,34,46,.3); border-radius: 6px; background: rgba(207,34,46,.06); color: var(--danger); font-size: .82rem; font-weight: 600; cursor: pointer; transition: all .15s; }
+    .btn-clear:hover { background: rgba(207,34,46,.12); filter: none; }
 
-    .crop-footer { padding: 14px 20px; border-top: 1px solid var(--light);
-      display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-    .crop-info { font-size: .78rem; color: var(--gray); }
-    .crop-footer-btns { display: flex; gap: 8px; }
-    .btn-secondary { padding: 8px 16px; border: 1px solid var(--light); border-radius: 9px;
-      background: white; color: var(--gray); font-size: .85rem; font-weight: 600;
-      cursor: pointer; transition: all .15s; }
-    .btn-secondary:hover { background: var(--light); color: #1a202c; }
-    .btn-primary { padding: 8px 18px; border: none; border-radius: 9px;
-      background: var(--navy); color: white; font-size: .85rem; font-weight: 700;
-      cursor: pointer; transition: background .15s; }
-    .btn-primary:hover { background: var(--blue); }
-    .btn-clear { padding: 8px 14px; border: 1px solid #FCA5A5; border-radius: 9px;
-      background: #FEF2F2; color: var(--danger); font-size: .82rem; font-weight: 600;
-      cursor: pointer; transition: all .15s; }
-    .btn-clear:hover { background: #FEE2E2; }
+    @media (max-width: 500px) {
+      .quality-options { grid-template-columns: 1fr; }
+      .app-header h1 { font-size: 1.75rem; }
+    }
   </style>
 </head>
 <body>
@@ -246,52 +256,55 @@
 
   <main class="app-main">
 
-  <div class="drop-zone" id="dropZone">
-    <div class="dz-icon">📎</div>
-    <h2>Arrastra tus archivos aquí</h2>
-    <p>o haz clic para seleccionarlos</p>
-    <button class="btn-add" onclick="document.getElementById('fileInput').click()">＋ Seleccionar archivos</button>
-    <div class="formats">
-      <span>JPG</span><span>PNG</span><span>JPEG</span><span>TXT</span><span>DOCX</span>
-    </div>
-  </div>
-  <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.bmp,.gif,.webp,.txt,.docx">
-
-  <div id="fileListSection" style="display:none">
-    <div class="section-title">
-      Archivos a unir <span class="count-badge" id="countBadge">0</span>
-      <span style="font-size:.68rem;color:#CBD5E1;font-weight:400;margin-left:2px">arrastra para reordenar</span>
-    </div>
-    <ul id="fileList"></ul>
-  </div>
-
-  <div class="quality-card" id="qualityCard" style="display:none">
-    <div class="section-title">Calidad de imágenes</div>
-    <div class="quality-options">
-      <div class="quality-option">
-        <input type="radio" name="quality" id="qMax" value="max" checked>
-        <label for="qMax"><span class="quality-icon">🔬</span><span class="quality-name">Máxima</span><span class="quality-desc">Alta fidelidad · PDF pesado</span></label>
+    <div class="card">
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <span class="dz-icon">📎</span>
+        <h2>Arrastra tus archivos aquí</h2>
+        <p>o haz clic para seleccionarlos</p>
+        <div class="formats">
+          <span>JPG</span><span>PNG</span><span>TXT</span><span>DOCX</span>
+        </div>
       </div>
-      <div class="quality-option">
-        <input type="radio" name="quality" id="qMed" value="med">
-        <label for="qMed"><span class="quality-icon">⚖️</span><span class="quality-name">Media</span><span class="quality-desc">Balance calidad / peso</span></label>
+      <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.bmp,.gif,.webp,.txt,.docx">
+    </div>
+
+    <div id="fileListSection" style="display:none" class="card">
+      <div class="section-title">
+        Archivos a unir <span class="count-badge" id="countBadge">0</span>
+        <span style="font-size:.68rem;font-weight:400;margin-left:2px;color:var(--muted)">arrastra para reordenar</span>
       </div>
-      <div class="quality-option">
-        <input type="radio" name="quality" id="qLow" value="low">
-        <label for="qLow"><span class="quality-icon">🪶</span><span class="quality-name">Baja</span><span class="quality-desc">Mínimo tamaño</span></label>
+      <ul id="fileList"></ul>
+    </div>
+
+    <div class="quality-card" id="qualityCard" style="display:none">
+      <div class="section-title">Calidad de imágenes</div>
+      <div class="quality-options">
+        <div class="quality-option">
+          <input type="radio" name="quality" id="qMax" value="max" checked>
+          <label for="qMax"><span class="quality-icon">🔬</span><span class="quality-name">Máxima</span><span class="quality-desc">Alta fidelidad</span></label>
+        </div>
+        <div class="quality-option">
+          <input type="radio" name="quality" id="qMed" value="med">
+          <label for="qMed"><span class="quality-icon">⚖️</span><span class="quality-name">Media</span><span class="quality-desc">Balance calidad/peso</span></label>
+        </div>
+        <div class="quality-option">
+          <input type="radio" name="quality" id="qLow" value="low">
+          <label for="qLow"><span class="quality-icon">🪶</span><span class="quality-name">Baja</span><span class="quality-desc">Mínimo tamaño</span></label>
+        </div>
       </div>
     </div>
-  </div>
 
-  <button id="btnGenerate" onclick="generatePDF()" disabled>🖨 Generar PDF</button>
+    <button id="btnGenerate" onclick="generatePDF()" disabled>🖨 Generar PDF</button>
 
-  <div class="progress-wrap" id="progressWrap">
-    <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
-    <div class="progress-label" id="progressLabel"></div>
-  </div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="progress-label" id="progressLabel"></div>
+    </div>
+
+  </main>
 </div>
 
-<!-- ═══ CROP MODAL ═══ -->
+<!-- Crop Modal -->
 <div id="cropModal">
   <div class="crop-backdrop" onclick="closeCrop()"></div>
   <div class="crop-box">
@@ -299,12 +312,8 @@
       <h3>✂ Recortar imagen</h3>
       <button onclick="closeCrop()">✕</button>
     </div>
-    <div class="crop-hint">
-      🖱 Haz clic y arrastra sobre la imagen para definir el área de recorte.
-    </div>
-    <div class="crop-canvas-wrap">
-      <canvas id="cropCanvas"></canvas>
-    </div>
+    <div class="crop-hint">🖱 Haz clic y arrastra para definir el área de recorte.</div>
+    <div class="crop-canvas-wrap"><canvas id="cropCanvas"></canvas></div>
     <div class="crop-footer">
       <span class="crop-info" id="cropInfo">Sin selección</span>
       <div class="crop-footer-btns">
@@ -315,18 +324,13 @@
     </div>
   </div>
 </div>
-</main>
-</div>
 
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
 <script>
-// ═══════════════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════════════
-const files = []   // {id, file, name, size, ext, rotation, crop, thumbUrl}
+const files = []
 let idCounter = 0
 let dragSrcIdx = null
 
@@ -337,9 +341,6 @@ const IMG_QUALITY = {
   low: { dim:  800, q: 0.45 },
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// DROP ZONE
-// ═══════════════════════════════════════════════════════════════════
 const dropZone = document.getElementById('dropZone')
 const fileInput = document.getElementById('fileInput')
 
@@ -352,9 +353,6 @@ dropZone.addEventListener('drop', e => {
 })
 fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fileInput.value = '' })
 
-// ═══════════════════════════════════════════════════════════════════
-// ADD FILES
-// ═══════════════════════════════════════════════════════════════════
 async function addFiles(newFiles) {
   for (const f of newFiles) {
     const ext = f.name.split('.').pop().toLowerCase()
@@ -362,15 +360,11 @@ async function addFiles(newFiles) {
     if (!allowed.includes(ext)) { showToast(`Formato no soportado: .${ext}`, 'error'); continue }
     if (files.some(x => x.name === f.name && x.size === f.size)) continue
     const thumbUrl = IMG_EXTS.includes(ext) ? URL.createObjectURL(f) : null
-    files.push({ id: ++idCounter, file: f, name: f.name, size: f.size, ext,
-      rotation: 0, crop: null, thumbUrl })
+    files.push({ id: ++idCounter, file: f, name: f.name, size: f.size, ext, rotation: 0, crop: null, thumbUrl })
   }
   renderList()
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// RENDER LIST
-// ═══════════════════════════════════════════════════════════════════
 function renderList() {
   const ul = document.getElementById('fileList')
   ul.innerHTML = ''
@@ -383,23 +377,16 @@ function renderList() {
   files.forEach((item, idx) => {
     const li = document.createElement('li')
     li.dataset.idx = idx
-
-    // Thumb / icon
     const thumbHtml = item.thumbUrl
       ? `<div class="thumb-wrap"><img src="${item.thumbUrl}" style="transform:rotate(${item.rotation}deg);transition:transform .3s"></div>`
       : `<div class="thumb-wrap"><span class="file-icon-big">${getIcon(item.ext)}</span></div>`
-
-    // State badges
     const rotBadge = item.rotation ? `<span class="badge-rot">↻ ${item.rotation}°</span>` : ''
     const cropBadge = item.crop ? `<span class="badge-crop">✂ Recortada</span>` : ''
-
-    // Action buttons (only for images)
     const imgActions = IMG_EXTS.includes(item.ext) ? `
       <button class="btn-act" onclick="rotate(${idx},-1)" title="Girar izquierda">↺</button>
       <button class="btn-act" onclick="rotate(${idx}, 1)" title="Girar derecha">↻</button>
       <button class="btn-act act-crop" onclick="openCrop(${idx})" title="Recortar">✂</button>
     ` : ''
-
     li.innerHTML = `
       <span class="drag-handle" draggable="false">⠿</span>
       ${thumbHtml}
@@ -410,15 +397,11 @@ function renderList() {
       <div class="file-actions">
         ${imgActions}
         <button class="btn-act act-del" onclick="removeFile(${idx})" title="Quitar">✕</button>
-      </div>
-    `
-
-    // Drag & drop reorder
+      </div>`
     li.setAttribute('draggable', 'true')
     li.addEventListener('dragstart', e => {
       if (e.target.classList.contains('btn-act')) { e.preventDefault(); return }
-      dragSrcIdx = idx; li.classList.add('dragging')
-      e.dataTransfer.effectAllowed = 'move'
+      dragSrcIdx = idx; li.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'
     })
     li.addEventListener('dragend', () => {
       li.classList.remove('dragging')
@@ -435,7 +418,6 @@ function renderList() {
       const moved = files.splice(dragSrcIdx, 1)[0]
       files.splice(idx, 0, moved); renderList()
     })
-
     ul.appendChild(li)
   })
 }
@@ -448,168 +430,87 @@ function getIcon(ext) {
   return '📎'
 }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+function rotate(idx, dir) { files[idx].rotation = ((files[idx].rotation + dir * 90) + 360) % 360; renderList() }
 
-// ═══════════════════════════════════════════════════════════════════
-// ROTATE
-// ═══════════════════════════════════════════════════════════════════
-function rotate(idx, dir) {
-  files[idx].rotation = ((files[idx].rotation + dir * 90) + 360) % 360
-  renderList()
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// CROP MODAL
-// ═══════════════════════════════════════════════════════════════════
-let cropIdx = null
-let cropImg = null       // HTMLImageElement (original)
-let cropScale = 1        // canvas px per image px
-let sel = null           // { x1, y1, x2, y2 } in canvas px
-let isDrawing = false
-
+let cropIdx = null, cropImg = null, cropScale = 1, sel = null, isDrawing = false
 const cropCanvas = document.getElementById('cropCanvas')
 const cropCtx    = cropCanvas.getContext('2d')
 
 function openCrop(idx) {
-  cropIdx = idx
-  sel = null
+  cropIdx = idx; sel = null
   const item = files[idx]
   document.getElementById('cropModal').classList.add('open')
   document.getElementById('cropInfo').textContent = 'Sin selección'
-
   const img = new Image()
   img.onload = () => {
     cropImg = img
-    // Scale to fit container (max 620×440)
-    const maxW = Math.min(window.innerWidth - 80, 620)
-    const maxH = 440
+    const maxW = Math.min(window.innerWidth - 80, 620), maxH = 440
     cropScale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1)
     cropCanvas.width  = Math.round(img.naturalWidth  * cropScale)
     cropCanvas.height = Math.round(img.naturalHeight * cropScale)
-
-    // If existing crop, restore as canvas coords
     if (item.crop) {
       const c = item.crop
-      sel = {
-        x1: c.x * cropCanvas.width,  y1: c.y * cropCanvas.height,
-        x2: (c.x + c.w) * cropCanvas.width, y2: (c.y + c.h) * cropCanvas.height
-      }
+      sel = { x1: c.x * cropCanvas.width, y1: c.y * cropCanvas.height, x2: (c.x + c.w) * cropCanvas.width, y2: (c.y + c.h) * cropCanvas.height }
     }
     drawCrop()
   }
   img.src = item.thumbUrl || URL.createObjectURL(item.file)
 }
 
-function closeCrop() {
-  document.getElementById('cropModal').classList.remove('open')
-  cropImg = null; cropIdx = null; sel = null
-}
+function closeCrop() { document.getElementById('cropModal').classList.remove('open'); cropImg = null; cropIdx = null; sel = null }
 
 function drawCrop() {
   if (!cropImg) return
   const w = cropCanvas.width, h = cropCanvas.height
   cropCtx.clearRect(0, 0, w, h)
   cropCtx.drawImage(cropImg, 0, 0, w, h)
-
   if (!sel) return
-
-  const x = Math.min(sel.x1, sel.x2)
-  const y = Math.min(sel.y1, sel.y2)
-  const sw = Math.abs(sel.x2 - sel.x1)
-  const sh = Math.abs(sel.y2 - sel.y1)
-
+  const x = Math.min(sel.x1, sel.x2), y = Math.min(sel.y1, sel.y2)
+  const sw = Math.abs(sel.x2 - sel.x1), sh = Math.abs(sel.y2 - sel.y1)
   if (sw < 4 || sh < 4) return
-
-  // Dim outside
-  cropCtx.fillStyle = 'rgba(0,0,0,0.52)'
-  cropCtx.fillRect(0, 0, w, h)
-
-  // Restore image inside selection
-  cropCtx.save()
-  cropCtx.beginPath()
-  cropCtx.rect(x, y, sw, sh)
-  cropCtx.clip()
-  cropCtx.drawImage(cropImg, 0, 0, w, h)
-  cropCtx.restore()
-
-  // Border
-  cropCtx.strokeStyle = '#C7A965'
-  cropCtx.lineWidth = 2
-  cropCtx.setLineDash([6, 3])
-  cropCtx.strokeRect(x, y, sw, sh)
-  cropCtx.setLineDash([])
-
-  // Corner handles
-  const hs = 8
-  cropCtx.fillStyle = '#C7A965'
-  for (const [hx, hy] of [[x,y],[x+sw,y],[x,y+sh],[x+sw,y+sh]]) {
+  cropCtx.fillStyle = 'rgba(0,0,0,0.52)'; cropCtx.fillRect(0, 0, w, h)
+  cropCtx.save(); cropCtx.beginPath(); cropCtx.rect(x, y, sw, sh); cropCtx.clip()
+  cropCtx.drawImage(cropImg, 0, 0, w, h); cropCtx.restore()
+  cropCtx.strokeStyle = '#7c6af7'; cropCtx.lineWidth = 2
+  cropCtx.setLineDash([6, 3]); cropCtx.strokeRect(x, y, sw, sh); cropCtx.setLineDash([])
+  const hs = 8; cropCtx.fillStyle = '#7c6af7'
+  for (const [hx, hy] of [[x,y],[x+sw,y],[x,y+sh],[x+sw,y+sh]])
     cropCtx.fillRect(hx - hs/2, hy - hs/2, hs, hs)
-  }
-
-  const pxW = Math.round(sw / cropScale)
-  const pxH = Math.round(sh / cropScale)
-  document.getElementById('cropInfo').textContent = `Selección: ${pxW} × ${pxH} px`
+  document.getElementById('cropInfo').textContent = `Selección: ${Math.round(sw/cropScale)} × ${Math.round(sh/cropScale)} px`
 }
 
-// Mouse events
 function getCanvasPos(e) {
   const rect = cropCanvas.getBoundingClientRect()
-  const scaleX = cropCanvas.width  / rect.width
-  const scaleY = cropCanvas.height / rect.height
+  const scaleX = cropCanvas.width / rect.width, scaleY = cropCanvas.height / rect.height
   const clientX = e.touches ? e.touches[0].clientX : e.clientX
   const clientY = e.touches ? e.touches[0].clientY : e.clientY
-  return {
-    x: Math.max(0, Math.min((clientX - rect.left) * scaleX, cropCanvas.width)),
-    y: Math.max(0, Math.min((clientY - rect.top)  * scaleY, cropCanvas.height)),
-  }
+  return { x: Math.max(0, Math.min((clientX - rect.left) * scaleX, cropCanvas.width)), y: Math.max(0, Math.min((clientY - rect.top) * scaleY, cropCanvas.height)) }
 }
 
-cropCanvas.addEventListener('mousedown',  startDraw)
-cropCanvas.addEventListener('mousemove',  moveDraw)
-cropCanvas.addEventListener('mouseup',    endDraw)
-cropCanvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e) }, { passive: false })
-cropCanvas.addEventListener('touchmove',  e => { e.preventDefault(); moveDraw(e)  }, { passive: false })
-cropCanvas.addEventListener('touchend',   e => { e.preventDefault(); endDraw(e)   }, { passive: false })
-
-function startDraw(e) {
-  const p = getCanvasPos(e)
-  sel = { x1: p.x, y1: p.y, x2: p.x, y2: p.y }
-  isDrawing = true
-}
-function moveDraw(e) {
-  if (!isDrawing) return
-  const p = getCanvasPos(e)
-  sel.x2 = p.x; sel.y2 = p.y
-  drawCrop()
-}
-function endDraw(e) { isDrawing = false }
+cropCanvas.addEventListener('mousedown',  e => { const p = getCanvasPos(e); sel = {x1:p.x,y1:p.y,x2:p.x,y2:p.y}; isDrawing = true })
+cropCanvas.addEventListener('mousemove',  e => { if (!isDrawing) return; const p = getCanvasPos(e); sel.x2=p.x; sel.y2=p.y; drawCrop() })
+cropCanvas.addEventListener('mouseup',    () => { isDrawing = false })
+cropCanvas.addEventListener('touchstart', e => { e.preventDefault(); const p = getCanvasPos(e); sel={x1:p.x,y1:p.y,x2:p.x,y2:p.y}; isDrawing=true }, {passive:false})
+cropCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if(!isDrawing)return; const p=getCanvasPos(e); sel.x2=p.x; sel.y2=p.y; drawCrop() }, {passive:false})
+cropCanvas.addEventListener('touchend',   e => { e.preventDefault(); isDrawing=false }, {passive:false})
 
 function applyCrop() {
   if (!sel || !cropImg) { closeCrop(); return }
   const w = cropCanvas.width, h = cropCanvas.height
-  const x = Math.min(sel.x1, sel.x2)
-  const y = Math.min(sel.y1, sel.y2)
-  const sw = Math.abs(sel.x2 - sel.x1)
-  const sh = Math.abs(sel.y2 - sel.y1)
-
+  const x = Math.min(sel.x1, sel.x2), y = Math.min(sel.y1, sel.y2)
+  const sw = Math.abs(sel.x2 - sel.x1), sh = Math.abs(sel.y2 - sel.y1)
   if (sw < 4 || sh < 4) { showToast('Selección muy pequeña.', 'error'); return }
-
   files[cropIdx].crop = { x: x/w, y: y/h, w: sw/w, h: sh/h }
-  renderList()
-  closeCrop()
-  showToast('✂ Recorte aplicado', 'success')
+  renderList(); closeCrop(); showToast('✂ Recorte aplicado', 'success')
 }
 
 function clearCropSelection() {
-  sel = null
-  drawCrop()
+  sel = null; drawCrop()
   if (cropIdx !== null) files[cropIdx].crop = null
   document.getElementById('cropInfo').textContent = 'Sin selección'
   showToast('Recorte eliminado')
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// IMAGE PROCESSING (rotation + crop + quality)
-// ═══════════════════════════════════════════════════════════════════
 function processImage(file, qualityKey, rotation, crop) {
   return new Promise((resolve, reject) => {
     const cfg = IMG_QUALITY[qualityKey]
@@ -617,158 +518,93 @@ function processImage(file, qualityKey, rotation, crop) {
     const img = new Image()
     img.onload = () => {
       const iw = img.naturalWidth, ih = img.naturalHeight
-
-      // Source rect (crop in original px)
       let sx = 0, sy = 0, sw = iw, sh = ih
-      if (crop) {
-        sx = Math.round(crop.x * iw); sy = Math.round(crop.y * ih)
-        sw = Math.round(crop.w * iw); sh = Math.round(crop.h * ih)
-      }
-
-      // Max dimension check (before rotation swap)
+      if (crop) { sx = Math.round(crop.x*iw); sy = Math.round(crop.y*ih); sw = Math.round(crop.w*iw); sh = Math.round(crop.h*ih) }
       const swap = rotation === 90 || rotation === 270
-      const checkW = swap ? sh : sw
-      const checkH = swap ? sw : sh
-      const maxDim = cfg.dim
-      let scale = Math.min(maxDim / checkW, maxDim / checkH, 1)
-      let outW = Math.round(sw * scale)
-      let outH = Math.round(sh * scale)
-
-      // Canvas dimensions (after rotation)
-      const canvW = swap ? outH : outW
-      const canvH = swap ? outW : outH
-
+      const checkW = swap ? sh : sw, checkH = swap ? sw : sh
+      let scale = Math.min(cfg.dim/checkW, cfg.dim/checkH, 1)
+      let outW = Math.round(sw*scale), outH = Math.round(sh*scale)
+      const canvW = swap ? outH : outW, canvH = swap ? outW : outH
       const canvas = document.createElement('canvas')
       canvas.width = canvW; canvas.height = canvH
       const ctx = canvas.getContext('2d')
       ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvW, canvH)
-
-      ctx.save()
-      ctx.translate(canvW / 2, canvH / 2)
-      ctx.rotate(rotation * Math.PI / 180)
-      ctx.drawImage(img, sx, sy, sw, sh, -outW / 2, -outH / 2, outW, outH)
-      ctx.restore()
-
+      ctx.save(); ctx.translate(canvW/2, canvH/2); ctx.rotate(rotation*Math.PI/180)
+      ctx.drawImage(img, sx, sy, sw, sh, -outW/2, -outH/2, outW, outH); ctx.restore()
       URL.revokeObjectURL(url)
       resolve({ dataUrl: canvas.toDataURL('image/jpeg', cfg.q), w: canvW, h: canvH })
     }
-    img.onerror = reject
-    img.src = url
+    img.onerror = reject; img.src = url
   })
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// GENERATE PDF
-// ═══════════════════════════════════════════════════════════════════
 async function generatePDF() {
   if (!files.length) return
   const btn = document.getElementById('btnGenerate')
-  btn.disabled = true
-  setProgress(2, 'Iniciando...')
-
+  btn.disabled = true; setProgress(2, 'Iniciando...')
   const qualityKey = document.querySelector('input[name="quality"]:checked').value
   const { jsPDF } = window.jspdf
   const PW = 210, PH = 297, M = 12
-
   let doc = null
-
   try {
     for (let i = 0; i < files.length; i++) {
       const item = files[i]
-      setProgress(5 + Math.round((i / files.length) * 85), `Procesando: ${item.name}`)
-
+      setProgress(5 + Math.round((i/files.length)*85), `Procesando: ${item.name}`)
       if (IMG_EXTS.includes(item.ext)) {
         const { dataUrl, w, h } = await processImage(item.file, qualityKey, item.rotation, item.crop)
-        const isLandImg = w > h
-        const orient = isLandImg ? 'landscape' : 'portrait'
-        const pageW = isLandImg ? PH : PW
-        const pageH = isLandImg ? PW : PH
-
+        const isLandImg = w > h, orient = isLandImg ? 'landscape' : 'portrait'
+        const pageW = isLandImg ? PH : PW, pageH = isLandImg ? PW : PH
         if (!doc) doc = new jsPDF({ orientation: orient, unit: 'mm', format: 'a4' })
         else doc.addPage([pageW, pageH], orient)
-
-        const maxW = pageW - M * 2, maxH = pageH - M * 2
-        const ratio = Math.min(maxW / w, maxH / h)
-        const fw = w * ratio, fh = h * ratio
-        doc.addImage(dataUrl, 'JPEG', M + (maxW - fw) / 2, M + (maxH - fh) / 2, fw, fh)
-
+        const maxW = pageW - M*2, maxH = pageH - M*2
+        const ratio = Math.min(maxW/w, maxH/h)
+        doc.addImage(dataUrl, 'JPEG', M+(maxW-w*ratio)/2, M+(maxH-h*ratio)/2, w*ratio, h*ratio)
       } else {
         const text = item.ext === 'docx'
           ? await readDocx(item.file).catch(() => '[Error al leer DOCX]')
           : await readText(item.file)
-
-        if (!doc) doc = new jsPDF({ unit: 'mm', format: 'a4' })
-        else doc.addPage()
+        if (!doc) doc = new jsPDF({ unit: 'mm', format: 'a4' }); else doc.addPage()
         renderTextPage(doc, text, item.name, PW, PH, M)
       }
     }
-
     if (!doc) throw new Error('Sin contenido válido.')
-
-    setProgress(96, 'Guardando PDF...')
-    await new Promise(r => setTimeout(r, 150))
+    setProgress(96, 'Guardando PDF...'); await new Promise(r => setTimeout(r, 150))
     doc.save('documento_unido.pdf')
-    setProgress(100, `PDF generado con ${files.length} archivo${files.length > 1 ? 's' : ''}.`)
+    setProgress(100, `PDF generado con ${files.length} archivo${files.length>1?'s':''}.`)
     showToast('✅ PDF descargado correctamente', 'success')
-
   } catch (err) {
     document.getElementById('progressWrap').classList.remove('visible')
-    showToast('Error: ' + err.message, 'error')
-    console.error(err)
-  } finally {
-    btn.disabled = false
-  }
+    showToast('Error: ' + err.message, 'error'); console.error(err)
+  } finally { btn.disabled = false }
 }
 
 function renderTextPage(doc, text, filename, PW, PH, M) {
-  const fontSize = 10, lineH = 5.5
-  const maxW = PW - M * 2
-
-  doc.setFontSize(12).setFont('helvetica', 'bold').setTextColor(27, 58, 107)
-  doc.text(filename, M, M + 6)
-  doc.setFontSize(fontSize).setFont('helvetica', 'normal').setTextColor(30, 30, 30)
-
-  let y = M + 14
-  const lines = text.split('\n')
-
-  for (const raw of lines) {
-    const wrapped = doc.splitTextToSize(raw || ' ', maxW)
-    for (const line of wrapped) {
-      if (y + lineH > PH - M) { doc.addPage(); y = M + 6 }
-      doc.text(line, M, y)
-      y += lineH
+  const fontSize = 10, lineH = 5.5, maxW = PW - M*2
+  doc.setFontSize(12).setFont('helvetica','bold').setTextColor(9,105,218)
+  doc.text(filename, M, M+6)
+  doc.setFontSize(fontSize).setFont('helvetica','normal').setTextColor(30,30,30)
+  let y = M+14
+  for (const raw of text.split('\n')) {
+    for (const line of doc.splitTextToSize(raw||' ', maxW)) {
+      if (y+lineH > PH-M) { doc.addPage(); y = M+6 }
+      doc.text(line, M, y); y += lineH
     }
   }
 }
 
 function readText(file) {
-  return new Promise((res, rej) => {
-    const fr = new FileReader()
-    fr.onload = e => res(e.target.result)
-    fr.onerror = rej
-    fr.readAsText(file, 'UTF-8')
-  })
+  return new Promise((res,rej) => { const fr = new FileReader(); fr.onload=e=>res(e.target.result); fr.onerror=rej; fr.readAsText(file,'UTF-8') })
 }
-
 function readDocx(file) {
-  return new Promise((res, rej) => {
-    const fr = new FileReader()
-    fr.onload = e => mammoth.extractRawText({ arrayBuffer: e.target.result })
-      .then(r => res(r.value)).catch(rej)
-    fr.onerror = rej
-    fr.readAsArrayBuffer(file)
-  })
+  return new Promise((res,rej) => { const fr = new FileReader(); fr.onload=e=>mammoth.extractRawText({arrayBuffer:e.target.result}).then(r=>res(r.value)).catch(rej); fr.onerror=rej; fr.readAsArrayBuffer(file) })
 }
-
 function setProgress(pct, label) {
   document.getElementById('progressWrap').classList.add('visible')
   document.getElementById('progressBar').style.width = pct + '%'
   document.getElementById('progressLabel').textContent = label
 }
-
-function showToast(msg, type = '') {
-  const t = document.getElementById('toast')
-  t.textContent = msg; t.className = 'show ' + type
+function showToast(msg, type='') {
+  const t = document.getElementById('toast'); t.textContent = msg; t.className = 'show ' + type
   setTimeout(() => t.className = '', 3200)
 }
 </script>

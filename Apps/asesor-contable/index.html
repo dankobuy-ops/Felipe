@@ -1,254 +1,405 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="light dark">
-    <meta name="description" content="Analiza cartolas bancarias en CSV, Excel o PDF y clasifica automáticamente ingresos, comisiones y honorarios.">
-    <title>Asesor Contable · Cartola Bancaria</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* === Variables: Modo Claro (default) === */
-        :root {
-          color-scheme: light dark;
-          --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
-          --text: #24292f; --muted: #57606a; --accent: #0969da;
-          --navy:#1B3A6B; --gold:#C7A965;
-        }
-        @media (prefers-color-scheme: dark) {
-          :root {
-            --bg: #0d1117; --surface: #161b22; --border: #30363d;
-            --text: #e6edf3; --muted: #8b949e; --accent: #7c6af7;
-          }
-        }
-        .back-link {
-          display:inline-flex; align-items:center; gap:.4rem;
-          color:var(--muted); font-size:.85rem; text-decoration:none;
-          padding:.4rem 1rem; transition:color .15s;
-        }
-        .back-link:hover { color:var(--text); }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Analiza cartolas bancarias en CSV, Excel o PDF y clasifica automáticamente ingresos, comisiones y honorarios.">
+  <title>Asesor Contable</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  <!-- Tailwind solo para contenido dinámico generado por JS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg:       #ffffff;
+      --surface:  #f6f8fa;
+      --border:   #d0d7de;
+      --text:     #24292f;
+      --muted:    #57606a;
+      --accent:   #0969da;
+      --danger:   #cf222e;
+      --success:  #1a7f37;
+      --surface2: #eaeef2;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:       #0d1117;
+        --surface:  #161b22;
+        --border:   #30363d;
+        --text:     #e6edf3;
+        --muted:    #8b949e;
+        --accent:   #7c6af7;
+        --danger:   #f85149;
+        --success:  #3fb950;
+        --surface2: #21262d;
+      }
+    }
 
-        /* === Reset & Tipografía === */
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    .back-link {
+      display: inline-flex; align-items: center; gap: .4rem;
+      color: var(--muted); font-size: .85rem; text-decoration: none;
+      padding: .4rem 0; transition: color .15s;
+    }
+    .back-link:hover { color: var(--text); }
 
-        .container {
-          max-width: none;
-          margin: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 0;
-        }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg); color: var(--text);
+      line-height: 1.5; padding: 2rem 1.5rem; min-height: 100vh;
+    }
+    .container { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 0; }
 
-        .app-header { margin-bottom: 1rem; }
-        .app-header h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: 0.5rem; }
-        .app-header p { color: var(--muted); font-size: 1.1rem; }
+    .app-header { margin-bottom: 2rem; }
+    .app-header h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: .5rem; }
+    .app-header p { color: var(--muted); font-size: 1.1rem; }
 
-        button:not([class*="bg-"]), .btn {
-          display: inline-flex; align-items: center; justify-content: center;
-          background-color: var(--accent); color: #ffffff; font-weight: 600;
-          padding: 0.75rem 1.5rem; border-radius: 6px; border: none;
-          cursor: pointer; transition: filter 0.15s;
-        }
-        button:not([class*="bg-"]):hover { filter: brightness(1.1); }
-        .btn-navy  { background:var(--navy); color:#fff; transition:background .15s; }
-        .btn-navy:hover  { background:#142d54; }
-        .tag { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; }
-        .tag-green  { background:#d1fae5; color:#065f46; }
-        .tag-blue   { background:#dbeafe; color:#1e40af; }
-        .tag-purple { background:#ede9fe; color:#5b21b6; }
-        .tag-red    { background:#fee2e2; color:#991b1b; }
-        .tag-yellow { background:#fef3c7; color:#92400e; }
-        .tag-gray   { background:#f3f4f6; color:#6b7280; }
-        .fmt-csv    { background:#d1fae5; color:#065f46; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; }
-        .fmt-excel  { background:#dbeafe; color:#1e40af; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; }
-        .fmt-pdf    { background:#fee2e2; color:#991b1b; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; }
-    </style>
+    .card {
+      background-color: var(--surface); border: 1px solid rgba(0,0,0,.06);
+      border-radius: 8px; padding: 1.5rem; margin-bottom: 1.25rem;
+    }
+    @media (prefers-color-scheme: dark) { .card { border-color: rgba(255,255,255,.1); } }
+
+    input, select {
+      padding: .65rem .9rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: .95rem; font-family: inherit;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+    button {
+      display: inline-flex; align-items: center; justify-content: center;
+      background-color: var(--accent); color: #fff; font-weight: 600;
+      padding: .65rem 1.25rem; border-radius: 6px; border: none;
+      cursor: pointer; transition: filter .15s; font-family: inherit; font-size: .9rem;
+    }
+    button:hover { filter: brightness(1.1); }
+
+    /* template-tool */
+    .app-main { display: flex; flex-direction: column; }
+
+    /* Upload card */
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: 6px;
+      padding: 2rem 1.5rem; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s;
+      display: flex; flex-direction: column; align-items: center; gap: .5rem;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent); background: rgba(9,105,218,.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      .drop-zone:hover, .drop-zone.drag-over { background: rgba(124,106,247,.06); }
+    }
+
+    .upload-badges { display: flex; gap: .35rem; flex-wrap: wrap; justify-content: center; }
+    .fmt-csv   { background: rgba(26,127,55,.12); color: var(--success); font-size: .7rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+    .fmt-excel { background: rgba(9,105,218,.12); color: var(--accent);  font-size: .7rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+    .fmt-pdf   { background: rgba(207,34,46,.12); color: var(--danger);  font-size: .7rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+
+    /* Estado carga */
+    .estado-carga {
+      display: none; margin-top: 1rem;
+      background: rgba(9,105,218,.08); border: 1px solid rgba(9,105,218,.2);
+      border-radius: 6px; padding: .65rem 1rem; font-size: .88rem; color: var(--accent);
+    }
+    .estado-carga.visible { display: flex; align-items: center; gap: .5rem; }
+    @media (prefers-color-scheme: dark) {
+      .estado-carga { background: rgba(124,106,247,.1); border-color: rgba(124,106,247,.25); }
+    }
+
+    /* Chips archivos */
+    .lista-archivos { display: none; margin-top: 1rem; }
+    .lista-archivos.visible { display: block; }
+    .lista-archivos-label {
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .limpiar-btn {
+      background: none; border: none; color: var(--danger); font-size: .78rem;
+      font-weight: 600; cursor: pointer; padding: 0; filter: none;
+    }
+    .limpiar-btn:hover { filter: brightness(.8); }
+    .chips-archivos { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .chip {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px 10px; font-size: .8rem;
+    }
+    .chip-name { max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 500; }
+    .chip-count { font-size: .7rem; color: var(--muted); }
+    .chip-remove { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0; font-size: .9rem; line-height: 1; filter: none; }
+    .chip-remove:hover { color: var(--danger); filter: none; }
+
+    /* Nota PDF */
+    .nota-pdf {
+      display: none; margin-top: .75rem;
+      background: rgba(234,179,8,.1); border: 1px solid rgba(234,179,8,.3);
+      border-radius: 6px; padding: .6rem .9rem; font-size: .82rem; color: #92400e;
+    }
+    .nota-pdf.visible { display: block; }
+    @media (prefers-color-scheme: dark) {
+      .nota-pdf { background: rgba(234,179,8,.08); color: #d29922; border-color: rgba(234,179,8,.2); }
+    }
+
+    /* Dashboard */
+    .dashboard { display: none; }
+    .dashboard.visible { display: block; }
+
+    /* Info band */
+    .info-band {
+      background: rgba(9,105,218,.06); border: 1px solid rgba(9,105,218,.15);
+      border-radius: 8px; padding: .65rem 1.1rem;
+      display: flex; flex-wrap: wrap; gap: .25rem 1.5rem;
+      font-size: .85rem; color: var(--accent); margin-bottom: 1.25rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      .info-band { background: rgba(124,106,247,.08); border-color: rgba(124,106,247,.2); }
+    }
+
+    /* KPI grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: .75rem; margin-bottom: 1.25rem;
+    }
+    .kpi-card {
+      background: var(--surface); border: 1px solid rgba(0,0,0,.06);
+      border-radius: 8px; padding: 1rem 1.1rem;
+      border-left: 4px solid var(--border);
+    }
+    @media (prefers-color-scheme: dark) { .kpi-card { border-color: rgba(255,255,255,.08); } }
+    .kpi-card.green { border-left-color: var(--success); }
+    .kpi-card.blue  { border-left-color: var(--accent); }
+    .kpi-card.navy  { border-left-color: #0969da; }
+    .kpi-card.red   { border-left-color: var(--danger); }
+    .kpi-card.yellow { border-left-color: #f59e0b; }
+    .kpi-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: .35rem; }
+    .kpi-value { font-size: 1.15rem; font-weight: 800; color: var(--text); }
+    .kpi-sub   { font-size: .72rem; color: var(--muted); margin-top: .2rem; }
+
+    .kpi-value.green  { color: var(--success); }
+    .kpi-value.blue   { color: var(--accent); }
+    .kpi-value.red    { color: var(--danger); }
+    .kpi-value.yellow { color: #f59e0b; }
+
+    /* Chart + advisor grid */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+    @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+
+    .card-title { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: .5rem; }
+    .card-sub   { font-size: .78rem; color: var(--muted); margin-bottom: 1rem; }
+
+    .chart-wrap { display: flex; justify-content: center; align-items: center; flex: 1; }
+    .legend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .3rem .75rem; margin-top: .75rem; font-size: .8rem; color: var(--text); }
+
+    .advisor-form { display: flex; flex-direction: column; gap: .65rem; margin-bottom: 1rem; }
+    .field-label { font-size: .82rem; font-weight: 600; color: var(--text); display: block; margin-bottom: .2rem; }
+    .advisor-form input { width: 100%; }
+    .advisor-output {
+      flex: 1; padding: 1rem; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: .88rem; color: var(--muted); min-height: 100px;
+    }
+
+    /* Transaction table */
+    .table-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .75rem; }
+    .table-filters { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .table-filters select { font-size: .82rem; padding: 5px 10px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    thead tr { background: var(--surface2); border-bottom: 1px solid var(--border); }
+    th { padding: .6rem .9rem; text-align: left; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); white-space: nowrap; }
+    th:nth-child(3) { text-align: right; }
+    th:nth-child(4) { text-align: center; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr:last-child { border-bottom: none; }
+    td { padding: .55rem .9rem; color: var(--text); }
+    td:nth-child(1) { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+    td:nth-child(2) { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    td:nth-child(3) { text-align: right; font-family: 'Cascadia Code', Consolas, monospace; font-weight: 600; white-space: nowrap; }
+    td:nth-child(3).income { color: var(--success); }
+    td:nth-child(4) { text-align: center; }
+    td:nth-child(5) { font-size: .72rem; color: var(--muted); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Category tags */
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .72rem; font-weight: 700; }
+    .tag-green  { background: rgba(26,127,55,.12);  color: var(--success); }
+    .tag-blue   { background: rgba(9,105,218,.12);  color: var(--accent); }
+    .tag-purple { background: rgba(124,106,247,.12); color: #8250df; }
+    .tag-red    { background: rgba(207,34,46,.12);  color: var(--danger); }
+    .tag-yellow { background: rgba(245,158,11,.12); color: #b45309; }
+    .tag-gray   { background: rgba(0,0,0,.08);      color: var(--muted); }
+    @media (prefers-color-scheme: dark) {
+      .tag-purple { color: #bc8cff; }
+      .tag-yellow { color: #d29922; }
+    }
+
+    @media (max-width: 600px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+      .app-header h1 { font-size: 1.75rem; }
+    }
+  </style>
 </head>
-<body class="bg-gray-50 font-sans min-h-screen">
+<body>
 <div class="container">
   <a href="../" class="back-link">← Volver al inicio</a>
 
-    <header class="bg-[#1B3A6B] text-white px-6 py-4 flex items-center gap-3 shadow-md">
-        <span class="text-2xl">📊</span>
-        <div>
-            <h1 class="text-lg font-bold leading-tight">📊 Asesor Contable</h1>
-            <p class="text-white/60 text-xs">Analiza cartolas bancarias en CSV, Excel o PDF</p>
+  <header class="app-header">
+    <h1>📊 Asesor Contable</h1>
+    <p>Analiza cartolas bancarias en CSV, Excel o PDF — clasifica ingresos, gastos y honorarios</p>
+  </header>
+
+  <main class="app-main">
+
+    <!-- Upload -->
+    <div class="card">
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div style="font-size:2rem">📂</div>
+        <p style="font-weight:600">Arrastra uno o varios archivos aquí</p>
+        <p style="font-size:.85rem;color:var(--muted)">o haz clic para seleccionar</p>
+        <div class="upload-badges">
+          <span class="fmt-csv">CSV</span>
+          <span class="fmt-excel">XLSX</span>
+          <span class="fmt-pdf">PDF</span>
         </div>
-    </header>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.pdf" multiple style="display:none">
 
-    <div class="max-w-7xl mx-auto px-4 py-8 space-y-6">
-    <main>
+      <div class="estado-carga" id="estadoCarga">
+        <span style="display:inline-block;width:14px;height:14px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite"></span>
+        <span id="estadoTexto">Procesando...</span>
+      </div>
 
-        <!-- Zona de carga -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div class="flex items-start justify-between gap-4 mb-4">
-                <div>
-                    <h2 class="font-bold text-gray-800 mb-1">Cargar Cartolas Bancarias</h2>
-                    <p class="text-sm text-gray-500">Puedes cargar varios archivos a la vez o de a uno. El analisis se recalcula automaticamente con todo el material.</p>
-                </div>
-                <div class="flex gap-1.5 flex-shrink-0 pt-0.5">
-                    <span class="fmt-csv">CSV</span>
-                    <span class="fmt-excel">XLSX</span>
-                    <span class="fmt-pdf">PDF</span>
-                </div>
-            </div>
-
-            <!-- Drop zone -->
-            <div id="dropZone"
-                class="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#1B3A6B] hover:bg-blue-50/30 transition-all">
-                <div class="text-4xl mb-2">📂</div>
-                <p class="text-gray-400 text-sm mb-3">Arrastra uno o varios archivos aqui, o haz clic para seleccionar</p>
-                <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.pdf" multiple class="hidden" />
-                <button onclick="document.getElementById('fileInput').click()"
-                    class="btn-navy px-5 py-2 rounded-lg text-sm font-semibold">
-                    Seleccionar archivos
-                </button>
-            </div>
-
-            <!-- Estado de carga -->
-            <div id="estadoCarga" class="hidden mt-4 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 flex items-center gap-3">
-                <svg class="animate-spin h-4 w-4 text-blue-600 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                </svg>
-                <span id="estadoTexto" class="text-sm text-blue-700 font-medium">Procesando...</span>
-            </div>
-
-            <!-- Lista de archivos cargados -->
-            <div id="listaArchivos" class="hidden mt-4">
-                <div class="flex items-center justify-between mb-2">
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Archivos en el analisis</p>
-                    <button onclick="limpiarTodo()" class="text-xs text-red-400 hover:text-red-600 transition-colors">
-                        Limpiar todo
-                    </button>
-                </div>
-                <div id="chipsArchivos" class="flex flex-wrap gap-2"></div>
-            </div>
-
-            <!-- Nota PDF -->
-            <p id="notaPDF" class="hidden mt-3 text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
-                <strong>PDF:</strong> Solo compatible con PDFs de texto exportados digitalmente. Los PDFs escaneados o con imagenes no funcionan.
-            </p>
+      <div class="lista-archivos" id="listaArchivos">
+        <div class="lista-archivos-label">
+          Archivos en el análisis
+          <button class="limpiar-btn" onclick="limpiarTodo()">Limpiar todo</button>
         </div>
+        <div class="chips-archivos" id="chipsArchivos"></div>
+      </div>
 
-        <!-- Dashboard -->
-        <div id="dashboard" class="hidden space-y-6">
-
-            <!-- Resumen de fuentes -->
-            <div class="bg-[#1B3A6B]/5 border border-[#1B3A6B]/20 rounded-xl px-4 py-3 text-sm text-[#1B3A6B] flex flex-wrap gap-x-6 gap-y-1">
-                <span id="infoFuentes"></span>
-                <span id="infoFechas"></span>
-                <span id="infoTransacciones"></span>
-            </div>
-
-            <!-- Tarjetas resumen -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                <div class="bg-white rounded-xl shadow-sm border-l-4 border-green-400 p-4">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Ingresos Operativos</p>
-                    <p id="totalIngresos" class="text-xl font-bold text-green-600 mt-1">$0</p>
-                    <p class="text-[11px] text-gray-400 mt-0.5">Comisiones y profits</p>
-                </div>
-                <div class="bg-white rounded-xl shadow-sm border-l-4 border-blue-400 p-4">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Gastos Fijos</p>
-                    <p id="totalGastosFijos" class="text-xl font-bold text-blue-600 mt-1">$0</p>
-                    <p class="text-[11px] text-gray-400 mt-0.5">Egresos operativos</p>
-                </div>
-                <div class="bg-white rounded-xl shadow-sm border-l-4 border-[#1B3A6B] p-4">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Flujo de Caja Libre</p>
-                    <p id="flujoCaja" class="text-xl font-bold text-[#1B3A6B] mt-1">$0</p>
-                    <p class="text-[11px] text-gray-400 mt-0.5">Tras gastos e impuestos</p>
-                </div>
-                <div class="bg-white rounded-xl shadow-sm border-l-4 border-red-400 p-4">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Retiros Socios</p>
-                    <p id="totalRetiros" class="text-xl font-bold text-red-600 mt-1">$0</p>
-                    <p class="text-[11px] text-gray-400 mt-0.5">Salidas de capital</p>
-                </div>
-                <div class="bg-white rounded-xl shadow-sm border-l-4 border-yellow-400 p-4">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Gastos Innecesarios</p>
-                    <p id="totalInnecesarios" class="text-xl font-bold text-yellow-600 mt-1">$0</p>
-                    <p class="text-[11px] text-gray-400 mt-0.5">Fugas detectadas</p>
-                </div>
-            </div>
-
-            <!-- Grafico + Asesor -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
-                    <h2 class="font-bold text-gray-800 mb-4">Distribucion de Egresos</h2>
-                    <div class="flex justify-center flex-1 items-center">
-                        <canvas id="graficoEgresos" width="260" height="260"></canvas>
-                    </div>
-                    <div id="leyendaGrafico" class="mt-4 grid grid-cols-2 gap-1.5 text-xs text-gray-600"></div>
-                </div>
-
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
-                    <h2 class="font-bold text-gray-800 mb-0.5">Asesor Financiero</h2>
-                    <p class="text-xs text-gray-400 mb-4">Proyecciones basadas en el historial consolidado</p>
-                    <div class="space-y-3 mb-4">
-                        <div>
-                            <label class="text-xs font-semibold text-gray-600 block mb-1">Meta de ahorro ($)</label>
-                            <input type="number" id="metaMonto" placeholder="Ej. 1500000"
-                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3A6B]/30">
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-gray-600 block mb-1">Plazo en meses</label>
-                            <input type="number" id="metaPlazo" placeholder="Ej. 3"
-                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3A6B]/30">
-                        </div>
-                        <button onclick="calcularConsejo()" class="btn-navy w-full py-2.5 rounded-lg text-sm font-bold">
-                            Generar analisis
-                        </button>
-                    </div>
-                    <div id="consejoSalida"
-                        class="flex-1 p-4 bg-gray-50 rounded-xl text-sm text-gray-600 border border-gray-100 min-h-[120px]">
-                        <em class="text-gray-400">Ingresa tu meta y plazo.</em>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Tabla de transacciones -->
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <h2 class="font-bold text-gray-800">Todas las Transacciones</h2>
-                    <div class="flex items-center gap-2">
-                        <select id="filtroArchivo" onchange="filtrarTabla()"
-                            class="border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600 focus:outline-none bg-white">
-                            <option value="">Todos los archivos</option>
-                        </select>
-                        <select id="filtroCategoria" onchange="filtrarTabla()"
-                            class="border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600 focus:outline-none bg-white">
-                            <option value="">Todas las categorias</option>
-                            <option value="ingreso_operativo">Ingreso Operativo</option>
-                            <option value="gasto_fijo">Gasto Fijo</option>
-                            <option value="impuesto">Impuesto</option>
-                            <option value="retiro_socio">Retiro Socio</option>
-                            <option value="gasto_innecesario">Gasto Innecesario</option>
-                            <option value="transito">Transito</option>
-                            <option value="sin_categorizar">Sin Categorizar</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm">
-                        <thead>
-                            <tr class="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
-                                <th class="py-2.5 px-4 text-left font-semibold">Fecha</th>
-                                <th class="py-2.5 px-4 text-left font-semibold">Detalle</th>
-                                <th class="py-2.5 px-4 text-right font-semibold">Monto</th>
-                                <th class="py-2.5 px-4 text-center font-semibold">Categoria</th>
-                                <th class="py-2.5 px-4 text-left font-semibold">Fuente</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaTransacciones" class="divide-y divide-gray-50"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+      <div class="nota-pdf" id="notaPDF">
+        <strong>PDF:</strong> Solo compatible con PDFs de texto exportados digitalmente.
+      </div>
     </div>
 
-    </main>
-    </div>
-</div><!-- /container -->
+    <!-- Dashboard -->
+    <div class="dashboard" id="dashboard">
+
+      <div class="info-band">
+        <span id="infoFuentes"></span>
+        <span id="infoFechas"></span>
+        <span id="infoTransacciones"></span>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card green">
+          <p class="kpi-label">Ingresos Operativos</p>
+          <p class="kpi-value green" id="totalIngresos">$0</p>
+          <p class="kpi-sub">Comisiones y profits</p>
+        </div>
+        <div class="kpi-card blue">
+          <p class="kpi-label">Gastos Fijos</p>
+          <p class="kpi-value blue" id="totalGastosFijos">$0</p>
+          <p class="kpi-sub">Egresos operativos</p>
+        </div>
+        <div class="kpi-card navy">
+          <p class="kpi-label">Flujo de Caja Libre</p>
+          <p class="kpi-value" id="flujoCaja">$0</p>
+          <p class="kpi-sub">Tras gastos e impuestos</p>
+        </div>
+        <div class="kpi-card red">
+          <p class="kpi-label">Retiros Socios</p>
+          <p class="kpi-value red" id="totalRetiros">$0</p>
+          <p class="kpi-sub">Salidas de capital</p>
+        </div>
+        <div class="kpi-card yellow">
+          <p class="kpi-label">Gastos Innecesarios</p>
+          <p class="kpi-value yellow" id="totalInnecesarios">$0</p>
+          <p class="kpi-sub">Fugas detectadas</p>
+        </div>
+      </div>
+
+      <!-- Chart + Advisor -->
+      <div class="two-col">
+        <div class="card" style="display:flex;flex-direction:column">
+          <p class="card-title">Distribución de Egresos</p>
+          <div class="chart-wrap">
+            <canvas id="graficoEgresos" width="220" height="220"></canvas>
+          </div>
+          <div class="legend-grid" id="leyendaGrafico"></div>
+        </div>
+
+        <div class="card" style="display:flex;flex-direction:column">
+          <p class="card-title">Asesor Financiero</p>
+          <p class="card-sub">Proyecciones basadas en el historial consolidado</p>
+          <div class="advisor-form">
+            <div>
+              <label class="field-label" for="metaMonto">Meta de ahorro ($)</label>
+              <input type="number" id="metaMonto" placeholder="Ej. 1500000">
+            </div>
+            <div>
+              <label class="field-label" for="metaPlazo">Plazo en meses</label>
+              <input type="number" id="metaPlazo" placeholder="Ej. 3">
+            </div>
+            <button onclick="calcularConsejo()">Generar análisis</button>
+          </div>
+          <div class="advisor-output" id="consejoSalida">
+            <em>Ingresa tu meta y plazo.</em>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transaction table -->
+      <div class="card">
+        <div class="table-header">
+          <p class="card-title" style="margin-bottom:0">Todas las Transacciones</p>
+          <div class="table-filters">
+            <select id="filtroArchivo" onchange="filtrarTabla()">
+              <option value="">Todos los archivos</option>
+            </select>
+            <select id="filtroCategoria" onchange="filtrarTabla()">
+              <option value="">Todas las categorías</option>
+              <option value="ingreso_operativo">Ingreso Operativo</option>
+              <option value="gasto_fijo">Gasto Fijo</option>
+              <option value="impuesto">Impuesto</option>
+              <option value="retiro_socio">Retiro Socio</option>
+              <option value="gasto_innecesario">Gasto Innecesario</option>
+              <option value="transito">Tránsito</option>
+              <option value="sin_categorizar">Sin Categorizar</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Detalle</th>
+                <th>Monto</th>
+                <th>Categoría</th>
+                <th>Fuente</th>
+              </tr>
+            </thead>
+            <tbody id="tablaTransacciones"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /dashboard -->
+
+  </main>
+</div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -258,13 +409,10 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-// ── Almacen de archivos cargados ──────────────────────────────────────────────
-// archivos = [{ id, nombre, formato, transacciones[] }]
 let archivos = [];
 let grafico  = null;
 let archivoIdCounter = 0;
 
-// ── Categorias ────────────────────────────────────────────────────────────────
 const CATS = {
     ingreso_operativo: { label:'Ingreso Operativo', cls:'tag-green',
         kw:['comision','profit','honorario','bono','liquidacion'] },
@@ -276,7 +424,7 @@ const CATS = {
         kw:['retiro','danko','patricia','patricio'] },
     gasto_innecesario: { label:'Gasto Innecesario',  cls:'tag-yellow',
         kw:['capuccino','cappuccino','pan de molde','cafe ','cafe,','almuerzo','cena','restau','snack','bar '] },
-    transito:          { label:'Transito',           cls:'tag-gray', kw:[] },
+    transito:          { label:'Tránsito',           cls:'tag-gray', kw:[] },
     sin_categorizar:   { label:'Sin Categorizar',    cls:'tag-gray', kw:[] },
 };
 
@@ -291,7 +439,6 @@ function categorizar(detalle, categoria) {
     return 'sin_categorizar';
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function detectCol(headers, candidates) {
     const lower = headers.map(h=>(h||'').toLowerCase().trim());
     for (const c of candidates) {
@@ -315,49 +462,42 @@ function fmtClass(fmt) {
     return fmt==='csv' ? 'fmt-csv' : fmt==='pdf' ? 'fmt-pdf' : 'fmt-excel';
 }
 
-// ── Estado de carga UI ────────────────────────────────────────────────────────
 function setEstado(msg) {
     document.getElementById('estadoTexto').textContent = msg;
-    document.getElementById('estadoCarga').classList.remove('hidden');
+    document.getElementById('estadoCarga').classList.add('visible');
 }
 function clearEstado() {
-    document.getElementById('estadoCarga').classList.add('hidden');
+    document.getElementById('estadoCarga').classList.remove('visible');
 }
 
-// ── Entrada del archivo ───────────────────────────────────────────────────────
 document.getElementById('fileInput').addEventListener('change', e => {
     const files = Array.from(e.target.files);
     if (files.length) procesarCola(files);
-    e.target.value = ''; // reset so same file can be re-added
+    e.target.value = '';
 });
 
 const dz = document.getElementById('dropZone');
-dz.addEventListener('dragover', e=>{e.preventDefault(); dz.classList.add('border-[#1B3A6B]','bg-blue-50/40');});
-dz.addEventListener('dragleave', ()=>dz.classList.remove('border-[#1B3A6B]','bg-blue-50/40'));
-dz.addEventListener('drop', e=>{
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', ()  => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
     e.preventDefault();
-    dz.classList.remove('border-[#1B3A6B]','bg-blue-50/40');
+    dz.classList.remove('drag-over');
     const files = Array.from(e.dataTransfer.files);
     if (files.length) procesarCola(files);
 });
 
-// Procesa un array de archivos en secuencia (await uno por uno)
 async function procesarCola(files) {
     for (const file of files) {
         const ext = file.name.split('.').pop().toLowerCase();
         setEstado('Procesando ' + file.name + '...');
-        document.getElementById('notaPDF').classList.toggle('hidden', ext!=='pdf');
+        document.getElementById('notaPDF').classList.toggle('visible', ext==='pdf');
         try {
             let txs;
             if      (ext==='csv')              txs = await parsearCSV(file);
             else if (ext==='xlsx'||ext==='xls') txs = await parsearExcel(file);
             else if (ext==='pdf')              txs = await parsearPDF(file);
             else { alert('Formato no soportado: ' + file.name); continue; }
-
-            if (!txs||!txs.length) {
-                alert('No se encontraron transacciones en: ' + file.name);
-                continue;
-            }
+            if (!txs||!txs.length) { alert('No se encontraron transacciones en: ' + file.name); continue; }
             agregarArchivo(file.name, ext==='xls'?'excel':ext, txs);
         } catch(err) {
             alert('Error con ' + file.name + ':\n' + err.message);
@@ -366,7 +506,6 @@ async function procesarCola(files) {
     clearEstado();
 }
 
-// ── Parsers ───────────────────────────────────────────────────────────────────
 function parsearCSV(file) {
     return new Promise((resolve, reject) => {
         Papa.parse(file, {
@@ -398,7 +537,7 @@ async function parsearPDF(file) {
     const pdf  = await pdfjsLib.getDocument({data:buf}).promise;
     const items = [];
     for (let p=1; p<=pdf.numPages; p++) {
-        setEstado('Leyendo pagina ' + p + '/' + pdf.numPages + ' de ' + file.name);
+        setEstado('Leyendo página ' + p + '/' + pdf.numPages + ' de ' + file.name);
         const page    = await pdf.getPage(p);
         const vp      = page.getViewport({scale:1});
         const content = await page.getTextContent();
@@ -425,19 +564,12 @@ function agruparPorFila(items, tol) {
 }
 
 function parsearFilasPDF(filas) {
-    const txs=[];
-    const reDate   = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/;
-    const reAmount = /^-?[\$]?[\d]{1,3}([\.\,][\d]{3})*([\,\.][\d]{1,2})?$/;
+    const txs=[]; const reDate=/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/; const reAmount=/^-?[\$]?[\d]{1,3}([\.\,][\d]{3})*([\,\.][\d]{1,2})?$/;
     filas.forEach(items=>{
         items.sort((a,b)=>a.x-b.x);
         const texts=items.map(i=>i.str);
-        const dateIdx=texts.findIndex(t=>reDate.test(t));
-        if (dateIdx<0) return;
-        const montoIdxs=texts.reduce((acc,t,i)=>{
-            const clean=t.replace(/\$/g,'').replace(/\s/g,'');
-            if (reAmount.test(clean)&&i!==dateIdx) acc.push(i);
-            return acc;
-        },[]);
+        const dateIdx=texts.findIndex(t=>reDate.test(t)); if (dateIdx<0) return;
+        const montoIdxs=texts.reduce((acc,t,i)=>{ const clean=t.replace(/\$/g,'').replace(/\s/g,''); if (reAmount.test(clean)&&i!==dateIdx) acc.push(i); return acc;},[]);
         const firstAmt=montoIdxs.length?montoIdxs[0]:texts.length;
         const detalle=texts.slice(dateIdx+1,firstAmt).join(' ').trim();
         const montoRaw=montoIdxs.length?texts[montoIdxs[montoIdxs.length-1]]:'0';
@@ -446,7 +578,6 @@ function parsearFilasPDF(filas) {
     return txs;
 }
 
-// Convierte filas crudas (cualquier formato) al array de transacciones normalizadas
 function normalizarFilas(filas, nombre) {
     if (!filas.length) return [];
     const headers    = Object.keys(filas[0]);
@@ -454,7 +585,6 @@ function normalizarFilas(filas, nombre) {
     const colDetalle = detectCol(headers,['detalle','descripci','glosa','concepto','description']);
     const colMonto   = detectCol(headers,['monto','importe','cargo','abono','valor','amount']);
     const colCat     = detectCol(headers,['categor']);
-
     return filas.map(row => {
         const fecha   = colFecha   ? String(row[colFecha]  ||'') : '';
         const detalle = colDetalle ? String(row[colDetalle]||'') : Object.values(row).join(' ');
@@ -465,44 +595,32 @@ function normalizarFilas(filas, nombre) {
     });
 }
 
-// ── Gestion de archivos cargados ──────────────────────────────────────────────
 function agregarArchivo(nombre, formato, transacciones) {
     const id = ++archivoIdCounter;
     archivos.push({ id, nombre, formato, transacciones });
-    renderChips();
-    recalcularYActualizar();
+    renderChips(); recalcularYActualizar();
 }
 
 function eliminarArchivo(id) {
     archivos = archivos.filter(a=>a.id!==id);
     renderChips();
-    if (archivos.length) recalcularYActualizar();
-    else ocultarDashboard();
+    if (archivos.length) recalcularYActualizar(); else ocultarDashboard();
 }
 
-function limpiarTodo() {
-    archivos = [];
-    renderChips();
-    ocultarDashboard();
-}
+function limpiarTodo() { archivos = []; renderChips(); ocultarDashboard(); }
 
 function renderChips() {
     const chips = document.getElementById('chipsArchivos');
     const lista = document.getElementById('listaArchivos');
-
-    if (!archivos.length) { lista.classList.add('hidden'); return; }
-    lista.classList.remove('hidden');
-
+    if (!archivos.length) { lista.classList.remove('visible'); return; }
+    lista.classList.add('visible');
     chips.innerHTML = archivos.map(a => `
-        <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+        <div class="chip">
             <span class="${fmtClass(a.formato)}">${a.formato.toUpperCase()}</span>
-            <span class="text-xs text-gray-700 font-medium max-w-[160px] truncate" title="${a.nombre}">${a.nombre}</span>
-            <span class="text-[10px] text-gray-400">${a.transacciones.length} tx</span>
-            <button onclick="eliminarArchivo(${a.id})"
-                class="text-gray-300 hover:text-red-500 ml-1 text-sm leading-none transition-colors" title="Eliminar">×</button>
+            <span class="chip-name" title="${a.nombre}">${a.nombre}</span>
+            <span class="chip-count">${a.transacciones.length} tx</span>
+            <button class="chip-remove" onclick="eliminarArchivo(${a.id})" title="Eliminar">×</button>
         </div>`).join('');
-
-    // Actualizar filtro por archivo en la tabla
     const sel = document.getElementById('filtroArchivo');
     const cur = sel.value;
     sel.innerHTML = '<option value="">Todos los archivos</option>' +
@@ -510,16 +628,10 @@ function renderChips() {
     if (archivos.find(a=>String(a.id)===cur)) sel.value=cur;
 }
 
-// ── Recalculo consolidado ─────────────────────────────────────────────────────
 function recalcularYActualizar() {
-    // Agregar todas las transacciones de todos los archivos
     const todas = archivos.flatMap(a => a.transacciones.map(t => ({...t, archivoId:a.id, archivoNombre:a.nombre})));
-
-    // Calcular totales
     let ing=0, fij=0, imp=0, ret=0, inn=0, tra=0, sin=0;
-    const meses = new Set();
-    const fechas = [];
-
+    const meses = new Set(); const fechas = [];
     todas.forEach(t => {
         switch(t.catKey) {
             case 'ingreso_operativo': ing+=t.monto; break;
@@ -536,17 +648,12 @@ function recalcularYActualizar() {
             if (clave.length>=4) meses.add(clave);
         }
     });
-
     const mesesN  = meses.size||1;
     const fMin    = fechas.length ? fechas.reduce((a,b)=>a<b?a:b) : '';
     const fMax    = fechas.length ? fechas.reduce((a,b)=>a>b?a:b) : '';
-
-    // Actualizar info banda
     document.getElementById('infoFuentes').textContent       = archivos.length + ' archivo' + (archivos.length!==1?'s':'') + ' cargado' + (archivos.length!==1?'s':'');
     document.getElementById('infoFechas').textContent        = fMin ? ('  ' + fMin + ' a ' + fMax) : '';
     document.getElementById('infoTransacciones').textContent = '  ' + todas.length + ' transacciones  |  ' + meses.size + ' mes' + (meses.size!==1?'es':'');
-
-    // Actualizar tarjetas
     const fcl = ing-fij-imp;
     document.getElementById('totalIngresos').textContent    = clp(ing);
     document.getElementById('totalGastosFijos').textContent = clp(fij);
@@ -554,22 +661,16 @@ function recalcularYActualizar() {
     document.getElementById('totalInnecesarios').textContent = clp(inn);
     const elFcl = document.getElementById('flujoCaja');
     elFcl.textContent = clp(fcl);
-    elFcl.className = 'text-xl font-bold mt-1 '+(fcl>=0?'text-[#1B3A6B]':'text-red-600');
-
-    // Guardar en window para asesor y tabla
+    elFcl.className = 'kpi-value ' + (fcl>=0?'blue':'red');
     window._estado = { ingresosOperativos:ing, gastosFijos:fij, impuestos:imp, retiros:ret,
                        gastosInnecesarios:inn, mesesHistoricos:mesesN, todas };
-
     actualizarGrafico(fij,imp,ret,inn,sin);
     renderTabla(todas);
-    document.getElementById('dashboard').classList.remove('hidden');
+    document.getElementById('dashboard').classList.add('visible');
 }
 
-function ocultarDashboard() {
-    document.getElementById('dashboard').classList.add('hidden');
-}
+function ocultarDashboard() { document.getElementById('dashboard').classList.remove('visible'); }
 
-// ── Grafico ───────────────────────────────────────────────────────────────────
 function actualizarGrafico(fij,imp,ret,inn,sin) {
     const vals   = [fij,imp,ret,inn,sin];
     const labels = ['Gastos Fijos','Impuestos','Retiros','Innecesarios','Sin categorizar'];
@@ -579,18 +680,17 @@ function actualizarGrafico(fij,imp,ret,inn,sin) {
     if (grafico) grafico.destroy();
     grafico = new Chart(ctx,{
         type:'doughnut',
-        data:{labels,datasets:[{data:vals.map(Math.round),backgroundColor:colors,borderWidth:2,borderColor:'#fff'}]},
+        data:{labels,datasets:[{data:vals.map(Math.round),backgroundColor:colors,borderWidth:2,borderColor:'transparent'}]},
         options:{responsive:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+clp(c.raw)}}},cutout:'66%'}
     });
     document.getElementById('leyendaGrafico').innerHTML = labels.map((l,i)=>`
-        <div class="flex items-center gap-1.5">
-            <span style="background:${colors[i]}" class="w-2.5 h-2.5 rounded-full flex-shrink-0 inline-block"></span>
-            <span>${l}</span>
-            <span class="ml-auto text-gray-400">${total?Math.round(vals[i]/total*100):0}%</span>
+        <div style="display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--text)">
+            <span style="background:${colors[i]};width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block"></span>
+            <span style="flex:1">${l}</span>
+            <span style="color:var(--muted)">${total?Math.round(vals[i]/total*100):0}%</span>
         </div>`).join('');
 }
 
-// ── Tabla ─────────────────────────────────────────────────────────────────────
 function filtrarTabla() {
     if (!window._estado) return;
     const fCat  = document.getElementById('filtroCategoria').value;
@@ -604,52 +704,48 @@ function filtrarTabla() {
 function renderTabla(txs) {
     const tbody = document.getElementById('tablaTransacciones');
     if (!txs.length) {
-        tbody.innerHTML='<tr><td colspan="5" class="py-8 text-center text-gray-400 text-sm">Sin transacciones.</td></tr>';
+        tbody.innerHTML='<tr><td colspan="5" style="padding:2rem;text-align:center;color:var(--muted);font-size:.88rem">Sin transacciones.</td></tr>';
         return;
     }
     tbody.innerHTML = txs.map(t=>{
         const cat  = CATS[t.catKey]||CATS.sin_categorizar;
         const isIn = t.catKey==='ingreso_operativo';
         const nombreCorto = (t.archivoNombre||'').split('/').pop();
-        return `<tr class="hover:bg-gray-50/80 transition-colors">
-            <td class="py-2 px-4 text-xs text-gray-400 whitespace-nowrap">${t.fecha}</td>
-            <td class="py-2 px-4 text-xs text-gray-700 max-w-xs truncate" title="${t.detalle}">${t.detalle}</td>
-            <td class="py-2 px-4 text-xs text-right font-mono font-semibold whitespace-nowrap ${isIn?'text-green-600':'text-gray-700'}">${isIn?'+':''}${clp(t.monto)}</td>
-            <td class="py-2 px-4 text-center"><span class="tag ${cat.cls}">${cat.label}</span></td>
-            <td class="py-2 px-4 text-[10px] text-gray-400 max-w-[100px] truncate" title="${t.archivoNombre}">${nombreCorto}</td>
+        return `<tr>
+            <td>${t.fecha}</td>
+            <td title="${t.detalle}">${t.detalle}</td>
+            <td class="${isIn?'income':''}">${isIn?'+':''}${clp(t.monto)}</td>
+            <td><span class="tag ${cat.cls}">${cat.label}</span></td>
+            <td title="${t.archivoNombre}">${nombreCorto}</td>
         </tr>`;
     }).join('');
 }
 
-// ── Asesor ────────────────────────────────────────────────────────────────────
 function calcularConsejo() {
     const meta   = parseFloat(document.getElementById('metaMonto').value);
     const plazo  = parseInt(document.getElementById('metaPlazo').value);
     const salida = document.getElementById('consejoSalida');
     const e      = window._estado;
-
     if (!meta||meta<=0||!plazo||plazo<=0) {
-        salida.innerHTML='<span class="text-red-500">Ingresa un monto y un plazo validos.</span>'; return;
+        salida.innerHTML='<span style="color:var(--danger)">Ingresa un monto y un plazo válidos.</span>'; return;
     }
     if (!e||!e.todas.length) {
-        salida.innerHTML='<span class="text-yellow-600">Primero carga al menos una cartola.</span>'; return;
+        salida.innerHTML='<span style="color:var(--warning,#d29922)">Primero carga al menos una cartola.</span>'; return;
     }
-
     const m            = e.mesesHistoricos;
     const flujoMensual = (e.ingresosOperativos-e.gastosFijos-e.impuestos)/m;
     const retirosMens  = e.retiros/m;
     const requerido    = meta/plazo;
-
-    let html=`<p class="mb-3">Para <strong>${clp(meta)}</strong> en <strong>${plazo} mes${plazo!==1?'es':''}</strong> necesitas <strong>${clp(requerido)}/mes</strong>.</p>`;
-    html+='<ul class="space-y-2">';
+    let html=`<p style="margin-bottom:.75rem">Para <strong>${clp(meta)}</strong> en <strong>${plazo} mes${plazo!==1?'es':''}</strong> necesitas <strong>${clp(requerido)}/mes</strong>.</p>`;
+    html+='<ul style="padding-left:1.25rem;display:flex;flex-direction:column;gap:.4rem">';
     if (requerido<=flujoMensual) {
-        html+=`<li class="text-green-700">Meta viable. Flujo libre promedio: ${clp(flujoMensual)}/mes.`;
-        if (retirosMens>flujoMensual-requerido) html+=` Los retiros no deberian superar ${clp(flujoMensual-requerido)}/mes.`;
+        html+=`<li style="color:var(--success)">Meta viable. Flujo libre promedio: ${clp(flujoMensual)}/mes.`;
+        if (retirosMens>flujoMensual-requerido) html+=` Los retiros no deberían superar ${clp(flujoMensual-requerido)}/mes.`;
         html+='</li>';
     } else {
         const deficit=requerido-flujoMensual;
-        html+=`<li class="text-red-600">Deficit de ${clp(deficit)}/mes. El ahorro supera tu flujo actual (${clp(flujoMensual)}/mes).</li>`;
-        html+='<li class="text-gray-700">Plan de accion:<ul class="list-disc pl-4 mt-1 space-y-1">';
+        html+=`<li style="color:var(--danger)">Déficit de ${clp(deficit)}/mes. El ahorro supera tu flujo actual (${clp(flujoMensual)}/mes).</li>`;
+        html+='<li style="color:var(--text)">Plan de acción:<ul style="padding-left:1rem;margin-top:.3rem">';
         if (e.gastosInnecesarios>0) html+=`<li>Eliminar gastos innecesarios libera ${clp(e.gastosInnecesarios/m)}/mes.</li>`;
         html+='<li>Reducir retiros de socios temporalmente.</li>';
         if (flujoMensual>0) html+=`<li>Con el flujo actual la meta se alcanza en <strong>${Math.ceil(meta/flujoMensual)} meses</strong>.</li>`;

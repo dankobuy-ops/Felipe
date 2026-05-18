@@ -4,11 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="El clásico juego de la serpiente. Controles por teclado, WASD, botones en pantalla o desliza en móvil.">
+  <meta name="description" content="El clásico juego de la serpiente. Teclado, WASD, botones o desliza en móvil.">
   <title>Snake</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐍</text></svg>">
   <style>
-    /* === Variables: Modo Claro (default) === */
     :root {
       color-scheme: light dark;
       --bg:      #ffffff;
@@ -29,126 +28,53 @@
       }
     }
 
-    /* === Back link === */
     .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: .4rem;
-      color: var(--muted);
-      font-size: .85rem;
-      text-decoration: none;
-      padding: .4rem 0;
-      transition: color .15s;
+      display: inline-flex; align-items: center; gap: .4rem;
+      color: var(--muted); font-size: .85rem; text-decoration: none;
+      padding: .4rem 0; transition: color .15s; align-self: flex-start;
     }
     .back-link:hover { color: var(--text); }
 
-    /* === Reset & Tipografía === */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
-      line-height: 1.5;
-      padding: 2rem 1.5rem;
-      min-height: 100vh;
+      background-color: var(--bg); color: var(--text); line-height: 1.5;
+      min-height: 100vh; overflow: hidden;
+      display: flex; align-items: center; justify-content: center; padding: 1rem;
     }
 
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 2rem;
-    }
-
-    .app-header { margin-bottom: 1rem; }
-    .app-header h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: 0.5rem; }
-    .app-header p { color: var(--muted); font-size: 1.1rem; }
-
-    .card, .input-group, fieldset {
-      background-color: var(--surface);
-      border: 1px solid rgba(0, 0, 0, 0.06);
-      border-radius: 8px;
-      padding: 1.5rem;
-    }
-    @media (prefers-color-scheme: dark) {
-      .card, .input-group, fieldset { border-color: rgba(255, 255, 255, 0.1); }
-    }
-
-    button, .btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      background-color: var(--accent); color: #ffffff; font-weight: 600;
-      padding: 0.75rem 1.5rem; border-radius: 6px; border: none;
-      cursor: pointer; transition: filter 0.15s;
-    }
-    button:hover, .btn:hover { filter: brightness(1.1); }
-    button:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
-
-    /* === GAME layout === */
-    body {
-      overflow: hidden;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
+    /* === template-game === */
     .game-wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      width: 100%;
-      max-width: 480px;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 1rem; width: 100%; max-width: 480px;
     }
 
     .game-header {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.75rem;
+      width: 100%; display: flex; flex-direction: column; align-items: center; gap: .75rem;
     }
-    .game-header h1 { font-size: 1.5rem; font-weight: 800; color: #4ade80; }
+    .game-header h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; }
 
     .scoreboard { display: flex; gap: 1rem; width: 100%; }
     .score-item {
-      flex: 1;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.5rem 1rem;
-      text-align: center;
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: .5rem 1rem; text-align: center;
     }
     .score-label { display: block; font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
     .score-value { display: block; font-size: 1.5rem; font-weight: 800; color: var(--accent); }
     .score-item--best .score-value { color: #f59e0b; }
 
-    .game-container { position: relative; }
-    .canvas-wrap { position: relative; }
-
-    canvas {
-      border-radius: 16px;
-      display: block;
-      image-rendering: pixelated;
-      touch-action: none;
-      border: 1px solid var(--border);
-    }
+    .game-container { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+    canvas { display: block; image-rendering: pixelated; touch-action: none; }
 
     .overlay {
-      position: absolute; inset: 0;
-      border-radius: 16px;
-      background: rgba(0,0,0,.8);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 12px;
-      backdrop-filter: blur(4px);
+      position: absolute; inset: 0; border-radius: 12px;
+      background: rgba(0,0,0,.82); backdrop-filter: blur(4px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
     }
     .overlay h2 { font-size: 1.6rem; font-weight: 800; color: #f1f5f9; }
-    .overlay .sub { font-size: .9rem; color: #94a3b8; }
-    .overlay .final-score { font-size: 2.2rem; font-weight: 800; color: #4ade80; }
+    .sub { font-size: .9rem; color: #94a3b8; }
+    .final-score { font-size: 2.2rem; font-weight: 800; color: #4ade80; }
 
     .btn-start {
       background: #4ade80; color: #0f172a; border: none;
@@ -159,12 +85,7 @@
     .btn-start:hover { background: #86efac; }
     .btn-start:active { transform: scale(.96); }
 
-    .game-controls {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.5rem;
-    }
+    .game-controls { display: flex; flex-direction: column; align-items: center; gap: .5rem; }
     .ctrl-grid {
       display: grid;
       grid-template-columns: repeat(3, 52px);
@@ -172,9 +93,7 @@
       gap: 6px;
     }
     .ctrl-btn {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
       color: var(--muted); font-size: 1.2rem; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       width: 52px; height: 52px;
@@ -209,13 +128,11 @@
     </header>
 
     <main class="game-container">
-      <div class="canvas-wrap">
-        <canvas id="canvas"></canvas>
-        <div class="overlay" id="overlay">
-          <h2>🐍 Snake</h2>
-          <p class="sub">Usa las flechas, WASD o los botones</p>
-          <button class="btn-start" id="startBtn">Jugar</button>
-        </div>
+      <canvas id="canvas"></canvas>
+      <div class="overlay" id="overlay">
+        <h2>🐍 Snake</h2>
+        <p class="sub">Flechas · WASD · Botones · Desliza</p>
+        <button class="btn-start" id="startBtn">Jugar</button>
       </div>
     </main>
 
