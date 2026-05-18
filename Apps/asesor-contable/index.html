@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>Asesor Contable · Cartola Bancaria</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* === Variables: Modo Claro (default) === */
+        :root {
+          color-scheme: light dark;
+          --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+          --text: #24292f; --muted: #57606a; --accent: #0969da;
+          --navy:#1B3A6B; --gold:#C7A965;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --bg: #0d1117; --surface: #161b22; --border: #30363d;
+            --text: #e6edf3; --muted: #8b949e; --accent: #7c6af7;
+          }
+        }
+        .back-link {
+          display:inline-flex; align-items:center; gap:.4rem;
+          color:var(--muted); font-size:.85rem; text-decoration:none;
+          padding:.4rem 1rem; transition:color .15s;
+        }
+        .back-link:hover { color:var(--text); }
+        .btn-navy  { background:var(--navy); color:#fff; transition:background .15s; }
+        .btn-navy:hover  { background:#142d54; }
+        .tag { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; }
+        .tag-green  { background:#d1fae5; color:#065f46; }
+        .tag-blue   { background:#dbeafe; color:#1e40af; }
+        .tag-purple { background:#ede9fe; color:#5b21b6; }
+        .tag-red    { background:#fee2e2; color:#991b1b; }
+        .tag-yellow { background:#fef3c7; color:#92400e; }
+        .tag-gray   { background:#f3f4f6; color:#6b7280; }
+        .fmt-csv    { background:#d1fae5; color:#065f46; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; }
+        .fmt-excel  { background:#dbeafe; color:#1e40af; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; }
+        .fmt-pdf    { background:#fee2e2; color:#991b1b; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen">
+<a href="../" class="back-link">← Volver al inicio</a>
+
+    <!-- Header -->
+    <div class="bg-[#1B3A6B] text-white px-6 py-4 flex items-center justify-between shadow-md">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl">📊</span>
+            <div>
+                <h1 class="text-lg font-bold leading-tight">Asesor Contable</h1>
+                <p class="text-white/60 text-xs">Multi-cartola — CSV, Excel y PDF</p>
+            </div>
+        </div>
+        <a href="../" class="text-white/70 hover:text-white text-sm transition-colors">← Volver</a>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 py-8 space-y-6">
+
+        <!-- Zona de carga -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div class="flex items-start justify-between gap-4 mb-4">
+                <div>
+                    <h2 class="font-bold text-gray-800 mb-1">Cargar Cartolas Bancarias</h2>
+                    <p class="text-sm text-gray-500">Puedes cargar varios archivos a la vez o de a uno. El analisis se recalcula automaticamente con todo el material.</p>
+                </div>
+                <div class="flex gap-1.5 flex-shrink-0 pt-0.5">
+                    <span class="fmt-csv">CSV</span>
+                    <span class="fmt-excel">XLSX</span>
+                    <span class="fmt-pdf">PDF</span>
+                </div>
+            </div>
+
+            <!-- Drop zone -->
+            <div id="dropZone"
+                class="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#1B3A6B] hover:bg-blue-50/30 transition-all">
+                <div class="text-4xl mb-2">📂</div>
+                <p class="text-gray-400 text-sm mb-3">Arrastra uno o varios archivos aqui, o haz clic para seleccionar</p>
+                <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.pdf" multiple class="hidden" />
+                <button onclick="document.getElementById('fileInput').click()"
+                    class="btn-navy px-5 py-2 rounded-lg text-sm font-semibold">
+                    Seleccionar archivos
+                </button>
+            </div>
+
+            <!-- Estado de carga -->
+            <div id="estadoCarga" class="hidden mt-4 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 flex items-center gap-3">
+                <svg class="animate-spin h-4 w-4 text-blue-600 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
+                <span id="estadoTexto" class="text-sm text-blue-700 font-medium">Procesando...</span>
+            </div>
+
+            <!-- Lista de archivos cargados -->
+            <div id="listaArchivos" class="hidden mt-4">
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Archivos en el analisis</p>
+                    <button onclick="limpiarTodo()" class="text-xs text-red-400 hover:text-red-600 transition-colors">
+                        Limpiar todo
+                    </button>
+                </div>
+                <div id="chipsArchivos" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- Nota PDF -->
+            <p id="notaPDF" class="hidden mt-3 text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                <strong>PDF:</strong> Solo compatible con PDFs de texto exportados digitalmente. Los PDFs escaneados o con imagenes no funcionan.
+            </p>
+        </div>
+
+        <!-- Dashboard -->
+        <div id="dashboard" class="hidden space-y-6">
+
+            <!-- Resumen de fuentes -->
+            <div class="bg-[#1B3A6B]/5 border border-[#1B3A6B]/20 rounded-xl px-4 py-3 text-sm text-[#1B3A6B] flex flex-wrap gap-x-6 gap-y-1">
+                <span id="infoFuentes"></span>
+                <span id="infoFechas"></span>
+                <span id="infoTransacciones"></span>
+            </div>
+
+            <!-- Tarjetas resumen -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-green-400 p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Ingresos Operativos</p>
+                    <p id="totalIngresos" class="text-xl font-bold text-green-600 mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Comisiones y profits</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-blue-400 p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Gastos Fijos</p>
+                    <p id="totalGastosFijos" class="text-xl font-bold text-blue-600 mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Egresos operativos</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-[#1B3A6B] p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Flujo de Caja Libre</p>
+                    <p id="flujoCaja" class="text-xl font-bold text-[#1B3A6B] mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Tras gastos e impuestos</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-red-400 p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Retiros Socios</p>
+                    <p id="totalRetiros" class="text-xl font-bold text-red-600 mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Salidas de capital</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border-l-4 border-yellow-400 p-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Gastos Innecesarios</p>
+                    <p id="totalInnecesarios" class="text-xl font-bold text-yellow-600 mt-1">$0</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Fugas detectadas</p>
+                </div>
+            </div>
+
+            <!-- Grafico + Asesor -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
+                    <h2 class="font-bold text-gray-800 mb-4">Distribucion de Egresos</h2>
+                    <div class="flex justify-center flex-1 items-center">
+                        <canvas id="graficoEgresos" width="260" height="260"></canvas>
+                    </div>
+                    <div id="leyendaGrafico" class="mt-4 grid grid-cols-2 gap-1.5 text-xs text-gray-600"></div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
+                    <h2 class="font-bold text-gray-800 mb-0.5">Asesor Financiero</h2>
+                    <p class="text-xs text-gray-400 mb-4">Proyecciones basadas en el historial consolidado</p>
+                    <div class="space-y-3 mb-4">
+                        <div>
+                            <label class="text-xs font-semibold text-gray-600 block mb-1">Meta de ahorro ($)</label>
+                            <input type="number" id="metaMonto" placeholder="Ej. 1500000"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3A6B]/30">
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-gray-600 block mb-1">Plazo en meses</label>
+                            <input type="number" id="metaPlazo" placeholder="Ej. 3"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3A6B]/30">
+                        </div>
+                        <button onclick="calcularConsejo()" class="btn-navy w-full py-2.5 rounded-lg text-sm font-bold">
+                            Generar analisis
+                        </button>
+                    </div>
+                    <div id="consejoSalida"
+                        class="flex-1 p-4 bg-gray-50 rounded-xl text-sm text-gray-600 border border-gray-100 min-h-[120px]">
+                        <em class="text-gray-400">Ingresa tu meta y plazo.</em>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabla de transacciones -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h2 class="font-bold text-gray-800">Todas las Transacciones</h2>
+                    <div class="flex items-center gap-2">
+                        <select id="filtroArchivo" onchange="filtrarTabla()"
+                            class="border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600 focus:outline-none bg-white">
+                            <option value="">Todos los archivos</option>
+                        </select>
+                        <select id="filtroCategoria" onchange="filtrarTabla()"
+                            class="border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600 focus:outline-none bg-white">
+                            <option value="">Todas las categorias</option>
+                            <option value="ingreso_operativo">Ingreso Operativo</option>
+                            <option value="gasto_fijo">Gasto Fijo</option>
+                            <option value="impuesto">Impuesto</option>
+                            <option value="retiro_socio">Retiro Socio</option>
+                            <option value="gasto_innecesario">Gasto Innecesario</option>
+                            <option value="transito">Transito</option>
+                            <option value="sin_categorizar">Sin Categorizar</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                                <th class="py-2.5 px-4 text-left font-semibold">Fecha</th>
+                                <th class="py-2.5 px-4 text-left font-semibold">Detalle</th>
+                                <th class="py-2.5 px-4 text-right font-semibold">Monto</th>
+                                <th class="py-2.5 px-4 text-center font-semibold">Categoria</th>
+                                <th class="py-2.5 px-4 text-left font-semibold">Fuente</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaTransacciones" class="divide-y divide-gray-50"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── Almacen de archivos cargados ──────────────────────────────────────────────
+// archivos = [{ id, nombre, formato, transacciones[] }]
+let archivos = [];
+let grafico  = null;
+let archivoIdCounter = 0;
+
+// ── Categorias ────────────────────────────────────────────────────────────────
+const CATS = {
+    ingreso_operativo: { label:'Ingreso Operativo', cls:'tag-green',
+        kw:['comision','profit','honorario','bono','liquidacion'] },
+    gasto_fijo:        { label:'Gasto Fijo',        cls:'tag-blue',
+        kw:['microsoft','creattiva','cowork','brzovic','patente','arriendo','seguro','licencia','suscripcion'] },
+    impuesto:          { label:'Impuesto',           cls:'tag-purple',
+        kw:['iva','tesoreri','impto','sii','impuesto','ppm'] },
+    retiro_socio:      { label:'Retiro Socio',       cls:'tag-red',
+        kw:['retiro','danko','patricia','patricio'] },
+    gasto_innecesario: { label:'Gasto Innecesario',  cls:'tag-yellow',
+        kw:['capuccino','cappuccino','pan de molde','cafe ','cafe,','almuerzo','cena','restau','snack','bar '] },
+    transito:          { label:'Transito',           cls:'tag-gray', kw:[] },
+    sin_categorizar:   { label:'Sin Categorizar',    cls:'tag-gray', kw:[] },
+};
+
+function categorizar(detalle, categoria) {
+    const d = (detalle||'').toLowerCase();
+    const c = (categoria||'').toLowerCase();
+    if (c==='cliente' || (d.includes('devoluci') && d.includes('pago'))) return 'transito';
+    for (const [key,cat] of Object.entries(CATS)) {
+        if (key==='transito'||key==='sin_categorizar') continue;
+        if (cat.kw.some(k=>d.includes(k))) return key;
+    }
+    return 'sin_categorizar';
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function detectCol(headers, candidates) {
+    const lower = headers.map(h=>(h||'').toLowerCase().trim());
+    for (const c of candidates) {
+        const idx = lower.findIndex(h=>h.includes(c));
+        if (idx>=0) return headers[idx];
+    }
+    return null;
+}
+
+function parseMonto(raw) {
+    if (raw===null||raw===undefined||raw==='') return 0;
+    const s = String(raw).replace(/\$/g,'').replace(/\./g,'').replace(/,/g,'.').trim();
+    return Math.abs(parseFloat(s)||0);
+}
+
+function clp(n) {
+    return new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(Math.round(n));
+}
+
+function fmtClass(fmt) {
+    return fmt==='csv' ? 'fmt-csv' : fmt==='pdf' ? 'fmt-pdf' : 'fmt-excel';
+}
+
+// ── Estado de carga UI ────────────────────────────────────────────────────────
+function setEstado(msg) {
+    document.getElementById('estadoTexto').textContent = msg;
+    document.getElementById('estadoCarga').classList.remove('hidden');
+}
+function clearEstado() {
+    document.getElementById('estadoCarga').classList.add('hidden');
+}
+
+// ── Entrada del archivo ───────────────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', e => {
+    const files = Array.from(e.target.files);
+    if (files.length) procesarCola(files);
+    e.target.value = ''; // reset so same file can be re-added
+});
+
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e=>{e.preventDefault(); dz.classList.add('border-[#1B3A6B]','bg-blue-50/40');});
+dz.addEventListener('dragleave', ()=>dz.classList.remove('border-[#1B3A6B]','bg-blue-50/40'));
+dz.addEventListener('drop', e=>{
+    e.preventDefault();
+    dz.classList.remove('border-[#1B3A6B]','bg-blue-50/40');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) procesarCola(files);
+});
+
+// Procesa un array de archivos en secuencia (await uno por uno)
+async function procesarCola(files) {
+    for (const file of files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        setEstado('Procesando ' + file.name + '...');
+        document.getElementById('notaPDF').classList.toggle('hidden', ext!=='pdf');
+        try {
+            let txs;
+            if      (ext==='csv')              txs = await parsearCSV(file);
+            else if (ext==='xlsx'||ext==='xls') txs = await parsearExcel(file);
+            else if (ext==='pdf')              txs = await parsearPDF(file);
+            else { alert('Formato no soportado: ' + file.name); continue; }
+
+            if (!txs||!txs.length) {
+                alert('No se encontraron transacciones en: ' + file.name);
+                continue;
+            }
+            agregarArchivo(file.name, ext==='xls'?'excel':ext, txs);
+        } catch(err) {
+            alert('Error con ' + file.name + ':\n' + err.message);
+        }
+    }
+    clearEstado();
+}
+
+// ── Parsers ───────────────────────────────────────────────────────────────────
+function parsearCSV(file) {
+    return new Promise((resolve, reject) => {
+        Papa.parse(file, {
+            header:true, skipEmptyLines:true,
+            complete: r => resolve(normalizarFilas(r.data, file.name)),
+            error: e => reject(new Error(e.message||'Error CSV'))
+        });
+    });
+}
+
+function parsearExcel(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const wb   = XLSX.read(e.target.result, {type:'array', cellDates:true});
+                const ws   = wb.Sheets[wb.SheetNames[0]];
+                const data = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+                resolve(normalizarFilas(data, file.name));
+            } catch(err) { reject(err); }
+        };
+        reader.onerror = () => reject(new Error('Error al leer Excel'));
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+async function parsearPDF(file) {
+    const buf  = await file.arrayBuffer();
+    const pdf  = await pdfjsLib.getDocument({data:buf}).promise;
+    const items = [];
+    for (let p=1; p<=pdf.numPages; p++) {
+        setEstado('Leyendo pagina ' + p + '/' + pdf.numPages + ' de ' + file.name);
+        const page    = await pdf.getPage(p);
+        const vp      = page.getViewport({scale:1});
+        const content = await page.getTextContent();
+        content.items.forEach(item => {
+            const s = item.str.trim();
+            if (s) items.push({str:s, x:Math.round(item.transform[4]), y:Math.round(vp.height-item.transform[5]), page:p});
+        });
+    }
+    const rows = agruparPorFila(items, 6);
+    return parsearFilasPDF(rows);
+}
+
+function agruparPorFila(items, tol) {
+    items.sort((a,b)=>a.page!==b.page?a.page-b.page:a.y-b.y||a.x-b.x);
+    const filas=[]; let fila=[], refY=null, refPage=null;
+    items.forEach(item=>{
+        if (refY===null||item.page!==refPage||Math.abs(item.y-refY)>tol) {
+            if (fila.length) filas.push([...fila]);
+            fila=[item]; refY=item.y; refPage=item.page;
+        } else { fila.push(item); refY=Math.round((refY+item.y)/2); }
+    });
+    if (fila.length) filas.push(fila);
+    return filas;
+}
+
+function parsearFilasPDF(filas) {
+    const txs=[];
+    const reDate   = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/;
+    const reAmount = /^-?[\$]?[\d]{1,3}([\.\,][\d]{3})*([\,\.][\d]{1,2})?$/;
+    filas.forEach(items=>{
+        items.sort((a,b)=>a.x-b.x);
+        const texts=items.map(i=>i.str);
+        const dateIdx=texts.findIndex(t=>reDate.test(t));
+        if (dateIdx<0) return;
+        const montoIdxs=texts.reduce((acc,t,i)=>{
+            const clean=t.replace(/\$/g,'').replace(/\s/g,'');
+            if (reAmount.test(clean)&&i!==dateIdx) acc.push(i);
+            return acc;
+        },[]);
+        const firstAmt=montoIdxs.length?montoIdxs[0]:texts.length;
+        const detalle=texts.slice(dateIdx+1,firstAmt).join(' ').trim();
+        const montoRaw=montoIdxs.length?texts[montoIdxs[montoIdxs.length-1]]:'0';
+        txs.push({Fecha:texts[dateIdx], Detalle:detalle||texts.join(' '), Monto:montoRaw});
+    });
+    return txs;
+}
+
+// Convierte filas crudas (cualquier formato) al array de transacciones normalizadas
+function normalizarFilas(filas, nombre) {
+    if (!filas.length) return [];
+    const headers    = Object.keys(filas[0]);
+    const colFecha   = detectCol(headers,['fecha','date']);
+    const colDetalle = detectCol(headers,['detalle','descripci','glosa','concepto','description']);
+    const colMonto   = detectCol(headers,['monto','importe','cargo','abono','valor','amount']);
+    const colCat     = detectCol(headers,['categor']);
+
+    return filas.map(row => {
+        const fecha   = colFecha   ? String(row[colFecha]  ||'') : '';
+        const detalle = colDetalle ? String(row[colDetalle]||'') : Object.values(row).join(' ');
+        const cat     = colCat     ? String(row[colCat]   ||'') : '';
+        const monto   = parseMonto(colMonto?row[colMonto]:'0');
+        const catKey  = categorizar(detalle, cat);
+        return { fecha, detalle, monto, catKey };
+    });
+}
+
+// ── Gestion de archivos cargados ──────────────────────────────────────────────
+function agregarArchivo(nombre, formato, transacciones) {
+    const id = ++archivoIdCounter;
+    archivos.push({ id, nombre, formato, transacciones });
+    renderChips();
+    recalcularYActualizar();
+}
+
+function eliminarArchivo(id) {
+    archivos = archivos.filter(a=>a.id!==id);
+    renderChips();
+    if (archivos.length) recalcularYActualizar();
+    else ocultarDashboard();
+}
+
+function limpiarTodo() {
+    archivos = [];
+    renderChips();
+    ocultarDashboard();
+}
+
+function renderChips() {
+    const chips = document.getElementById('chipsArchivos');
+    const lista = document.getElementById('listaArchivos');
+
+    if (!archivos.length) { lista.classList.add('hidden'); return; }
+    lista.classList.remove('hidden');
+
+    chips.innerHTML = archivos.map(a => `
+        <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+            <span class="${fmtClass(a.formato)}">${a.formato.toUpperCase()}</span>
+            <span class="text-xs text-gray-700 font-medium max-w-[160px] truncate" title="${a.nombre}">${a.nombre}</span>
+            <span class="text-[10px] text-gray-400">${a.transacciones.length} tx</span>
+            <button onclick="eliminarArchivo(${a.id})"
+                class="text-gray-300 hover:text-red-500 ml-1 text-sm leading-none transition-colors" title="Eliminar">×</button>
+        </div>`).join('');
+
+    // Actualizar filtro por archivo en la tabla
+    const sel = document.getElementById('filtroArchivo');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Todos los archivos</option>' +
+        archivos.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('');
+    if (archivos.find(a=>String(a.id)===cur)) sel.value=cur;
+}
+
+// ── Recalculo consolidado ─────────────────────────────────────────────────────
+function recalcularYActualizar() {
+    // Agregar todas las transacciones de todos los archivos
+    const todas = archivos.flatMap(a => a.transacciones.map(t => ({...t, archivoId:a.id, archivoNombre:a.nombre})));
+
+    // Calcular totales
+    let ing=0, fij=0, imp=0, ret=0, inn=0, tra=0, sin=0;
+    const meses = new Set();
+    const fechas = [];
+
+    todas.forEach(t => {
+        switch(t.catKey) {
+            case 'ingreso_operativo': ing+=t.monto; break;
+            case 'gasto_fijo':        fij+=t.monto; break;
+            case 'impuesto':          imp+=t.monto; break;
+            case 'retiro_socio':      ret+=t.monto; break;
+            case 'gasto_innecesario': inn+=t.monto; break;
+            case 'transito':          tra+=t.monto; break;
+            default:                  sin+=t.monto;
+        }
+        if (t.fecha) {
+            fechas.push(t.fecha);
+            const clave = t.fecha.includes('-') ? t.fecha.substring(0,7) : t.fecha.substring(3,10);
+            if (clave.length>=4) meses.add(clave);
+        }
+    });
+
+    const mesesN  = meses.size||1;
+    const fMin    = fechas.length ? fechas.reduce((a,b)=>a<b?a:b) : '';
+    const fMax    = fechas.length ? fechas.reduce((a,b)=>a>b?a:b) : '';
+
+    // Actualizar info banda
+    document.getElementById('infoFuentes').textContent       = archivos.length + ' archivo' + (archivos.length!==1?'s':'') + ' cargado' + (archivos.length!==1?'s':'');
+    document.getElementById('infoFechas').textContent        = fMin ? ('  ' + fMin + ' a ' + fMax) : '';
+    document.getElementById('infoTransacciones').textContent = '  ' + todas.length + ' transacciones  |  ' + meses.size + ' mes' + (meses.size!==1?'es':'');
+
+    // Actualizar tarjetas
+    const fcl = ing-fij-imp;
+    document.getElementById('totalIngresos').textContent    = clp(ing);
+    document.getElementById('totalGastosFijos').textContent = clp(fij);
+    document.getElementById('totalRetiros').textContent      = clp(ret);
+    document.getElementById('totalInnecesarios').textContent = clp(inn);
+    const elFcl = document.getElementById('flujoCaja');
+    elFcl.textContent = clp(fcl);
+    elFcl.className = 'text-xl font-bold mt-1 '+(fcl>=0?'text-[#1B3A6B]':'text-red-600');
+
+    // Guardar en window para asesor y tabla
+    window._estado = { ingresosOperativos:ing, gastosFijos:fij, impuestos:imp, retiros:ret,
+                       gastosInnecesarios:inn, mesesHistoricos:mesesN, todas };
+
+    actualizarGrafico(fij,imp,ret,inn,sin);
+    renderTabla(todas);
+    document.getElementById('dashboard').classList.remove('hidden');
+}
+
+function ocultarDashboard() {
+    document.getElementById('dashboard').classList.add('hidden');
+}
+
+// ── Grafico ───────────────────────────────────────────────────────────────────
+function actualizarGrafico(fij,imp,ret,inn,sin) {
+    const vals   = [fij,imp,ret,inn,sin];
+    const labels = ['Gastos Fijos','Impuestos','Retiros','Innecesarios','Sin categorizar'];
+    const colors = ['#3b82f6','#8b5cf6','#ef4444','#f59e0b','#9ca3af'];
+    const total  = vals.reduce((a,b)=>a+b,0);
+    const ctx    = document.getElementById('graficoEgresos').getContext('2d');
+    if (grafico) grafico.destroy();
+    grafico = new Chart(ctx,{
+        type:'doughnut',
+        data:{labels,datasets:[{data:vals.map(Math.round),backgroundColor:colors,borderWidth:2,borderColor:'#fff'}]},
+        options:{responsive:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+clp(c.raw)}}},cutout:'66%'}
+    });
+    document.getElementById('leyendaGrafico').innerHTML = labels.map((l,i)=>`
+        <div class="flex items-center gap-1.5">
+            <span style="background:${colors[i]}" class="w-2.5 h-2.5 rounded-full flex-shrink-0 inline-block"></span>
+            <span>${l}</span>
+            <span class="ml-auto text-gray-400">${total?Math.round(vals[i]/total*100):0}%</span>
+        </div>`).join('');
+}
+
+// ── Tabla ─────────────────────────────────────────────────────────────────────
+function filtrarTabla() {
+    if (!window._estado) return;
+    const fCat  = document.getElementById('filtroCategoria').value;
+    const fArch = document.getElementById('filtroArchivo').value;
+    let txs = window._estado.todas;
+    if (fCat)  txs = txs.filter(t=>t.catKey===fCat);
+    if (fArch) txs = txs.filter(t=>String(t.archivoId)===fArch);
+    renderTabla(txs);
+}
+
+function renderTabla(txs) {
+    const tbody = document.getElementById('tablaTransacciones');
+    if (!txs.length) {
+        tbody.innerHTML='<tr><td colspan="5" class="py-8 text-center text-gray-400 text-sm">Sin transacciones.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = txs.map(t=>{
+        const cat  = CATS[t.catKey]||CATS.sin_categorizar;
+        const isIn = t.catKey==='ingreso_operativo';
+        const nombreCorto = (t.archivoNombre||'').split('/').pop();
+        return `<tr class="hover:bg-gray-50/80 transition-colors">
+            <td class="py-2 px-4 text-xs text-gray-400 whitespace-nowrap">${t.fecha}</td>
+            <td class="py-2 px-4 text-xs text-gray-700 max-w-xs truncate" title="${t.detalle}">${t.detalle}</td>
+            <td class="py-2 px-4 text-xs text-right font-mono font-semibold whitespace-nowrap ${isIn?'text-green-600':'text-gray-700'}">${isIn?'+':''}${clp(t.monto)}</td>
+            <td class="py-2 px-4 text-center"><span class="tag ${cat.cls}">${cat.label}</span></td>
+            <td class="py-2 px-4 text-[10px] text-gray-400 max-w-[100px] truncate" title="${t.archivoNombre}">${nombreCorto}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Asesor ────────────────────────────────────────────────────────────────────
+function calcularConsejo() {
+    const meta   = parseFloat(document.getElementById('metaMonto').value);
+    const plazo  = parseInt(document.getElementById('metaPlazo').value);
+    const salida = document.getElementById('consejoSalida');
+    const e      = window._estado;
+
+    if (!meta||meta<=0||!plazo||plazo<=0) {
+        salida.innerHTML='<span class="text-red-500">Ingresa un monto y un plazo validos.</span>'; return;
+    }
+    if (!e||!e.todas.length) {
+        salida.innerHTML='<span class="text-yellow-600">Primero carga al menos una cartola.</span>'; return;
+    }
+
+    const m            = e.mesesHistoricos;
+    const flujoMensual = (e.ingresosOperativos-e.gastosFijos-e.impuestos)/m;
+    const retirosMens  = e.retiros/m;
+    const requerido    = meta/plazo;
+
+    let html=`<p class="mb-3">Para <strong>${clp(meta)}</strong> en <strong>${plazo} mes${plazo!==1?'es':''}</strong> necesitas <strong>${clp(requerido)}/mes</strong>.</p>`;
+    html+='<ul class="space-y-2">';
+    if (requerido<=flujoMensual) {
+        html+=`<li class="text-green-700">Meta viable. Flujo libre promedio: ${clp(flujoMensual)}/mes.`;
+        if (retirosMens>flujoMensual-requerido) html+=` Los retiros no deberian superar ${clp(flujoMensual-requerido)}/mes.`;
+        html+='</li>';
+    } else {
+        const deficit=requerido-flujoMensual;
+        html+=`<li class="text-red-600">Deficit de ${clp(deficit)}/mes. El ahorro supera tu flujo actual (${clp(flujoMensual)}/mes).</li>`;
+        html+='<li class="text-gray-700">Plan de accion:<ul class="list-disc pl-4 mt-1 space-y-1">';
+        if (e.gastosInnecesarios>0) html+=`<li>Eliminar gastos innecesarios libera ${clp(e.gastosInnecesarios/m)}/mes.</li>`;
+        html+='<li>Reducir retiros de socios temporalmente.</li>';
+        if (flujoMensual>0) html+=`<li>Con el flujo actual la meta se alcanza en <strong>${Math.ceil(meta/flujoMensual)} meses</strong>.</li>`;
+        html+='</ul></li>';
+    }
+    html+='</ul>';
+    salida.innerHTML=html;
+}
+</script>
+</body>
+</html>

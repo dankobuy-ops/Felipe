@@ -3,34 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="dark light">
+  <meta name="color-scheme" content="light dark">
   <title>Apps — dankobuy</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      color-scheme: dark light;
-      --bg:      #0d1117;
-      --surface: #161b22;
-      --border:  #30363d;
-      --accent:  #7c6af7;
-      --text:    #e6edf3;
-      --muted:   #8b949e;
+      color-scheme: light dark;
+      --bg:      #ffffff;
+      --surface: #f6f8fa;
+      --border:  #d0d7de;
+      --accent:  #0969da;
+      --text:    #24292f;
+      --muted:   #57606a;
       --radius:  12px;
     }
-    @media (prefers-color-scheme: light) {
+    @media (prefers-color-scheme: dark) {
       :root {
-        --bg:      #ffffff;
-        --surface: #f6f8fa;
-        --border:  #d0d7de;
-        --text:    #1f2328;
-        --muted:   #656d76;
-      }
-      .hero h1 {
-        background: linear-gradient(135deg, #1f2328 30%, var(--accent));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        --bg:      #0d1117;
+        --surface: #161b22;
+        --border:  #30363d;
+        --accent:  #7c6af7;
+        --text:    #e6edf3;
+        --muted:   #8b949e;
       }
     }
 
@@ -50,7 +45,7 @@
       font-size: 2.2rem;
       font-weight: 700;
       letter-spacing: -.5px;
-      background: linear-gradient(135deg, #fff 30%, var(--accent));
+      background: linear-gradient(135deg, var(--text) 30%, var(--accent));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -116,6 +111,34 @@
         <span class="card__title">CSV Consolidador</span>
         <span class="card__desc">Fusiona múltiples archivos CSV en uno solo, añadiendo automáticamente una columna con el nombre del archivo de origen.</span>
         <span class="card__tag">Datos</span>
+      </a>
+
+      <a href="pdf-merger/" class="card">
+        <span class="card__icon">🖨️</span>
+        <span class="card__title">PDF Merger</span>
+        <span class="card__desc">Une imágenes JPG/PNG y documentos TXT/DOCX en un solo PDF, con control de calidad de imagen.</span>
+        <span class="card__tag">PDF</span>
+      </a>
+
+      <a href="asesor-contable/" class="card">
+        <span class="card__icon">📊</span>
+        <span class="card__title">Asesor Contable</span>
+        <span class="card__desc">Analiza cartolas bancarias en CSV, Excel o PDF y clasifica automáticamente ingresos, comisiones y honorarios.</span>
+        <span class="card__tag">Finanzas</span>
+      </a>
+
+      <a href="renta2026/" class="card">
+        <span class="card__icon">📋</span>
+        <span class="card__title">Asistente Renta 2026</span>
+        <span class="card__desc">Guía paso a paso para la declaración de renta 2026, orientada a corredoras de seguros en Chile.</span>
+        <span class="card__tag">SII · Chile</span>
+      </a>
+
+      <a href="snake/" class="card">
+        <span class="card__icon">🐍</span>
+        <span class="card__title">Snake</span>
+        <span class="card__desc">El clásico juego de la serpiente. Teclado, WASD, botones en pantalla o desliza en móvil.</span>
+        <span class="card__tag">Juego</span>
       </a>
 
     </div>
