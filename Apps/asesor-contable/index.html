@@ -30,6 +30,29 @@
           padding:.4rem 1rem; transition:color .15s;
         }
         .back-link:hover { color:var(--text); }
+
+        /* === Reset & Tipografía === */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        .container {
+          max-width: 800px;
+          margin: 0 auto;
+          display: flex;
+          flex-direction: column;
+          gap: 2rem;
+        }
+
+        .app-header { margin-bottom: 1rem; }
+        .app-header h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: 0.5rem; }
+        .app-header p { color: var(--muted); font-size: 1.1rem; }
+
+        button:not([class*="bg-"]), .btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          background-color: var(--accent); color: #ffffff; font-weight: 600;
+          padding: 0.75rem 1.5rem; border-radius: 6px; border: none;
+          cursor: pointer; transition: filter 0.15s;
+        }
+        button:not([class*="bg-"]):hover { filter: brightness(1.1); }
         .btn-navy  { background:var(--navy); color:#fff; transition:background .15s; }
         .btn-navy:hover  { background:#142d54; }
         .tag { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; }
