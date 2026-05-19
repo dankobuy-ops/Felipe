@@ -1,1 +1,24 @@
-.claude/
+# Ignorar por defecto archivos de código y entornos de desarrollo
+*.py
+*.js
+*.jsx
+*.ts
+*.tsx
+*.html
+*.css
+*.json
+*.sql
+node_modules/
+venv/
+.venv/
+dist/
+build/
+
+# REGLAS DE EXCEPCIÓN: Forzar el rastreo de contexto y memorias
+!**/CLAUDE.md
+!**/.claude/
+!**/.claude/**
+!*.docx
+!*.pdf
+!*.md
+!*.csv
