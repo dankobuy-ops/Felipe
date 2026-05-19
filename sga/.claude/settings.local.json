@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/Scripts/python -c ' *)",
+      "Bash(venv/Scripts/uvicorn app.main:app --port 8000 --log-level warning)",
+      "Bash(Start-Sleep 3)",
+      "Bash(PYTHONIOENCODING=utf-8 C:/claude/sga/venv/Scripts/uvicorn app.main:app --port 8000 --log-level warning)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(pkill -f \"uvicorn app.main\")",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/uvicorn app.main:app --port 8000 --log-level warning)",
+      "Bash(netstat -ano)",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:5173)",
+      "Skill(gstack)",
+      "Bash(venv/Scripts/python)",
+      "Bash(venv/Scripts/python -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(venv/Scripts/pip show *)",
+      "Bash(venv/Scripts/pip install *)",
+      "Bash(venv/Scripts/python -c \"import pandas; print\\('pandas', pandas.__version__\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/migracion_maestra.py --help)",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/uvicorn app.main:app --reload --port 8080)",
+      "Bash(curl -s http://localhost:8080/health)",
+      "Read(//c/Claude/Recursos/OI61/CSV/**)",
+      "Read(//c/Claude/Recursos/OI61/**)",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/migracion_maestra.py --dry-run)",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/migracion_maestra.py)",
+      "Bash(where pandoc *)",
+      "Bash(venv/Scripts/python -c \"import docx; print\\('docx OK'\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/alembic upgrade head)",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python -c ' *)",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/migracion_maestra.py --tabla companias --dry-run)",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/migracion_maestra.py --tabla companias)"
+    ]
+  }
+}

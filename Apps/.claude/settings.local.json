@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C C:\\\\Claude add Apps/)",
+      "Bash(git -C C:\\\\Claude commit -m \"feat\\(apps\\): añadir nueva app csv-consolidador y actualizar lanzador\")",
+      "Bash(git -C C:\\\\Claude push origin main)",
+      "Bash(dir C:\\\\Claude\\\\Apps\\\\csv-consolidador *)",
+      "Bash(findstr /i \"\\\\.css\\\\|\\\\.html\")",
+      "Bash(Get-ChildItem C:\\\\Claude\\\\Apps\\\\renta2026 *)"
+    ]
+  }
+}
