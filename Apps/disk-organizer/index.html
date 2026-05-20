@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Escanea tus discos duros, analiza archivos personales y propone una estructura lógica para ordenarlos. Requiere backend.py en localhost:5000.">
+  <meta name="description" content="Escanea tus discos, analiza archivos personales y propone una estructura lógica para ordenarlos. Motor local descargable, sin instalación.">
   <title>Disk Organizer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>">
   <link rel="stylesheet" href="style.css">
@@ -25,104 +25,137 @@
     <div class="container-wide">
       <main class="app-main">
 
-        <!-- ── PASO 1: Escanear ─────────────────────────────────────────── -->
-        <section class="panel" id="sectionScan">
-          <div class="panel-header">
-            <h2 class="panel-title">🔌 Conexión y Escaneo</h2>
-            <p class="panel-sub">El backend local gestiona el acceso al sistema de archivos</p>
-          </div>
+        <!-- ══════════════════════════════════════════════════════════════════
+             ESTADO A — DESCONECTADO: Asistente de configuración
+             Visible por defecto, se oculta cuando el backend responde
+        ═══════════════════════════════════════════════════════════════════ -->
+        <section class="panel assistant-panel" id="assistantPanel">
 
-          <!-- Backend offline instructions -->
-          <div class="alert-box" id="backendInstructions">
-            <div class="alert-icon">⚠️</div>
+          <div class="assistant-header">
+            <div class="assistant-icon">🔴</div>
             <div>
-              <p class="alert-title">Backend no detectado en localhost:5000</p>
-              <p class="alert-body">Para iniciar el backend ejecuta en tu terminal:</p>
-              <div class="code-block">
-                <code>pip install flask</code><br>
-                <code>python backend.py</code>
-              </div>
-              <p class="alert-body" style="margin-top:.5rem">El archivo <strong>backend.py</strong> está en la misma carpeta que esta página.</p>
+              <h2 class="assistant-title">Motor local no detectado</h2>
+              <p class="assistant-sub">Para escanear y ordenar los discos de esta PC, sigue estos 3 pasos:</p>
             </div>
           </div>
 
-          <!-- Scan form -->
+          <div class="steps-list">
+
+            <!-- PASO 1 — Descargar -->
+            <div class="step">
+              <div class="step-badge">1</div>
+              <div class="step-body">
+                <p class="step-title">Descarga el motor local</p>
+                <p class="step-desc">Un ejecutable ligero (~6 MB) que le permite a esta web leer y organizar tu sistema de archivos de forma completamente local.</p>
+                <div class="step-actions">
+                  <a class="btn-download"
+                     href="https://dankobuy-ops.github.io/Apps/disk-organizer/backend.exe"
+                     download="backend.exe">
+                    ⬇ Descargar backend.exe
+                  </a>
+                  <span class="step-alt">
+                    ¿Tienes Python?
+                    <code>pip install flask &amp;&amp; python backend.py</code>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- PASO 2 — Ejecutar -->
+            <div class="step">
+              <div class="step-badge">2</div>
+              <div class="step-body">
+                <p class="step-title">Ejecuta el motor en segundo plano</p>
+                <p class="step-desc">Haz doble clic sobre <strong>backend.exe</strong>. Aparecerá una ventana de terminal que debe permanecer abierta mientras usas la app.</p>
+                <div class="terminal-preview" aria-hidden="true">
+                  <span>╔══════════════════════════════════════╗</span>
+                  <span>║  🗂  Disk Organizer — Backend  v1.1  ║</span>
+                  <span>║   Escuchando en localhost:5000        ║</span>
+                  <span>║   Mantén esta ventana abierta         ║</span>
+                  <span>╚══════════════════════════════════════╝</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- PASO 3 — Verificar -->
+            <div class="step step--last">
+              <div class="step-badge step-badge--accent">3</div>
+              <div class="step-body">
+                <p class="step-title">Verifica la conexión</p>
+                <p class="step-desc">Una vez que el motor esté ejecutándose, haz clic para conectar y empezar a escanear.</p>
+                <button class="btn-verify" id="btnVerify" onclick="verifyConnection()">
+                  <span class="spinner hidden" id="verifySpinner"></span>
+                  <span id="verifyLabel">🔌 Verificar Conexión</span>
+                </button>
+                <p class="verify-error hidden" id="verifyError">
+                  ❌ No se detectó el motor en localhost:5000. Asegúrate de que la ventana de terminal esté abierta.
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             ESTADO B — CONECTADO: Panel de escaneo
+             Oculto por defecto, se muestra cuando el backend responde
+        ═══════════════════════════════════════════════════════════════════ -->
+        <section class="panel" id="scanPanel" hidden>
+          <div class="panel-header">
+            <h2 class="panel-title">🔍 Escanear disco</h2>
+            <p class="panel-sub">Escribe la ruta a analizar. Se omiten automáticamente las carpetas de sistema.</p>
+          </div>
+
           <div class="scan-form">
             <div class="input-row">
               <label class="field-label" for="inputPath">Ruta a escanear</label>
               <div class="input-with-btn">
-                <input type="text" id="inputPath" placeholder="ej: D:\  o  C:\Users\Danko\Documents" autocomplete="off" spellcheck="false">
-                <button id="btnScan" onclick="scanPath()" disabled>🔍 Escanear</button>
+                <input type="text" id="inputPath"
+                  placeholder="ej: D:\  o  C:\Users\Danko\Documents"
+                  autocomplete="off" spellcheck="false">
+                <button id="btnScan" onclick="scanPath()">🔍 Escanear</button>
               </div>
-              <p class="field-hint">Escribe la ruta completa del disco o carpeta. Se ignorarán carpetas de sistema.</p>
+              <p class="field-hint">Rutas de ejemplo: <code>D:\</code> &nbsp;·&nbsp; <code>C:\Users\Danko</code> &nbsp;·&nbsp; <code>E:\Fotos</code></p>
               <p class="last-scan-info" id="lastScanInfo"></p>
             </div>
           </div>
 
-          <!-- Scan progress -->
           <div class="progress-wrap hidden" id="scanProgress">
-            <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill"></div></div>
-            <p class="progress-label" id="progressLabel">Leyendo archivos…</p>
+            <div class="progress-bar-track"><div class="progress-bar-fill"></div></div>
+            <p class="progress-label">Leyendo archivos… esto puede tomar unos minutos en discos grandes.</p>
           </div>
         </section>
 
-        <!-- ── PASO 2: Dashboard ────────────────────────────────────────── -->
+        <!-- ── Dashboard ─────────────────────────────────────────────────── -->
         <section class="panel" id="sectionDashboard" hidden>
           <div class="panel-header">
             <h2 class="panel-title">📊 Análisis del Disco</h2>
             <p class="panel-sub" id="dashboardSub"></p>
           </div>
 
-          <!-- KPI strip -->
           <div class="kpi-strip">
-            <div class="kpi">
-              <span class="kpi-value" id="statTotal">—</span>
-              <span class="kpi-label">Archivos personales</span>
-            </div>
-            <div class="kpi">
-              <span class="kpi-value" id="statSize">—</span>
-              <span class="kpi-label">Espacio total</span>
-            </div>
-            <div class="kpi">
-              <span class="kpi-value" id="statFolders">—</span>
-              <span class="kpi-label">Carpetas afectadas</span>
-            </div>
-            <div class="kpi kpi--images">
-              <span class="kpi-value" id="countImages">0</span>
-              <span class="kpi-label">🖼 Imágenes</span>
-            </div>
-            <div class="kpi kpi--docs">
-              <span class="kpi-value" id="countDocuments">0</span>
-              <span class="kpi-label">📄 Documentos</span>
-            </div>
-            <div class="kpi kpi--audio">
-              <span class="kpi-value" id="countAudio">0</span>
-              <span class="kpi-label">🎵 Audio</span>
-            </div>
-            <div class="kpi kpi--video">
-              <span class="kpi-value" id="countVideo">0</span>
-              <span class="kpi-label">🎬 Video</span>
-            </div>
+            <div class="kpi"><span class="kpi-value" id="statTotal">—</span><span class="kpi-label">Archivos personales</span></div>
+            <div class="kpi"><span class="kpi-value" id="statSize">—</span><span class="kpi-label">Espacio total</span></div>
+            <div class="kpi"><span class="kpi-value" id="statFolders">—</span><span class="kpi-label">Carpetas afectadas</span></div>
+            <div class="kpi kpi--images"><span class="kpi-value" id="countImages">0</span><span class="kpi-label">🖼 Imágenes</span></div>
+            <div class="kpi kpi--docs"><span class="kpi-value" id="countDocuments">0</span><span class="kpi-label">📄 Documentos</span></div>
+            <div class="kpi kpi--audio"><span class="kpi-value" id="countAudio">0</span><span class="kpi-label">🎵 Audio</span></div>
+            <div class="kpi kpi--video"><span class="kpi-value" id="countVideo">0</span><span class="kpi-label">🎬 Video</span></div>
           </div>
 
-          <!-- Charts -->
           <div class="charts-grid">
             <div class="chart-card">
-              <p class="chart-title">Espacio por tipo de archivo</p>
-              <div class="donut-wrap">
-                <canvas id="chartTypes" width="200" height="200"></canvas>
-              </div>
+              <p class="chart-title">Espacio por tipo</p>
+              <div class="donut-wrap"><canvas id="chartTypes" width="200" height="200"></canvas></div>
             </div>
             <div class="chart-card chart-card--wide">
               <p class="chart-title">Top 10 carpetas por tamaño</p>
-              <div class="bar-wrap">
-                <canvas id="chartFolders"></canvas>
-              </div>
+              <div class="bar-wrap"><canvas id="chartFolders"></canvas></div>
             </div>
           </div>
         </section>
 
-        <!-- ── PASO 3: Propuesta de reorganización ──────────────────────── -->
+        <!-- ── Propuesta ──────────────────────────────────────────────────── -->
         <section class="panel" id="sectionOrganize" hidden>
           <div class="panel-header">
             <h2 class="panel-title">🗃 Propuesta de Organización</h2>
@@ -130,7 +163,7 @@
           </div>
 
           <div class="proposal-info">
-            <span class="proposal-badge">📁 Carpeta destino: <code>_Organizado\</code> dentro de la ruta escaneada</span>
+            <span class="proposal-badge">📁 Destino: <code>_Organizado\</code> dentro de la ruta escaneada</span>
             <span class="proposal-badge proposal-badge--safe">✅ Los originales se <strong>mueven</strong>, no se eliminan</span>
           </div>
 
@@ -140,11 +173,11 @@
             <button class="btn-execute" id="btnExecute" onclick="executeOrganize()" disabled>
               🚀 Ejecutar Ordenamiento Seguro
             </button>
-            <p class="execute-hint">Revisa la propuesta arriba antes de ejecutar. Esta acción puede deshacerse moviendo los archivos manualmente.</p>
+            <p class="execute-hint">Revisa la propuesta antes de ejecutar. Puedes deshacer moviendo la carpeta <code>_Organizado</code> de vuelta.</p>
           </div>
         </section>
 
-        <!-- ── PASO 4: Resultado ────────────────────────────────────────── -->
+        <!-- ── Resultado ──────────────────────────────────────────────────── -->
         <section class="panel" id="sectionResult" hidden>
           <div id="resultMsg"></div>
         </section>
@@ -153,7 +186,7 @@
     </div>
 
     <footer class="app-footer">
-      <span>Disk Organizer · Solo lee archivos personales · Nunca envía datos a internet</span>
+      <span>Disk Organizer · Solo archivos personales · Sin conexión a internet</span>
       <span>© dankobuy-ops</span>
     </footer>
 
