@@ -302,7 +302,7 @@ body { padding: 56px 0 48px; }
 ```powershell
 git -C C:\Claude add Apps/
 git -C C:\Claude commit -m "feat(apps): añadir <slug> en categoria <categoria> y actualizar lanzador"
-git -C C:\Claude push origin main
+git -C C:\Claude push apps main
 ```
 
 ---

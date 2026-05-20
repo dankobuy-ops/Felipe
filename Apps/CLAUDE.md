@@ -71,8 +71,11 @@ Archivos y contexto compartido con otras instancias disponible en `C:\Claude\Rec
 # Ver estado del repo
 git -C C:\Claude status Apps/
 
-# Push rápido
+# Push rápido (SIEMPRE usar remote 'apps', no 'origin')
 git -C C:\Claude add Apps/
 git -C C:\Claude commit -m "feat: descripción de la app"
-git -C C:\Claude push origin main
+git -C C:\Claude push apps main
 ```
+
+> **Nota de remotes**: `origin` apunta a `dankobuy-ops/Claude` (backup general).
+> `apps` apunta a `dankobuy-ops/Apps` (GitHub Pages — usar siempre este).
