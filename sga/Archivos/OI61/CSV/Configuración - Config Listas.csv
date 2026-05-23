@@ -1,0 +1,69 @@
+ID,Menú,Icono,Vista
+conflist001,Agenda Obligaciones,/Iconos/Agenda_Obligaciones.png,[Agenda Obligaciones] Lista
+conflist002,Agenda Tareas,/Iconos/Agenda_Tareas.png,[Agenda Tareas] Lista
+conflist003,Agenda Categorías,/Iconos/Agenda_Categorías.png,[Agenda Categorías] Lista
+conflist004,Datos Ruts,/Iconos/Datos_Ruts.png,[Datos Ruts] Lista
+conflist005,Datos Vehículos,/Iconos/Datos_Vehículos.png,[Datos Vehículos] Lista
+conflist006,Datos Inmuebles,/Iconos/Datos_Inmuebles.png,[Datos Inmuebles] Lista
+conflist007,Datos Otras,/Iconos/Datos_Otras.png,[Datos Otras] Lista
+conflist008,Datos Vida y Salud,/Iconos/Datos_Vida_y_Salud.png,[Datos Vida y Salud] Lista
+conflist009,Datos Vida y Salud Cargas,/Iconos/Datos_Vida_y_Salud_Cargas.png,[Datos Vida y Salud Cargas] Lista
+conflist010,Grupos Clientes,/Iconos/Grupos_Clientes.png,[Grupos Clientes] Lista
+conflist011,Grupos Materias,/Iconos/Grupos_Materias.png,[Grupos Materias] Lista
+conflist012,Grupos Entidades,/Iconos/Grupos_Entidades.png,[Grupos Entidades] Lista
+conflist013,Gestión Registros,/Iconos/Gestión_Registros.png,[Gestión Registros] Lista
+conflist014,Gestión Cotizaciones,/Iconos/Gestión_Cotizaciones.png,[Gestión Cotizaciones] Lista
+conflist015,Gestión Pólizas,/Iconos/Gestión_Pólizas.png,[Gestión Pólizas] Lista
+conflist016,Gestión Documentos,/Iconos/Gestión_Documentos.png,[Gestión Documentos] Lista
+conflist017,Gestión Materias,/Iconos/Gestión_Materias.png,[Gestión Materias] Lista
+conflist018,Gestión Planes de Pago,/Iconos/Gestión_Planes_de_Pago.png,[Gestión Planes de Pago] Lista
+conflist019,Gestión Cuotas,/Iconos/Gestión_Cuotas.png,[Gestión Cuotas] Lista
+conflist020,Gestión Cobranza,/Iconos/Gestión_Cobranza.png,[Gestión Cobranza] Lista
+conflist021,Gestión Solicitudes,/Iconos/Gestión_Solicitudes.png,[Gestión Solicitudes] Lista
+conflist022,Gestión Siniestros,/Iconos/Gestión_Siniestros.png,[Gestión Siniestros] Lista
+conflist023,Gestión Comisiones,/Iconos/Gestión_Comisiones.png,[Gestión Comisiones] Lista
+conflist024,Contabilidad Cta Cte,/Iconos/Contabilidad_Cta_Cte.png,[Contabilidad Cta Cte] Lista
+conflist025,Contabilidad Contables,/Iconos/Contabilidad_Contables.png,[Contabilidad Contables] Lista
+conflist026,Contabilidad Liquidaciones,/Iconos/Contabilidad_Liquidaciones.png,[Contabilidad Liquidaciones] Lista
+conflist027,Contabilidad FECU,/Iconos/Contabilidad_FECU.png,[Contabilidad FECU] Lista
+conflist028,Contabilidad Cartolas,/Iconos/Contabilidad_Cartolas.png,[Contabilidad Cartolas] Lista
+conflist029,Contabilidad Movimientos Acumulados,/Iconos/Contabilidad_Movimientos_Acumulados.png,[Contabilidad Movimientos Acumulados] Lista
+conflist030,Contabilidad PPM,/Iconos/Contabilidad_PPM.png,[Contabilidad PPM] Lista
+conflist031,Contabilidad Retención Boletas,/Iconos/Contabilidad_Retención_Boletas.png,[Contabilidad Retención Boletas] Lista
+conflist032,Cruce MateriasXRegistro,/Iconos/Cruce_MateriasXRegistro.png,[Cruce MateriasXRegistro] Lista
+conflist033,Cruce RegistrosXPólizas,/Iconos/Cruce_RegistrosXPólizas.png,[Cruce RegistrosXPólizas] Lista
+conflist034,Cruce DocumentosXComisión,/Iconos/Cruce_DocumentosXComisión.png,[Cruce DocumentosXComisión] Lista
+conflist035,Cruce SegurosXCía,/Iconos/Cruce_SegurosXCía.png,[Cruce SegurosXCía] Lista
+conflist036,Cruce CoberturasXProductos,/Iconos/Cruce_CoberturasXProductos.png,[Cruce CoberturasXProductos] Lista
+conflist037,Cruce FacturasXComisión,/Iconos/Cruce_FacturasXComisión.png,[Cruce FacturasXComisión] Lista
+conflist038,Cruce CuotasXCobranza,/Iconos/Cruce_CuotasXCobranza.png,[Cruce CuotasXCobranza] Lista
+conflist039,Cruce RecotizacionesXPóliza,/Iconos/Cruce_RecotizacionesXPóliza.png,[Cruce RecotizacionesXPóliza] Lista
+conflist040,Cruce DocumentosXLiquidación,/Iconos/Cruce_DocumentosXLiquidación.png,[Cruce DocumentosXLiquidación] Lista
+conflist041,Cruce CuotasXTransferencia,/Iconos/Cruce_CuotasXTransferencia.png,[Cruce CuotasXTransferencia] Lista
+conflist042,Cruce MateriasXEnvío,/Iconos/Cruce_MateriasXEnvío.png,[Cruce MateriasXEnvío] Lista
+conflist043,Cruce ItemsXEnvíoCliente,/Iconos/Cruce_ItemsXEnvíoCliente.png,[Cruce ItemsXEnvíoCliente] Lista
+conflist044,Operaciones Productos,/Iconos/Operaciones_Productos.png,[Operaciones Productos] Lista
+conflist045,Operaciones Planes,/Iconos/Operaciones_Planes.png,[Operaciones Planes] Lista
+conflist046,Operaciones Líneas de Negocios,/Iconos/Operaciones_Líneas_de_Negocios.png,[Operaciones Líneas de Negocios] Lista
+conflist047,Operaciones Coberturas,/Iconos/Operaciones_Coberturas.png,[Operaciones Coberturas] Lista
+conflist048,Operaciones Ejecutivos,/Iconos/Operaciones_Ejecutivos.png,[Operaciones Ejecutivos] Lista
+conflist049,Operaciones Correos|Links|Usuarios,/Iconos/Operaciones_Correos|Links|Usuarios.png,[Operaciones Correos|Links|Usuarios] Lista
+conflist050,Operaciones Protocolos,/Iconos/Operaciones_Protocolos.png,[Operaciones Protocolos] Lista
+conflist051,Operaciones Seguros,/Iconos/Operaciones_Seguros.png,[Operaciones Seguros] Lista
+conflist052,Operaciones Gestores,/Iconos/Operaciones_Gestores.png,[Operaciones Gestores] Lista
+conflist053,Operaciones Partners,/Iconos/Operaciones_Partners.png,[Operaciones Partners] Lista
+conflist054,Operaciones Bancos,/Iconos/Operaciones_Bancos.png,[Operaciones Bancos] Lista
+conflist055,Operaciones Proveedores,/Iconos/Operaciones_Proveedores.png,[Operaciones Proveedores] Lista
+conflist056,Operaciones Compañías,/Iconos/Operaciones_Compañías.png,[Operaciones Compañías] Lista
+conflist057,Operaciones Ramos,/Iconos/Operaciones_Ramos.png,[Operaciones Ramos] Lista
+conflist058,Operaciones POLS,/Iconos/Operaciones_POLS.png,[Operaciones POLS] Lista
+conflist059,Comunicación Clientes,/Iconos/Comunicación_Clientes.png,[Comunicación Clientes] Lista
+conflist060,Comunicación Registros,/Iconos/Comunicación_Registros.png,[Comunicación Registros] Lista
+conflist061,Comunicación Pólizas,/Iconos/Comunicación_Pólizas.png,[Comunicación Pólizas] Lista
+conflist062,Comunicación Documentos,/Iconos/Comunicación_Documentos.png,[Comunicación Documentos] Lista
+conflist063,Comunicación Materias,/Iconos/Comunicación_Materias.png,[Comunicación Materias] Lista
+conflist064,Comunicación Planes de Pago,/Iconos/Comunicación_Planes_de_Pago.png,[Comunicación Planes de Pago] Lista
+conflist065,Comunicación Cobranza,/Iconos/Comunicación_Cobranza.png,[Comunicación Cobranza] Lista
+conflist066,Comunicación Comisiones,/Iconos/Comunicación_Comisiones.png,[Comunicación Comisiones] Lista
+conflist067,Comunicación Liquidaciones,/Iconos/Comunicación_Liquidaciones.png,[Comunicación Liquidaciones] Lista
+conflist068,Comunicación Otros,/Iconos/Comunicación_Otros.png,[Comunicación Otros] Lista

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import create_schemas, Base, engine
 from app.models import *  # registrar todos los modelos
-from app.routers import clientes, polizas
+from app.routers import clientes, polizas, comisiones, registros, cotizaciones, operaciones, menu, system
 
 
 @asynccontextmanager
@@ -35,8 +35,14 @@ app.add_middleware(
 )
 
 # Routers
+app.include_router(registros.router, prefix="/api/v1")
+app.include_router(cotizaciones.router, prefix="/api/v1")
 app.include_router(clientes.router, prefix="/api/v1")
 app.include_router(polizas.router, prefix="/api/v1")
+app.include_router(comisiones.router, prefix="/api/v1")
+app.include_router(operaciones.router, prefix="/api/v1")
+app.include_router(menu.router, prefix="/api/v1")
+app.include_router(system.router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Root"])

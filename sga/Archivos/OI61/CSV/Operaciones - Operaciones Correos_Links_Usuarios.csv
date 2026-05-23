@@ -1,0 +1,36 @@
+ID,Cía|Entidad,Tipo,Tipo Usuario,Tipo Link,Tipo Correo,Usuario,Link,Correo,Contraseña,Fono,Comentarios
+ufbued0001,Com0001,Link,,Portal Corredor,,,https://www.bciseguros.cl/,,,,
+60022b43,Com0001,Usuario,Portal Corredor,,,77605036-9,,,BCL@0822,,
+e90cd154,Com0001,Link,,Pago,,,https://portalpago.bciseguros.cl/,,,,
+7ca128da,Com0008,Link,,Pago,,,https://seguros.rentanacional.cl/pago-en-linea/,,,,
+8d170c21,Com0005,Link,,Pago,,,https://pago.hdi.cl/pagosenlinea/,,,,
+9d407bfa,Com0013,Link,,Pago,,,https://pago.hdi.cl/pagosenlinea/,,,,
+62c822a8,Com0010,Link,,Pago,,,https://www9.zurich.cl/vida/web/Portal/pagoexpress/ingreso,,,,
+5806a184,Com0011,Link,,Pago,,,https://southbridge.trytoku.com/landing,,,,
+cc75a77d,Com0007,Link,,Pago,,,https://pagocuota.realechile.cl/PagoWeb/login,,,,
+1aba7ff7,Com0002,Correo,,,Solicitudes,,,Mesadeentrada.ch@chubb.com,,,Correo de Ingreso de Documentos y Solicitudes
+495e3f64,Com0002,Link,,Pago,,,https://botonpagochile.chubb.com/,,,,
+daae6fc1,Com0003,Link,,Pago,,,https://sitio.consorcio.cl/pagos#/,,,,
+d2b0b545,Com0004,Link,,Pago,,,https://www.fidseguros.cl/pago-en-linea/,,,,
+98e17d0a,Com0011,Correo,,,Solicitudes,,,ejecutivo.riesgoscorporativos@sbins.cl,,,"Riesgos Corporativos:
+
+Este correo centraliza todas las consultas, solicitudes y trámites de esta línea de negocios, permitiendo una atención más ágil, clara y trazable.
+
+Escríbenos si necesitas endosos, reservas, certificados, actualizaciones de datos, consultas de pólizas vigentes, estados de trámite y documentación, o bien apoyo para tus clientes corporativos.
+
+Tiempo de respuesta: cada solicitud será procesada en un plazo máximo de 48 horas hábiles, según la complejidad del caso."
+cde924ff,Com0002,Correo,,,Comisiones,,,comisiones.chile@chubb.com,,,Para envío de toda la información relacionada y para la recepeción de consultas
+d6f5231e,Com0005,Correo,,,Mesa Central,,,contacto@hdi.cl,,,
+9fd69aa9,Com0002,Correo,,,Devolución Prima,,,DevolucionPrima.Chile@chubb.com,,,Enviar datos bancarios de la solicitud
+7c9cf6f6,f86c0819,Usuario,Portal Web,,,RM2ANS,,,ans.2rm2,,
+ebbef5de,Com0005,Correo,,,Solicitudes,,,gavetavirtual@hdi.cl,,,
+99bf311a,Com0004,Correo,,,Comisiones,,,facturas@fidseguros.cl,,,Envío de Facturas
+84aec617,Com0002,Correo,,,Comisiones,,,alvaro.diaz@chubb.com,,,Envío de Facturas
+9cbffd77,Com0012,Correo,,,Comisiones,,,alvaro.diaz@chubb.com,,,Envío de Facturas
+8b83e7f1,Com0010,Correo,,,Comisiones,,,comisiones@zurich.com,,,Envío de Facturas
+6f3c4e13,Com0007,Correo,,,Comisiones,,,comisiones@reale.cl,,,Envío de Facturas
+0ecdf0eb,Com0003,Correo,,,Comisiones,,,comisiones.generales@consorcio.cl,,,Envío de facturas
+07b5ac85,Com0001,Correo,,,Comisiones,,,contabilidad.sii@bciseguros.cl,,,Envío de facturas
+134dc550,Com0001,Link,,Suscripción Mandato,,,https://www.bciseguros.cl/especiales/suscribe-o-actualiza-tu-medio-de-pago/,,,,
+08ae2bf2,Com0010,Link,,Suscripción Mandato,,,https://services.webchilena.cl/PaymentReports/Suscripcion,,,,Oneclick es para PAT y Toku es para PAC
+7da6a6e6,Com0002,Correo,,,Solicitudes,,,servicioalcliente@chubb.com,,,Solicitudes generales

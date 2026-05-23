@@ -1,0 +1,69 @@
+ID,Menú,Icono,Vista
+confitabl001,Agenda Obligaciones,/Iconos/Agenda_Obligaciones.png,[Agenda Obligaciones] Tabla
+confitabl002,Agenda Tareas,/Iconos/Agenda_Tareas.png,[Agenda Tareas] Tabla
+confitabl003,Agenda Categorías,/Iconos/Agenda_Categorías.png,[Agenda Categorías] Tabla
+confitabl004,Datos Ruts,/Iconos/Datos_Ruts.png,[Datos Ruts] Tabla
+confitabl005,Datos Vehículos,/Iconos/Datos_Vehículos.png,[Datos Vehículos] Tabla
+confitabl006,Datos Inmuebles,/Iconos/Datos_Inmuebles.png,[Datos Inmuebles] Tabla
+confitabl007,Datos Otras,/Iconos/Datos_Otras.png,[Datos Otras] Tabla
+confitabl008,Datos Vida y Salud,/Iconos/Datos_Vida_y_Salud.png,[Datos Vida y Salud] Tabla
+confitabl009,Datos VyS Cargas,/Iconos/Datos_Vida_y_Salud_Cargas.png,[Datos Vida y Salud Cargas] Tabla
+confitabl010,Grupos Clientes,/Iconos/Grupos_Clientes.png,[Grupos Clientes] Tabla
+confitabl011,Grupos Materias,/Iconos/Grupos_Materias.png,[Grupos Materias] Tabla
+confitabl012,Grupos Entidades,/Iconos/Grupos_Entidades.png,[Grupos Entidades] Tabla
+confitabl013,Gestión Registros,/Iconos/Gestión_Registros.png,[Gestión Registros] Tabla
+confitabl014,Gestión Cotizaciones,/Iconos/Gestión_Cotizaciones.png,[Gestión Cotizaciones] Tabla
+confitabl015,Gestión Pólizas,/Iconos/Gestión_Pólizas.png,[Gestión Pólizas] Tabla
+confitabl016,Gestión Documentos,/Iconos/Gestión_Documentos.png,[Gestión Documentos] Tabla
+confitabl017,Gestión Materias,/Iconos/Gestión_Materias.png,[Gestión Materias] Tabla
+confitabl018,Gestión Planes de Pago,/Iconos/Gestión_Planes_de_Pago.png,[Gestión Planes de Pago] Tabla
+confitabl019,Gestión Cuotas,/Iconos/Gestión_Cuotas.png,[Gestión Cuotas] Tabla
+confitabl020,Gestión Cobranza,/Iconos/Gestión_Cobranza.png,[Gestión Cobranza] Tabla
+confitabl021,Gestión Solicitudes,/Iconos/Gestión_Solicitudes.png,[Gestión Solicitudes] Tabla
+confitabl022,Gestión Siniestros,/Iconos/Gestión_Siniestros.png,[Gestión Siniestros] Tabla
+confitabl023,Gestión Comisiones,/Iconos/Gestión_Comisiones.png,[Gestión Comisiones] Tabla
+confitabl024,Contabilidad Cta Cte,/Iconos/Contabilidad_Cta_Cte.png,[Contabilidad Cta Cte] Tabla
+confitabl025,Contabilidad Contables,/Iconos/Contabilidad_Contables.png,[Contabilidad Contables] Tabla
+confitabl026,Contabilidad Liquidaciones,/Iconos/Contabilidad_Liquidaciones.png,[Contabilidad Liquidaciones] Tabla
+confitabl027,Contabilidad FECU,/Iconos/Contabilidad_FECU.png,[Contabilidad FECU] Tabla
+confitabl028,Contabilidad Cartolas,/Iconos/Contabilidad_Cartolas.png,[Contabilidad Cartolas] Tabla
+confitabl029,Contabilidad Movimientos Acumulados,/Iconos/Contabilidad_Movimientos_Acumulados.png,[Contabilidad Movimientos Acumulados] Tabla
+confitabl030,Contabilidad PPM,/Iconos/Contabilidad_PPM.png,[Contabilidad PPM] Tabla
+confitabl031,Contabilidad Retención Boletas,/Iconos/Contabilidad_Retención_Boletas.png,[Contabilidad Retención Boletas] Tabla
+confitabl032,Cruce MateriasXRegistro,/Iconos/Cruce_MateriasXRegistro.png,[Cruce MateriasXRegistro] Tabla
+confitabl033,Cruce RegistrosXPólizas,/Iconos/Cruce_RegistrosXPólizas.png,[Cruce RegistrosXPólizas] Tabla
+confitabl034,Cruce DocumentosXComisión,/Iconos/Cruce_DocumentosXComisión.png,[Cruce DocumentosXComisión] Tabla
+confitabl035,Cruce SegurosXCía,/Iconos/Cruce_SegurosXCía.png,[Cruce SegurosXCía] Tabla
+confitabl036,Cruce CoberturasXProductos,/Iconos/Cruce_CoberturasXProductos.png,[Cruce CoberturasXProductos] Tabla
+confitabl037,Cruce FacturasXComisión,/Iconos/Cruce_FacturasXComisión.png,[Cruce FacturasXComisión] Tabla
+confitabl038,Cruce CuotasXCobranza,/Iconos/Cruce_CuotasXCobranza.png,[Cruce CuotasXCobranza] Tabla
+confitabl039,Cruce RecotizacionesXPóliza,/Iconos/Cruce_RecotizacionesXPóliza.png,[Cruce RecotizacionesXPóliza] Tabla
+confitabl040,Cruce DocumentosXLiquidación,/Iconos/Cruce_DocumentosXLiquidación.png,[Cruce DocumentosXLiquidación] Tabla
+confitabl041,Cruce CuotasXTransferencia,/Iconos/Cruce_CuotasXTransferencia.png,[Cruce CuotasXTransferencia] Tabla
+confitabl042,Cruce MateriasXEnvío,/Iconos/Cruce_MateriasXEnvío.png,[Cruce MateriasXEnvío] Tabla
+confitabl043,Cruce ItemsXEnvíoCliente,/Iconos/Cruce_ItemsXEnvíoCliente.png,[Cruce ItemsXEnvíoCliente] Tabla
+confitabl044,Operaciones Productos,/Iconos/Operaciones_Productos.png,[Operaciones Productos] Tabla
+confitabl045,Operaciones Planes,/Iconos/Operaciones_Planes.png,[Operaciones Planes] Tabla
+confitabl046,Operaciones Líneas de Negocios,/Iconos/Operaciones_Líneas_de_Negocios.png,[Operaciones Líneas de Negocios] Tabla
+confitabl047,Operaciones Coberturas,/Iconos/Operaciones_Coberturas.png,[Operaciones Coberturas] Tabla
+confitabl048,Operaciones Ejecutivos,/Iconos/Operaciones_Ejecutivos.png,[Operaciones Ejecutivos] Tabla
+confitabl049,Operaciones Correos|Links|Usuarios,/Iconos/Operaciones_Correos|Links|Usuarios.png,[Operaciones Correos|Links|Usuarios] Tabla
+confitabl050,Operaciones Protocolos,/Iconos/Operaciones_Protocolos.png,[Operaciones Protocolos] Tabla
+confitabl051,Operaciones Seguros,/Iconos/Operaciones_Seguros.png,[Operaciones Seguros] Tabla
+confitabl052,Operaciones Gestores,/Iconos/Operaciones_Gestores.png,[Operaciones Gestores] Tabla
+confitabl053,Operaciones Partners,/Iconos/Operaciones_Partners.png,[Operaciones Partners] Tabla
+confitabl054,Operaciones Bancos,/Iconos/Operaciones_Bancos.png,[Operaciones Bancos] Tabla
+confitabl055,Operaciones Proveedores,/Iconos/Operaciones_Proveedores.png,[Operaciones Proveedores] Tabla
+confitabl056,Operaciones Compañías,/Iconos/Operaciones_Compañías.png,[Operaciones Compañías] Tabla
+confitabl057,Operaciones Ramos,/Iconos/Operaciones_Ramos.png,[Operaciones Ramos] Tabla
+confitabl058,Operaciones POLS,/Iconos/Operaciones_POLS.png,[Operaciones POLS] Tabla
+confitabl059,Comunicación Clientes,/Iconos/Comunicación_Clientes.png,[Comunicación Clientes] Tabla
+confitabl060,Comunicación Registros,/Iconos/Comunicación_Registros.png,[Comunicación Registros] Tabla
+confitabl061,Comunicación Pólizas,/Iconos/Comunicación_Pólizas.png,[Comunicación Pólizas] Tabla
+confitabl062,Comunicación Documentos,/Iconos/Comunicación_Documentos.png,[Comunicación Documentos] Tabla
+confitabl063,Comunicación Materias,/Iconos/Comunicación_Materias.png,[Comunicación Materias] Tabla
+confitabl064,Comunicación Planes de Pago,/Iconos/Comunicación_Planes_de_Pago.png,[Comunicación Planes de Pago] Tabla
+confitabl065,Comunicación Cobranza,/Iconos/Comunicación_Cobranza.png,[Comunicación Cobranza] Tabla
+confitabl066,Comunicación Comisiones,/Iconos/Comunicación_Comisiones.png,[Comunicación Comisiones] Tabla
+confitabl067,Comunicación Liquidaciones,/Iconos/Comunicación_Liquidaciones.png,[Comunicación Liquidaciones] Tabla
+confitabl068,Comunicación Otros,/Iconos/Comunicación_Otros.png,[Comunicación Otros] Tabla

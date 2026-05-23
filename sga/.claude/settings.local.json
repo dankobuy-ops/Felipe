@@ -33,7 +33,24 @@
       "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/alembic upgrade head)",
       "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python -c ' *)",
       "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/migracion_maestra.py --tabla companias --dry-run)",
-      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/migracion_maestra.py --tabla companias)"
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/migracion_maestra.py --tabla companias)",
+      "Bash(venv/Scripts/python *)",
+      "Bash(venv/Scripts/alembic upgrade *)",
+      "Bash(Get-ChildItem \"C:\\\\Claude\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem \"C:\\\\claude\" -ErrorAction SilentlyContinue)",
+      "Bash(python3 -c ' *)",
+      "Bash(PYTHONIOENCODING=utf-8 python3 -c ' *)",
+      "Bash(git commit -m 'docs: agregar PLAN_LOGICA_NEGOCIO.md — hoja de ruta de 60 fórmulas AppSheet *)",
+      "Bash(git commit -m 'fix\\(db\\): cuota.pago String\\(30\\)→String\\(500\\) — paths de PDF superan límite *)",
+      "Bash(PYTHONIOENCODING=utf-8 venv/Scripts/python *)",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\claude\\\\sga\\\\.claude\\\\skills\\\\aegis-compliance\")",
+      "Bash(Out-Null)",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\claude\\\\sga\\\\.claude\\\\skills\\\\translate-logic\")",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\claude\\\\sga\\\\.claude\\\\skills\\\\aegis-extend\")",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\claude\\\\sga\\\\.claude\\\\skills\\\\safe-endpoint\")",
+      "Bash(git commit *)",
+      "Bash(venv/Scripts/alembic revision *)"
     ]
   }
 }

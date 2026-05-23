@@ -1,0 +1,17 @@
+ID,Menú,Icono,Vista
+confini00,Agenda,/Iconos/Calendario.png,[T Agenda] Tablero
+confini01,Central,/Iconos/Central.png,[T Central] Tablero
+confini03,Registros,/Iconos/Registros.png,[T Registros] Tablero
+confini07,Renovaciones,/Iconos/Renovaciones.png,[T Renovaciones] Tablero
+confini04,Pólizas,/Iconos/Pólizas.png,[T Pólizas] Tablero
+confini05,Cuotas,/Iconos/Cuotas.png,[T Cuotas] Tablero
+confini06,Cobranza,/Iconos/Cobranza.png,[T Cobranza] Tablero
+confini09,Comisiones Base,/Iconos/Comisiones Base.png,[T Comisiones Base] Tablero
+confini08,Comisiones,/Iconos/Comisiones.png,[T Comisiones] Tablero
+confini10,Facturación,/Iconos/Facturación.png,[T Facturación] Tablero
+confini11,Liquidar,/Iconos/Liquidar.png,[T Liquidar] Tablero
+confini12,Liquidaciones,/Iconos/Liquidaciones.png,[T Liquidaciones] Tablero
+confini14,Ctas Ctes,/Iconos/CtasCtes.png,[T Ctas Ctes] Tablero
+confini13,Finanzas,/Iconos/Finanzas.png,[T Finanzas] Tablero
+confini02,Recapturas,/Iconos/Recapturas.png,[T Recapturas] Tablero
+confini15,Potenciales Autos,,[T Autos Potenciales] Tablero

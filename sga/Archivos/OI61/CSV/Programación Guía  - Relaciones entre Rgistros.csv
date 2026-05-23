@@ -1,0 +1,175 @@
+Tabla,Campo,Referencia a,Tipo de relación
+Agenda Obligaciones,Categoría,Agenda Categorías,1:1
+Agenda Obligaciones,Categoría,Agenda Categorías,N:1
+Agenda Obligaciones,Entidad,Grupos Entidades,N:1
+Agenda Obligaciones,Compañía,Operaciones Compañías,N:1
+Agenda Obligaciones,Póliza,Gestión Pólizas,N:1
+Agenda Obligaciones,Partner,Operaciones Partners,N:1
+Agenda Obligaciones,Gestor,Operaciones Gestores,N:1
+Agenda Tareas,Categoría,Agenda Categorías,N:1
+Agenda Tareas,Entidad,Grupos Entidades,N:1
+Agenda Tareas,Compañía,Operaciones Compañías,N:1
+Agenda Tareas,Póliza,Gestión Pólizas,N:1
+Agenda Tareas,Partner,Operaciones Partners,N:1
+Agenda Tareas,Gestor,Operaciones Gestores,N:1
+Agenda Tareas,Obligación,Agenda Obligaciones,N:1
+Comunicación Clientes,Cliente,Grupos Clientes,1:1 (Espejo)
+Comunicación Cobranza,Cobranza,Gestión Cobranza,1:1 (Espejo)
+Comunicación Cobranza,Cliente,Grupos Clientes,N:1
+Comunicación Cobranza,Contratante,Datos RUTs,N:1
+Comunicación Comisiones,Compañía,Operaciones Compañías,1:1 (Espejo)
+Comunicación Documentos,Documento,Gestión Documentos,1:1 (Espejo)
+Comunicación Liquidaciones,Partner,Operaciones Partners,1:1 (Espejo)
+Comunicación Materias,Materias,Cruce MateriasXEnvío,N:1
+Comunicación Otros,Destinatario,Grupos Entidades,N:1
+Comunicación Planes De Pago,Plan Pago,Gestión Planes de Pago,1:1 (Espejo)
+Comunicación Pólizas,Póliza,Gestión Pólizas,1:1 (Espejo)
+Comunicación Registros,Registro,Gestión Registros,1:1 (Espejo)
+Config Filtros,Usuario,Config Usuarios,N:1
+Config Filtros,Destinatario,Grupos Clientes,N:1
+Config Filtros,Entidad,Grupos Entidades,N:1
+Config Filtros,Negocio / Renovación / Prospecto,Gestión Registros,N:1
+Config Filtros,Cliente,Grupos Clientes,N:1
+Config Filtros,Contratante / Asegurado,Datos RUTs,N:1
+Config Filtros,Ramo,Operaciones Ramos,N:1
+Config Filtros,Seguro,Operaciones Seguros,N:1
+Config Filtros,Compañía,Operaciones Compañías,N:1
+Config Filtros,Partner,Operaciones Partners,N:1
+Config Filtros,Producto,Operaciones Productos,N:1
+Config Filtros,Cotización,Gestión Cotizaciones,N:1
+Config Filtros,Póliza,Gestión Pólizas,N:1
+Config Filtros,Documento,Gestión Documentos,N:1
+Config Filtros,Grupo Materia,Grupos Materias,N:1
+Config Filtros,Materia,Gestión Materias,N:1
+Config Filtros,Cuota,Gestión Cuotas,N:1
+Config Filtros,Cobranza,Gestión Cobranza,N:1
+Config Filtros,Solicitud,Gestión Solicitudes,N:1
+Config Filtros,Siniestro,Gestión Siniestros,N:1
+Config Filtros,Comisión,Gestión Comisiones,N:1
+Config Filtros,Factura / Doc Contable,Contabilidad Contables,N:1
+Config Filtros,Liquidación,Contabilidad Liquidaciones,N:1
+Contabilidad Cartolas,Banco,Operaciones Bancos,N:1
+Contabilidad Cartolas,Cta Cte,Contabilidad Cta Cte,N:1
+Contabilidad Contables,Entidad,Grupos Entidades,N:1
+Contabilidad Contables,Cta Cte,Contabilidad Cta Cte,N:1
+Contabilidad Cta Cte,Banco,Operaciones Bancos,N:1
+Contabilidad Cta Cte,Rut,Datos RUTs,N:1
+Contabilidad FECU,Compañía,Operaciones Compañías,N:1
+Contabilidad Liquidaciones,Partner,Operaciones Partners,N:1
+Cruce CoberturasXProductos,Cobertura,Operaciones Coberturas,N:1 (Puente N:M)
+Cruce CoberturasXProductos,Producto,Operaciones Productos,N:1 (Puente N:M)
+Cruce CuotasXCobranza,Cobranza,Gestión Cobranza,N:1 (Puente N:M)
+Cruce CuotasXCobranza,Cuota,Gestión Cuotas,N:1 (Puente N:M)
+Cruce CuotasXCobranza,Cliente,Grupos Clientes,N:1
+Cruce DocumentosXComisión,Comisión Emitida,Gestión Comisiones,N:1 (Puente N:M)
+Cruce DocumentosXComisión,Documento,Gestión Documentos,N:1 (Puente N:M)
+Cruce DocumentosXLiquidación,Liquidación Base,Contabilidad Liquidaciones,N:1 (Puente N:M)
+Cruce DocumentosXLiquidación,Documento,Gestión Documentos,N:1 (Puente N:M)
+Cruce FacturasXComisión,Comisión Base,Gestión Comisiones,N:1 (Puente N:M)
+Cruce FacturasXComisión,Factura,Contabilidad Contables,N:1 (Puente N:M)
+Cruce ItemsXEnvíoCliente,Envío,Comunicación Clientes,N:1 (Puente N:M)
+Cruce ItemsXEnvíoCliente,Registros,Gestión Registros,N:1 (Puente N:M)
+Cruce ItemsXEnvíoCliente,Pólizas,Gestión Pólizas,N:1 (Puente N:M)
+Cruce ItemsXEnvíoCliente,Materias,Gestión Materias,N:1 (Puente N:M)
+Cruce MateriasXEnvío,Envío,Comunicación Materias,N:1 (Puente N:M)
+Cruce MateriasXEnvío,Materias,Gestión Materias,N:1 (Puente N:M)
+Cruce MateriasXRegistro,Registro,Gestión Registros,N:1 (Puente N:M)
+Cruce MateriasXRegistro,Grupo Materia,Grupos Materias,N:1 (Puente N:M)
+Cruce MateriasXRegistro,Asegurado,Datos RUTs,N:1
+Cruce RecotizacionesXPóliza,Cotización,Gestión Cotizaciones,N:1 (Puente N:M)
+Cruce RecotizacionesXPóliza,Póliza,Gestión Pólizas,N:1 (Puente N:M)
+Cruce RegistrosXPólizas,Registro,Gestión Registros,N:1 (Puente N:M)
+Cruce RegistrosXPólizas,Póliza,Gestión Pólizas,N:1 (Puente N:M)
+Cruce SegurosXCía,Seguro,Operaciones Seguros,N:1 (Puente N:M)
+Cruce SegurosXCía,Compañía,Operaciones Compañías,N:1 (Puente N:M)
+Cruce ValoresXCotización,Cotización,Gestión Cotizaciones,N:1 (Puente N:M)
+Cruce ValoresXCotización,Plan,Operaciones Planes,N:1 (Puente N:M)
+Datos Inmuebles,Comuna,Operaciones Comunas,N:1
+Datos Otras,Vehículo,Datos Vehículos,N:1
+Datos Otras,Inmueble,Datos Inmuebles,N:1
+Datos Vida y Salud,Rut,Datos RUTs,1:1 / N:1
+Datos Vida y Salud Cargas,Titular,Datos Vida y Salud,N:1
+Datos Vida y Salud Cargas,Rut,Datos RUTs,1:1
+Gestión Cobranza,Destinatario,Grupos Clientes,N:1
+Gestión Comisiones,Compañía,Operaciones Compañías,N:1
+Gestión Cotizaciones,Registro,Gestión Registros,N:1
+Gestión Cotizaciones,Producto,Operaciones Productos,N:1
+Gestión Cuotas,Plan de Pago,Gestión Planes de Pago,N:1
+Gestión Cuotas,Documento,Gestión Documentos,N:1
+Gestión Cuotas,Compañía,Operaciones Compañías,N:1
+Gestión Cuotas,Seguro,Operaciones Seguros,N:1
+Gestión Cuotas,Cliente,Grupos Clientes,N:1
+Gestión Cuotas,Contratante,Datos RUTs,N:1
+Gestión Cuotas,Póliza,Gestión Pólizas,N:1
+Gestión Documentos,Póliza,Gestión Pólizas,N:1
+Gestión Documentos,Cliente,Grupos Clientes,N:1
+Gestión Documentos,Contratante,Datos RUTs,N:1
+Gestión Documentos,Producto,Operaciones Productos,N:1
+Gestión Documentos,Partner,Operaciones Partners,N:1
+Gestión Materias,Documento,Gestión Documentos,N:1
+Gestión Materias,Base Materia,Grupos Materias,N:1
+Gestión Materias,Seguro,Operaciones Seguros,N:1
+Gestión Materias,Asegurado,Datos RUTs,N:1
+Gestión Materias,Póliza,Gestión Pólizas,N:1
+Gestión Materias,Contratante,Datos RUTs,N:1
+Gestión Materias,Cliente,Grupos Clientes,N:1
+Gestión Planes de Pago,Documento,Gestión Documentos,N:1
+Gestión Planes de Pago,Póliza,Gestión Pólizas,N:1
+Gestión Pólizas,Producto,Operaciones Productos,N:1
+Gestión Pólizas,Ejecutivo,Operaciones Ejecutivos,N:1
+Gestión Pólizas,Cliente,Grupos Clientes,N:1
+Gestión Pólizas,Contratante,Datos RUTs,N:1
+Gestión Pólizas,Pagador,Datos RUTs,N:1
+Gestión Pólizas,Ramo,Operaciones Ramos,N:1
+Gestión Pólizas,Compañía,Operaciones Compañías,N:1
+Gestión Pólizas,Seguro,Operaciones Seguros,N:1
+Gestión Pólizas,Verificador Traspaso,Gestión Registros,N:1
+Gestión Pólizas,Registro Padre,Cruce RegistrosXPólizas,N:1
+Gestión Registros,Seguro,Operaciones Seguros,N:1
+Gestión Registros,Cot Aceptada,Gestión Cotizaciones,N:1
+Gestión Registros,Póliza,Gestión Pólizas,N:1
+Gestión Registros,Contratante,Datos RUTs,N:1
+Gestión Registros,Pagador,Datos RUTs,N:1
+Gestión Registros,Cliente,Grupos Clientes,N:1
+Gestión Registros,Producto,Operaciones Productos,N:1
+Gestión Registros,Ejecutivo,Operaciones Ejecutivos,N:1
+Gestión Registros,Compañía,Operaciones Compañías,N:1
+Gestión Registros,Plan,Operaciones Planes,N:1
+Gestión Registros,Asegurado,Datos RUTs,N:1
+Gestión Siniestros,Materia,Gestión Materias,N:1
+Gestión Siniestros,Póliza,Gestión Pólizas,N:1
+Gestión Solicitudes,Documento,Gestión Documentos,N:1
+Gestión Solicitudes,Póliza,Gestión Pólizas,N:1
+Gestión Solicitudes,Ramo,Operaciones Ramos,N:1
+Gestión Solicitudes,Contratante,Datos RUTs,N:1
+Gestión Solicitudes,Cliente,Grupos Clientes,N:1
+Gestión Solicitudes,Compañía,Operaciones Compañías,N:1
+Gestión Solicitudes,Ejecutivo,Operaciones Ejecutivos,N:1
+Gestión Solicitudes,Producto,Operaciones Productos,N:1
+Gestión Solicitudes,Cotización,Gestión Cotizaciones,N:1
+Grupos Clientes,Cliente,Datos RUTs,1:1
+Grupos Clientes,Partner,Operaciones Partners,N:1
+Grupos Entidades,Asegurado,Datos RUTs,1:1
+Grupos Entidades,Gestor,Operaciones Gestores,1:1
+Grupos Entidades,Partner,Operaciones Partners,1:1
+Grupos Entidades,Banco,Operaciones Bancos,1:1
+Grupos Entidades,Proveedor,Operaciones Proveedores,1:1
+Grupos Entidades,Compañía,Operaciones Compañías,1:1
+Grupos Materias,Seguro,Operaciones Seguros,N:1
+Grupos Materias,Asegurado,Datos RUTs,N:1
+Grupos Materias,Vehículo,Datos Vehículos,N:1
+Grupos Materias,Inmueble,Datos Inmuebles,N:1
+Grupos Materias,Otra,Datos Otras,N:1
+Grupos Materias,Vida y Salud,Datos Vida y Salud,N:1
+Operaciones Compañías,Ejecutivo Principal,Operaciones Ejecutivos,N:1
+Operaciones Ejecutivos,Banco,Operaciones Bancos,N:1
+Operaciones Ejecutivos,Compañía,Operaciones Compañías,N:1
+Operaciones Ejecutivos,Proveedor,Operaciones Proveedores,N:1
+Operaciones Líneas de Negocios,Ramo,Operaciones Ramos,N:1
+Operaciones Líneas de Negocios,Compañía,Operaciones Compañías,N:1
+Operaciones Planes,Producto,Operaciones Productos,N:1
+Operaciones Productos,Seguro,Operaciones Seguros,N:1
+Operaciones Productos,Compañía,Operaciones Compañías,N:1
+Operaciones Productos,Ramo,Operaciones Ramos,N:1
+Operaciones Protocolos,Entidad,Grupos Entidades,N:1
+Operaciones Protocolos,Persona a Cargo,Operaciones Ejecutivos,N:1

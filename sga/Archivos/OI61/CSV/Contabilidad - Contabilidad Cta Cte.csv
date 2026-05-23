@@ -1,0 +1,772 @@
+ID,Banco,Fecha,Categoría,Tipo Movimiento,Tipo Transacción,N° Identificador,Rut,Detalle,Monto,Tipo de Ingreso,Descripción,N° Doc,Cargos,Abonos,Saldo Diario,Cartola
+Cta0001,Bank0001,14/10/2022,Cliente,Ingreso,Transferencia,12599743-0,rut0122,Pago BCI Pol RCI Argentina,"$13,574.00",Otro,,,,,,
+Cta0002,Bank0001,14/10/2022,Cliente,Ingreso,Transferencia,12599743-0,rut0122,Pago BCI Pol RCI Argentina,"$13,520.00",Otro,,,,,,
+Cta0003,Bank0001,26/10/2022,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas Liberty,"$269,000.00",Otro,,,,,,
+Cta0004,Bank0001,18/11/2022,Cliente,Egreso,Transferencia,441378694,rut0146,Devolución pago Liberty cuota Transportes San Benjamin,"-$260,900.00",,,,,,,
+Cta0005,Bank0001,22/11/2022,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas Liberty,"$235,225.00",Otro,,,,,,
+Cta0006,Bank0001,30/11/2022,Cliente,Egreso,Transferencia,799038518,rut0146,Devolución pago Liberty cuota Transportes San Benjamin,"-$244,298.00",,,,,,,
+Cta0007,Bank0001,15/12/2022,Interno,Ingreso,Depósito,94510000-1,Com0008,Comisiones,"$93,069.00",Comisión,,,,,,
+Cta0008,Bank0001,20/12/2022,Interno,Egreso,PEL,314568,Prv0001,Pago Iva Noviembre 2022,"-$22,309.00",,,,,,,
+Cta0009,Bank0001,11/1/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago cuota Reale Cuo 1-8 Pol 100048738,"$332,000.00",Otro,,,,,,
+Cta0010,Bank0001,11/1/2023,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago Liberty Cuo 3-6 Pol 61544460,"$124,000.00",Otro,,,,,,
+Cta0011,Bank0001,14/1/2023,Cliente,Egreso,Transferencia,936849046,rut0146,Devolución Pago Liberty cuota 3-6 Pol 61544460 Transp San Benjamin,"-$123,620.00",,,,,,,
+Cta0012,Bank0001,14/1/2023,Cliente,Egreso,Transferencia,956286123,rut0146,Devolución Pago Reale cuota 1-8 Pol 100048738 Dival,"-$331,368.00",,,,,,,
+Cta0013,Bank0001,17/1/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago Reale cuota 2-10 Pol 100305158 Barabara Diaz-Valdes,"$83,518.00",Otro,,,,,,
+Cta0014,Bank0001,22/1/2023,Cliente,Egreso,Transferencia,368894195,rut0146,Devolución Pago Reale cuota 1-10 Pol 100305158 Barabara Diaz-Valdes,"-$83,518.00",,,,,,,
+Cta0015,Bank0001,26/1/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago cuota Reale Cuo 2-8 Pol 100048738,"$332,000.00",Otro,,,,,,
+Cta0016,Bank0001,27/1/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$75,320.00",Comisión,,,,,,
+Cta0017,Bank0001,27/1/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$43,160.00",Comisión,,,,,,
+Cta0018,Bank0001,1/2/2023,Cliente,Egreso,Transferencia,857905570,rut0146,Devolución Pago Reale cuota 2-8 Pol 100048738 Dival,"-$331,368.00",,,,,,,
+Cta0019,Bank0001,10/2/2023,Interno,Ingreso,Depósito,76743492-8,Com0007,Comisiones,"$245,910.00",Comisión,,,,,,
+Cta0020,Bank0001,10/2/2023,Interno,Ingreso,Depósito,99147000-K,Com0001,Comisiones,"$66,895.00",Comisión,,,,,,
+Cta0021,Bank0001,10/2/2023,Interno,Ingreso,Depósito,99147000-K,Com0001,Comisiones,"$26,880.00",Comisión,,,,,,
+Cta0022,Bank0001,10/2/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$105,567.00",Comisión,,,,,,
+Cta0023,Bank0001,19/2/2023,Interno,Egreso,PEL,892059,Prv0001,Pago Iva Enero 2023,"-$63,469.00",,,,,,,
+Cta0024,Bank0001,21/2/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago cuota Reale Cuo 2-10 Pol 300,"$85,000.00",Otro,,,,,,
+Cta0025,Bank0001,21/2/2023,Cliente,Ingreso,Transferencia,17087656-3,rut0186,Pago Pol RCI de BCI Seguros,"$10,044.00",Otro,,,,,,
+Cta0026,Bank0001,22/2/2023,Cliente,Egreso,Transferencia,653025388,rut0036,Devolución pago BCI Seguros Pols RCI,"-$20,088.00",,,,,,,
+Cta0027,Bank0001,22/2/2023,Cliente,Egreso,Transferencia,721526801,rut0146,Devolución Pago Reale cuota 2-10 Pol 100305158 Barabara Diaz-Valdes,"-$83,966.00",,,,,,,
+Cta0028,Bank0001,22/2/2023,Cliente,Ingreso,Transferencia,16938054-6,rut0192,Pago Pol RCI de BCI Seguros,"$10,044.00",Otro,,,,,,
+Cta0029,Bank0001,24/2/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$620,404.00",Comisión,,,,,,
+Cta0030,Bank0001,24/2/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$112,664.00",Comisión,,,,,,
+Cta0031,Bank0001,3/3/2023,Interno,Egreso,Transferencia,203696671,rut0036,Retiro,"-$350,000.00",,,,,,,
+Cta0032,Bank0001,6/3/2023,Interno,Egreso,Transferencia,789652255,rut0147,Retiro,"-$350,000.00",,,,,,,
+Cta0033,Bank0001,7/3/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago Reale cuota 3-10 Pol 100305158 Barabara Diaz-Valdes,"$84,326.00",Otro,,,,,,
+Cta0034,Bank0001,7/3/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago Reale cuota 3-8 Pol 100048738 Dival,"$335,000.00",Otro,,,,,,
+Cta0035,Bank0001,7/3/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago Liberty Cuo 1-3 Pol 61544460 Transp San Benjamin,"$125,000.00",Otro,,,,,,
+Cta0036,Bank0001,8/3/2023,Cliente,Egreso,Transferencia,71469368,rut0146,Devolución Pago Reale cuota 3-10 Pol 100305158 Barabara Diaz-Valdes,"-$84,297.00",,,,,,,
+Cta0037,Bank0001,8/3/2023,Cliente,Egreso,Transferencia,92667080,rut0146,Devolución Pago Reale cuota 3-8 Pol 100048738 Dival,"-$334,592.00",,,,,,,
+Cta0038,Bank0001,8/3/2023,Cliente,Egreso,Transferencia,111065039,rut0146,Devolución Pago Liberty cuota 1-3 Pol 61544460 Transportes San Benjamin,"-$124,888.00",,,,,,,
+Cta0039,Bank0001,14/3/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$977,803.00",Comisión,,,,,,
+Cta0040,Bank0001,16/3/2023,Interno,Egreso,PEL,619995,Prv0001,Pago Iva Febero 2023,"-$206,340.00",,,,,,,
+Cta0041,Bank0001,21/3/2023,Interno,Egreso,Transferencia,104582536,rut0036,Retiro,"-$500,000.00",,,,,,,
+Cta0042,Bank0001,21/3/2023,Interno,Egreso,Transferencia,122331530,rut0147,Retiro,"-$500,000.00",,,,,,,
+Cta0043,Bank0001,22/3/2023,Interno,Ingreso,Depósito,94510000-1,Com0008,Comisiones,"$877,051.00",Comisión,,,,,,
+Cta0044,Bank0001,22/3/2023,Interno,Ingreso,Depósito,94510000-1,Com0008,Comisiones,"$990,562.00",Comisión,,,,,,
+Cta0045,Bank0001,24/3/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$670,522.00",Comisión,,,,,,
+Cta0046,Bank0001,5/4/2023,Interno,Ingreso,Depósito,99147000-K,Com0001,Comisiones,"$195,816.00",Comisión,,,,,,
+Cta0047,Bank0001,6/4/2023,Interno,Egreso,Transferencia,295364100,rut0036,Retiro,"-$750,000.00",,,,,,,
+Cta0048,Bank0001,6/4/2023,Interno,Egreso,Transferencia,312268166,rut0147,Retiro,"-$750,000.00",,,,,,,
+Cta0049,Bank0001,14/4/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$117,751.00",Comisión,,,,,,
+Cta0050,Bank0001,14/4/2023,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$333,978.00",Comisión,,,,,,
+Cta0051,Bank0001,17/4/2023,Interno,Egreso,PEL,23040033614,Prv0001,Pago Iva Marzo 2023,"-$743,829.00",,,,,,,
+Cta0052,Bank0001,20/4/2023,Cliente,Egreso,Transferencia,790903096,rut0146,Abono,"-$850,000.00",,,,,,,
+Cta0053,Bank0001,20/4/2023,Cliente,Egreso,Transferencia,912115103,Com0006,Pago cuotas 2 y 3 Pol 61544460 Transportes San Benjamin,"-$250,670.00",,,,,,,
+Cta0054,Bank0001,20/4/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago Liberty y Reale cuotas,"$659,984.00",Otro,,,,,,
+Cta0055,Bank0001,27/4/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$200,469.00",Comisión,,,,,,
+Cta0056,Bank0001,5/5/2023,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$60,243.00",Comisión,,,,,,
+Cta0057,Bank0001,8/5/2023,Interno,Egreso,Transferencia,276676524,rut0036,Retiro,"-$400,000.00",,,,,,,
+Cta0058,Bank0001,9/5/2023,Interno,Egreso,Cargo,0,Bank0001,Comisión mantención plan,"-$10,892.00",Comisión,,,,,,
+Cta0059,Bank0001,9/5/2023,Interno,Egreso,Cargo,0,Bank0001,Iva mantención plan,"-$2,069.00",,,,,,,
+Cta0060,Bank0001,11/5/2023,Interno,Egreso,Cargo,0,Bank0001,Comisión mantención plan,"-$10,861.00",Comisión,,,,,,
+Cta0061,Bank0001,11/5/2023,Interno,Egreso,Cargo,0,Bank0001,Iva mantención plan,"-$2,064.00",,,,,,,
+Cta0062,Bank0001,15/5/2023,Interno,Ingreso,Transferencia,0-0,Prv0001,Devolución impuesto a La Renta,"$12,013.00",Otro,,,,,,
+Cta0063,Bank0001,17/5/2023,Interno,Egreso,PEL,23050034787,Prv0001,Pago Iva Abril 2023,"-$140,630.00",,,,,,,
+Cta0064,Bank0001,17/5/2023,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$106,698.00",Comisión,,,,,,
+Cta0065,Bank0001,22/5/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$116,383.00",Comisión,,,,,,
+Cta0066,Bank0001,24/5/2023,Cliente,Egreso,Transferencia,909740486,rut0146,Devolución Pago Reale cuota 4-10 Pol 100305158 Barabara Diaz-Valdes,"-$84,600.00",,,,,,,
+Cta0067,Bank0001,24/5/2023,Cliente,Egreso,Transferencia,936122012,rut0146,Devolución Pago Reale cuota 4-8 Pol 100048738 Dival,"-$335,703.00",,,,,,,
+Cta0068,Bank0001,24/5/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago Reale cuota 5-10 Pol 100305158 Barabara Diaz-Valdes,"$85,340.00",Otro,,,,,,
+Cta0069,Bank0001,24/5/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago Reale cuota 5-8 Pol 100048738 Dival,"$338,480.00",Otro,,,,,,
+Cta0070,Bank0001,29/5/2023,Cliente,Egreso,Transferencia,529862912,rut0146,Devolución Pago Reale cuota 5-10 Pol 100305158 Barabara Diaz-Valdes,"-$85,311.00",,,,,,,
+Cta0071,Bank0001,29/5/2023,Cliente,Egreso,Transferencia,544370479,rut0146,Devolución Pago Reale cuota 5-8 Pol 100048738 Dival,"-$338,437.00",,,,,,,
+Cta0072,Bank0001,29/5/2023,Interno,Egreso,Transferencia,556258125,rut0146,Devolución pago Creattiva mensualidad Google Workspace,"-$28,524.00",,,,,,,
+Cta0073,Bank0001,6/6/2023,Interno,Egreso,Transferencia,469054439,rut0036,Retiro,"-$250,000.00",,,,,,,
+Cta0074,Bank0001,9/6/2023,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$170,708.00",Comisión,,,,,,
+Cta0075,Bank0001,9/6/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$62,488.00",Comisión,,,,,,
+Cta0076,Bank0001,16/6/2023,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas Reale,"$601,692.00",Otro,,,,,,
+Cta0077,Bank0001,20/6/2023,Interno,Egreso,PEL,23070043481,Prv0001,Pago Iva Mayo 2023,"-$47,883.00",,,,,,,
+Cta0078,Bank0001,27/6/2023,Cliente,Egreso,Transferencia,27019744,rut0146,Devolución Pago Reale cuota 6-10 Pol 100305158 Barabara Diaz-Valdes,"-$85,467.00",,,,,,,
+Cta0079,Bank0001,27/6/2023,Cliente,Egreso,Transferencia,46670221,rut0146,Devolución Pago Reale cuota 6-8 Pol 100048738 Dival,"-$338,949.00",,,,,,,
+Cta0080,Bank0001,27/6/2023,Cliente,Egreso,Transferencia,58139458,rut0146,Devolución Pago Reale cuota 1-10 Pol 300345109 Transportes San Benjamin,"-$177,153.00",,,,,,,
+Cta0081,Bank0001,29/6/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$169,980.00",Comisión,,,,,,
+Cta0082,Bank0001,29/6/2023,Interno,Ingreso,Transferencia,65135249-5,rut0143,Prueba registro,$1.00,Otro,,,,,,
+Cta0083,Bank0001,30/6/2023,Interno,Egreso,Transferencia,997477325,rut0037,Traspaso a Scotiabank,"-$100,000.00",,,,,,,
+Cta0084,Bank0001,30/6/2023,Interno,Egreso,Transferencia,997477325,rut0037,Traspaso a Scotiabank por cierre cta. cte. Itaú,"-$392,019.00",,,,,,,
+Cta0085,Bank0002,30/6/2023,Interno,Ingreso,Transferencia,6868879-5,rut0146,Prueba cta. Cte. BCL,"$10,000.00",Otro,,,,,,Cart0001
+Cta0086,Bank0002,30/6/2023,Interno,Ingreso,Transferencia,77604036-9,rut0037,Traspaso,"$100,000.00",Otro,,,,,,Cart0001
+Cta0087,Bank0002,2/7/2023,Interno,Ingreso,Transferencia,6868879-5,rut0146,Devolución parcial abono prueba cta. cte. BCL,"$300,000.00",Otro,,,,,,Cart0002
+Cta0088,Bank0002,3/7/2023,Interno,Ingreso,Transferencia,6868879-5,rut0146,Devolución saldo abono prueba cta. cte. BCL,"$92,019.00",Otro,,,,,,Cart0002
+Cta0089,Bank0002,4/7/2023,Interno,Egreso,Caja,0,rut0146,Devolución prueba cta. te. BCL,"-$10,000.00",,,,,,,Cart0002
+Cta0090,Bank0002,4/7/2023,Cliente,Ingreso,Transferencia,65135249-5,rut0143,Abono 1era Transferencia,$1.00,Otro,,,,,,Cart0002
+Cta0091,Bank0002,5/7/2023,Interno,Egreso,Transferencia,91059AB93366,rut0036,Retiro,"-$150,000.00",,,,,,,Cart0002
+Cta0092,Bank0002,6/7/2023,Cliente,Egreso,Transferencia,89E24E3E468B,Com0007,Abono Pol 300352530 Corp. Edu. Trememn,"-$500,000.00",,,,,,,Cart0002
+Cta0093,Bank0002,6/7/2023,Cliente,Ingreso,Transferencia,65135249-5,rut0143,Pago Reale Pol 300352530,"$658,468.00",Otro,,,,,,Cart0002
+Cta0094,Bank0002,7/7/2023,Cliente,Egreso,Transferencia,9AA076AC4C9B,rut0146,Devolución abono Reale Pol 300352530 Corp. Edu. Trememn,"-$146,853.00",,,,,,,Cart0002
+Cta0095,Bank0002,7/7/2023,Cliente,Egreso,Transferencia,236C751609A7,rut0143,Devolución dif pago Pol 300352530,"-$11,617.00",,,,,,,Cart0002
+Cta0096,Bank0002,10/7/2023,Interno,Egreso,Transferencia,3461046872,rut0036,Retiro,"-$40,000.00",,,,,,,Cart0002
+Cta0097,Bank0002,11/7/2023,Interno,Ingreso,Transferencia,99231000-6,Com0005,Comisiones,"$145,651.00",Comisión,,,,,,Cart0002
+Cta0098,Bank0002,11/7/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago cuotas Zurich y Reale,"$794,000.00",Otro,,,,,,Cart0002
+Cta0099,Bank0002,13/7/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$255,608.00",Comisión,,,,,,Cart0002
+Cta0100,Bank0002,18/7/2023,Interno,Egreso,Transferencia,5FC640CC7A93,rut0146,Devolución pago Iva Junio 2023,"-$89,544.00",,,,,,,Cart0002
+Cta0101,Bank0002,19/7/2023,Cliente,Egreso,Transferencia,F9E298318C0F,rut0146,Devolución pago Reale cuota 7-10 Pol 300305158 Barabara Diaz-Valdes,"-$85,521.00",,,,,,,Cart0002
+Cta0102,Bank0002,19/7/2023,Cliente,Egreso,Transferencia,56F56EF062D3,rut0146,Devolución pago Reale cuota 7-8 Pol 100048738 Dival,"-$339,079.00",,,,,,,Cart0002
+Cta0103,Bank0002,19/7/2023,Cliente,Egreso,Transferencia,89B5E016802E,rut0146,Devolución pago Reale cuota 7-10 Pol 300345109 Transp San Benjamin,"-$177,262.00",,,,,,,Cart0002
+Cta0104,Bank0002,20/9/2023,Interno,Egreso,PEL,56DE7971255D,Prv0001,Pago Iva Agosto 2023,"-$87,167.00",,,,"-$87,167.00",,,Cart0004
+Cta0105,Bank0002,20/7/2023,Interno,Egreso,Transferencia,6EB8400988EE,Prv0002,2 Licencias Microsoft 365 Empresa,"-$29,203.00",,,,,,,Cart0002
+Cta0106,Bank0002,26/7/2023,Interno,Ingreso,Transferencia,77096952-2,Com0004,Comisiones,"$157,668.00",Comisión,,,,"$157,668.00",,Cart0002
+Cta0107,Bank0002,27/7/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$2,043,347.00",Comisión,,,,,,Cart0002
+Cta0108,Bank0002,27/7/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones Líneas Especiales,"$1,321,182.00",Comisión,,,,,,Cart0002
+Cta0109,Bank0002,28/7/2023,Interno,Egreso,Transferencia,5E29FC9D2293,rut0146,Devolución pago Patente Comercial 2do Semestre,"-$31,537.00",,,,,,,Cart0002
+Cta0110,Bank0002,28/7/2023,Interno,Egreso,Transferencia,3492542706,rut0036,Retiro,"-$500,000.00",,,,,,,Cart0002
+Cta0111,Bank0002,28/7/2023,Interno,Egreso,Transferencia,89F8545E20BB,rut0036,Retiro,"-$500,000.00",,,,,,,Cart0002
+Cta0112,Bank0002,28/7/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$188,240.00",Comisión,,,,,,Cart0002
+Cta0113,Bank0002,31/7/2023,Interno,Egreso,Transferencia,D28BA8CAD5A6,Prv0003,Contrato anual Brzovic Cabrera Ltda. 30-07-2023 al 30-07-2024,"-$174,180.00",,,,,,,Cart0002
+Cta0114,Bank0002,2/8/2023,Interno,Egreso,Transferencia,D457CFFE0276,rut0147,Retiro,"-$500,000.00",,TEF  7983284-7 Patricia Pia Ca,3502275329,"-$500,000.00",,"$2,781,388.00",Cart0003
+Cta0115,Bank0002,3/8/2023,Interno,Ingreso,Depósito,99147000-K,Com0001,Comisiones,"$119,762.00",Comisión,DEPOSITO CON DOCUMENTOS,514452,,"$119,762.00","$2,901,150.00",Cart0003
+Cta0116,Bank0002,14/8/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$9,003.00",Comisión,,,,"$9,003.00",,Cart0003
+Cta0117,Bank0002,14/8/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$57,451.00",Comisión,,,,"$57,451.00",,Cart0003
+Cta0118,Bank0002,17/8/2023,Interno,Egreso,PEL,FFC27D28D79B,Prv0001,Pago Iva Julio 2023,"-$497,242.00",,PAGO IMPTO SII 776050369,3529020118,"-$497,242.00",,"$2,470,362.00",Cart0003
+Cta0119,Bank0002,21/8/2023,Cliente,Egreso,Transferencia,BA8DE9FB6ACB,rut0146,Abono,"-$700,000.00",,,,"-$700,000.00",,,Cart0003
+Cta0120,Bank0002,21/8/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago cuotas Reale,"$424,346.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,3534373593,,"$424,346.00","$2,194,708.00",Cart0003
+Cta0121,Bank0002,21/8/2023,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas Reale,"$570,514.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,3534411206,,"$570,514.00","$2,765,222.00",Cart0003
+Cta0122,Bank0002,23/8/2023,Cliente,Egreso,Transferencia,3ECD58F0A949,rut0146,Devolución pago Reale cuotas Bárabara Díaz-Valdes y Dival,"-$424,425.00",,TEF 6868879-5 Patricio Francis,3538404364,"-$424,425.00",,"$2,340,797.00",Cart0003
+Cta0123,Bank0002,23/8/2023,Cliente,Egreso,Transferencia,87C2E2F13F73,rut0146,Devolución pago Reale cuota y Pol Transp san Benjamin,"-$570,432.00",,TEF  6868879-5 Patricio Franci,3538325472,"-$570,432.00",,"$1,770,365.00",Cart0003
+Cta0124,Bank0002,23/8/2023,Interno,Egreso,Transferencia,56AF371CA8B4,Prv0002,2 Licencias Microsoft 365 Empresa,"-$30,845.00",,TEF 77617950-7 Creattiva Datac,3538310180,"-$30,845.00",,"$1,739,520.00",Cart0003
+Cta0125,Bank0002,24/8/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones Exentas,"$111,258.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,3539945088,,"$111,258.00","$1,850,778.00",Cart0003
+Cta0126,Bank0002,24/8/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones Afectas,"$395,626.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,3539945127,,"$395,626.00","$2,246,404.00",Cart0003
+Cta0127,Bank0002,30/8/2023,Interno,Egreso,Transferencia,46CA1CAA9274,rut0036,Retiro,"-$750,000.00",,TEF 17402356-5 Danko Ivan Brzo,3550399119,"-$750,000.00",,"$1,496,404.00",Cart0003
+Cta0128,Bank0002,11/9/2023,Interno,Ingreso,Transferencia,99231000-6,Com0005,Comisiones,"$542,296.00",Comisión,,,,"$542,296.00",,Cart0004
+Cta0129,Bank0002,14/9/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$239,399.00",Comisión,PROVEEDORE 76743492-8 REALE CH,3580129918,,"$239,399.00","$2,278,099.00",Cart0004
+Cta0130,Bank0002,21/9/2023,Interno,Egreso,Transferencia,6646338BEC0F,rut0147,Retiro,"-$750,000.00",,TEF  7983284-7 Patricia Pia Ca,3591114616,"-$750,000.00",,"$1,440,932.00",Cart0004
+Cta0131,Bank0002,22/9/2023,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas,"$648,487.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,3593141354,,"$648,487.00","$2,089,419.00",Cart0004
+Cta0132,Bank0002,25/9/2023,Cliente,Egreso,Transferencia,25DC368532A3,rut0146,Devolución pago Reale y Zurich cuotas Barbara Díaz-Valdes Dival y Transp San Benjamin,"-$841,015.00",,TEF  6868879-5 Patricio Franci,3597927322,"-$841,015.00",,"$1,248,404.00",Cart0004
+Cta0133,Bank0002,27/9/2023,Interno,Egreso,Transferencia,065A843C04E2,Prv0002,2 Licencias Microsoft 365 Empresa,"-$31,880.00",,,,"-$31,880.00",,,Cart0004
+Cta0134,Bank0002,6/10/2023,Interno,Egreso,Transferencia,BEEF2E3CA714,rut0036,Retiro,"-$500,000.00",,TEF 17402356-5 Danko Ivan Brzo,3621246610,"-$500,000.00",,"$1,043,873.00",Cart0005
+Cta0135,Bank0002,6/10/2023,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$327,349.00",Comisión,PROVEEDORE 99037000-1 ZURICH C,3621074089,,"$327,349.00","$1,543,873.00",Cart0005
+Cta0136,Bank0002,12/10/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago cuotas Zurich y Reale,"$456,534.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,3630872031,,"$456,534.00","$1,500,407.00",Cart0005
+Cta0137,Bank0002,13/10/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$38,533.00",Comisión,PROVEEDORE 76743492-8 REALE CH,3632711750,,"$38,533.00","$1,538,940.00",Cart0005
+Cta0138,Bank0002,16/10/2023,Cliente,Egreso,Transferencia,2023CEF56D72,rut0146,Devolución pago Reale y Zurich cuotas Barbara Díaz-Valdes Dival y Transp San Benjamin,"-$456,545.00",,TEF  6868879-5 Patricio Franci,3636933371,"-$456,545.00",,"$1,082,395.00",Cart0005
+Cta0139,Bank0002,17/10/2023,Interno,Egreso,PEL,F4EA13DACB57,Prv0001,Pago Iva Septiembre 2023,"-$156,978.00",,PAGO IMPTO SII 776050369,3639840658,"-$156,978.00",,"$925,417.00",Cart0005
+Cta0140,Bank0002,18/10/2023,Interno,Ingreso,Depósito,,Com0001,Comisiones,"$25,847.00",Comisión,DEPOSITO CON DOCUMENTOS,2005062,,"$25,847.00","$951,264.00",Cart0005
+Cta0141,Bank0002,25/10/2023,Interno,Egreso,Transferencia,468F333333FC,Prv0002,2 Licencias Microsoft 365 Empresa OC 2067809,"-$33,844.00",,TEF 77617950-7 Creattiva Datac,3653824610,"-$33,844.00",,"$917,420.00",Cart0005
+Cta0142,Bank0002,26/10/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$42,976.00",Comisión,PROVEEDORE 76743492-8 REALE CH,3655622086,,"$42,976.00","$960,396.00",Cart0005
+Cta0143,Bank0002,6/11/2023,Interno,Egreso,Transferencia,69BB4966ECBF,rut0036,Retiro,"-$300,000.00",,,,"-$300,000.00",,,Cart0006
+Cta0144,Bank0002,8/11/2023,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$191,632.00",Comisión,PROVEEDORE 99037000-1 ZURICH C,3679855041,,"$191,632.00","$852,028.00",Cart0006
+Cta0145,Bank0002,15/11/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$21,525.00",Comisión,PROVEEDORE 76743492-8 REALE CH,3692375939,,"$21,525.00","$873,553.00",Cart0006
+Cta0146,Bank0002,15/11/2023,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago cuotas Reale y Zurich,"$466,000.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,3693058611,,"$466,000.00","$1,339,553.00",Cart0006
+Cta0147,Bank0002,20/11/2023,Interno,Egreso,PEL,2DFA73A64598,Prv0001,Pago Iva Octubre 2023,"-$55,838.00",,,,"-$55,838.00",,,Cart0006
+Cta0148,Bank0002,20/11/2023,Cliente,Egreso,Transferencia,CF7AC811C4B3,rut0146,Devolución pago Reale cuota 1-3 Pol 300383836 Dival,"-$92,524.00",,,,"-$92,524.00",,,Cart0006
+Cta0149,Bank0002,20/11/2023,Cliente,Egreso,Transferencia,840E8463F87D,rut0146,Devolución pago Reale cuota 6-10 Pol 300345109 Transportes San Benjamin,"-$179,227.00",,,,"-$179,227.00",,,Cart0006
+Cta0150,Bank0002,20/11/2023,Cliente,Egreso,Transferencia,36D00A35C1D7,rut0146,Devolución pago Zurich cuota 5-10 Pol 6834321 Transportes San Benjamin,"-$194,158.00",,,,"-$194,158.00",,,Cart0006
+Cta0151,Bank0002,27/11/2023,Interno,Egreso,Transferencia,B05A8677F869,Prv0002,2 Licencias Microsoft 365 Empresa Fac 59918,"-$33,844.00",,TEF 77617950-7 Creattiva Datac,3712730854,"-$33,844.00",,"$783,962.00",Cart0006
+Cta0152,Bank0002,29/11/2023,Interno,Egreso,Transferencia,889484652C78,rut0147,Retiro,"-$150,000.00",,TEF  7983284-7 Patricia Pia Ca,3717811240,"-$150,000.00",,"$633,962.00",Cart0006
+Cta0153,Bank0002,30/11/2023,Interno,Egreso,Transferencia,3721347429,rut0036,Retiro,"-$200,000.00",,TEF 17402356-5 Danko Ivan Brzo,3721347429,"-$200,000.00",,"$433,962.00",Cart0006
+Cta0154,Bank0002,11/12/2023,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas,"$733,000.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,3741703304,,"$733,000.00","$1,166,962.00",Cart0007
+Cta0155,Bank0002,13/12/2023,Cliente,Egreso,Transferencia,2208C9D131CE,rut0146,Devolución pago Zurich Generales cuota 6-10 Pol 6834321 Transp San Benjamin,"-$194,884.00",,TEF  6868879-5 Patricio Franci,3747008151,"-$194,884.00",,"$972,078.00",Cart0007
+Cta0156,Bank0002,13/12/2023,Cliente,Egreso,Transferencia,B5E68A0D6A9E,rut0146,Devolución pago Reale cuota 2-3 Pol 300383836 Dival,"-$92,870.00",,TEF  6868879-5 Patricio Franci,3747030890,"-$92,870.00",,"$879,208.00",Cart0007
+Cta0157,Bank0002,13/12/2023,Cliente,Egreso,Transferencia,2AB3EB6207C4,rut0146,Devolución pago Reale cuota 7-10 Pol 300345109 Transp San Benjamin,"-$179,898.00",,TEF  6868879-5 Patricio Franci,3747042103,"-$179,898.00",,"$699,310.00",Cart0007
+Cta0158,Bank0002,13/12/2023,Cliente,Egreso,Transferencia,7BFD148C5F45,rut0146,Devolución pago Reale cuota 1-10 Pol 300389969 Transp San Benjamin,"-$132,642.00",,TEF  6868879-5 Patricio Franci,3747036343,"-$132,642.00",,"$566,668.00",Cart0007
+Cta0159,Bank0002,13/12/2023,Cliente,Egreso,Transferencia,D215BD59EA0C,rut0146,Devolución pago Reale cuota 1-10 Pol 300393159 Transp San Benjamin,"-$132,642.00",,TEF  6868879-5 Patricio Franci,3747036343,"-$132,642.00",,"$566,668.00",Cart0007
+Cta0160,Bank0002,14/12/2023,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$284,133.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,3749050946,,"$284,133.00","$718,159.00",Cart0007
+Cta0161,Bank0002,14/12/2023,Interno,Ingreso,Transferencia,99231000-6,Com0005,Comisiones,"$169,308.00",Comisión,PROVEEDORE 99231000-6 HDI SEGU,3749055240,,"$169,308.00","$887,467.00",Cart0007
+Cta0162,Bank0002,19/12/2023,Interno,Egreso,PEL,1408AF9052D4,Prv0001,Pago Iva Noviembre 2023,"-$17,034.00",,PAGO IMPTO SII 776050369,3759334919,"-$17,034.00",,"$870,433.00",Cart0007
+Cta0163,Bank0002,20/12/2023,Interno,Ingreso,Transferencia,76743492-8,Com0005,Comisiones,"$142,535.00",Comisión,PROVEEDORE 99231000-6 HDI SEGU,3761336375,,"$142,535.00","$1,012,968.00",Cart0007
+Cta0164,Bank0002,27/12/2023,Interno,Egreso,Transferencia,2587B61E824B,Prv0002,2 Licencias Microsoft 365 Empresa OC 2068601,"-$31,095.00",,TEF 77617950-7 Creattiva Datac,3774114372,"-$31,095.00",,"$981,873.00",Cart0007
+Cta0165,Bank0002,28/12/2023,Interno,Egreso,Transferencia,3776623655,rut0036,Retiro,"-$250,000.00",,TEF 17402356-5 Danko Ivan Brzo,3776623655,"-$250,000.00",,"$731,873.00",Cart0007
+Cta0166,Bank0002,29/12/2023,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$348,081.00",Comisión,PROVEEDORE 76743492-8 REALE CH,3779026694,,"$348,081.00","$1,079,954.00",Cart0007
+Cta0167,Bank0002,2/1/2024,Interno,Ingreso,Depósito,99147000-K,Com0001,Comisiones,"$52,241.00",Comisión,DEPOSITO CON DOCUMENTOS,6087470,,"$52,241.00","$1,132,195.00",Cart0008
+Cta0168,Bank0002,8/1/2024,Interno,Egreso,Transferencia,3797132633,rut0147,Retiro,"-$450,000.00",,TEF  7983284-7 Patricia Pia Ca,,"-$450,000.00",,"$777,550.00",Cart0008
+Cta0169,Bank0002,8/1/2024,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$95,355.00",Comisión,PROVEEDORE 99037000-1 ZURICH C,,,"$95,355.00","$1,227,550.00",Cart0008
+Cta0170,Bank0002,11/1/2024,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$654,569.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$654,569.00","$1,432,119.00",Cart0008
+Cta0171,Bank0002,15/1/2024,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas Reale y Zurich,"$736,564.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,,,"$736,564.00","$2,168,683.00",Cart0008
+Cta0172,Bank0002,15/1/2024,Interno,Ingreso,Depósito,99147000-K,Com0001,Comisiones,"$345,136.00",Comisión,DEPOSITO CON DOCUMENTOS,1319871,,"$345,136.00","$2,513,819.00",Cart0008
+Cta0173,Bank0002,15/1/2024,Cliente,Ingreso,Depósito,56037590-5,rut0196,Pago cuotas BCI y HDI,"$46,035.00",Otro,DEPOSITO CON DOCUMENTOS,2747562,,"$46,035.00","$2,559,854.00",Cart0008
+Cta0174,Bank0002,18/1/2024,Cliente,Egreso,Transferencia,3817494995,rut0146,Devolución pago Reale cuota 3-3 Pol 300383836 Dival,"-$93,352.00",,TEF  6868879-5 Patricio Franci,,"-$93,352.00",,"$2,466,502.00",Cart0008
+Cta0175,Bank0002,18/1/2024,Cliente,Egreso,Transferencia,3817503094,rut0146,Devolución pago Reale cuota 8-10 Pol 300345109 Transp San Benjamin,"-$180,860.00",,TEF  6868879-5 Patricio Franci,,"-$180,860.00",,"$2,285,642.00",Cart0008
+Cta0176,Bank0002,18/1/2024,Cliente,Egreso,Transferencia,3817506622,rut0146,Devolución pago Reale cuota 2-10 Pol 300389969 Transp San Benjamin,"-$133,351.00",,TEF  6868879-5 Patricio Franci,,"-$133,351.00",,"$2,152,291.00",Cart0008
+Cta0177,Bank0002,18/1/2024,Cliente,Egreso,Transferencia,3817495089,rut0146,Devolución pago Reale cuota 2-10 Pol 300393159 Transp San Benjamin,"-$133,351.00",,TEF  6868879-5 Patricio Franci,,"-$133,351.00",,"$2,152,291.00",Cart0008
+Cta0178,Bank0002,18/1/2024,Cliente,Egreso,Transferencia,3817506658,rut0146,Devolución pago Zurich Gen cuota 7-10 Pol 6834321 Transp San Benjamin,"-$195,926.00",,TEF  6868879-5 Patricio Franci,,"-$195,926.00",,"$1,823,014.00",Cart0008
+Cta0179,Bank0002,18/1/2024,Cliente,Egreso,Transferencia,3817515511,rut0146,Devolución pago BCI Gen cuota 1-10 Pol 1088321 Studio III,"-$22,097.00",,TEF  6868879-5 Patricio Franci,,"-$22,097.00",,"$1,800,917.00",Cart0008
+Cta0180,Bank0002,18/1/2024,Cliente,Egreso,Transferencia,3817513232,Com0005,Devolución pago HDI cuota 1-10 Pol 11-87934 Studio III,"-$23,938.00",,TEF  6868879-5 Patricio Franci,,"-$23,938.00",,"$1,776,979.00",Cart0008
+Cta0181,Bank0002,18/1/2024,Interno,Egreso,PEL,3817480048,Prv0001,Pago Iva Diciembre 2023,"-$155,302.00",,PAGO IMPTO SII 776050369,,"-$155,302.00",,"$1,621,677.00",Cart0008
+Cta0182,Bank0002,22/1/2024,Cliente,Egreso,Transferencia,3822231616,Prv0004,Pago Factura 69723850 Enero 2024,"-$38,983.00",,,,"-$38,983.00",,,Cart0008
+Cta0183,Bank0002,25/1/2024,Interno,Egreso,Transferencia,3829772606,rut0036,Retiro,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$400,000.00",,"$1,182,694.00",Cart0008
+Cta0184,Bank0002,25/1/2024,Cliente,Egreso,Transferencia,3829852883,Prv0002,Pago Cupón 2068998 Enero 2024,"-$33,094.00",,TEF 77617950-7 Creattiva Datac,,"-$33,094.00",,"$1,149,600.00",Cart0008
+Cta0185,Bank0002,5/2/2024,Interno,Ingreso,Transferencia,77096952-2,Com0004,Comisiones,"$555,430.00",Comisión,TEF 77096952-2 FID CHILE SEGUR,,,"$555,430.00","$1,705,030.00",Cart0009
+Cta0186,Bank0002,7/2/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$376,618.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$376,618.00","$2,081,648.00",Cart0009
+Cta0187,Bank0002,9/2/2024,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$341,941.00",Comisión,PROVEEDORE 99037000-1 ZURICH C,,,"$341,941.00","$2,423,589.00",Cart0009
+Cta0188,Bank0002,14/2/2024,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas,"$847,585.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,,,"$847,585.00","$3,271,174.00",Cart0009
+Cta0189,Bank0002,15/2/2024,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Saldo pago cuotas,"$36,750.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$36,750.00","$3,307,924.00",Cart0009
+Cta0190,Bank0002,19/2/2024,Interno,Egreso,Transferencia,3876353530,rut0036,Retiro,"-$400,000.00",,,,"-$400,000.00",,,Cart0009
+Cta0191,Bank0002,19/2/2024,Interno,Egreso,PEL,3877249564,Prv0001,Pago Iva Enero 2024,"-$218,547.00",,PAGO IMPTO SII 776050369,,"-$218,547.00",,"$2,735,227.00",Cart0009
+Cta0192,Bank0002,19/2/2024,Interno,Egreso,Transferencia,3877269729,rut0147,Retiro,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$400,000.00",,"$2,953,774.00",Cart0009
+Cta0193,Bank0002,19/2/2024,Cliente,Egreso,Transferencia,3877277343,rut0146,"Devolución pago Reale, Renta Gen y Zurich Gen cuotas Dival y TSB","-$884,616.00",,TEF  6868879-5 Patricio Franci,,"-$884,616.00",,"$1,450,611.00",Cart0009
+Cta0194,Bank0002,19/2/2024,Cliente,Egreso,Transferencia,3877292698,rut0146,Devolución pago BCI Gen y HDI cuotas 2-10 Pols 1088321 y  11-87934 Studio III,"-$45,927.00",,TEF  6868879-5 Patricio Franci,,"-$45,927.00",,"$1,404,684.00",Cart0009
+Cta0195,Bank0002,19/2/2024,Cliente,Ingreso,Depósito,56037590-5,rut0196,Pago cuotas BCI y HDI,"$45,850.00",Otro,DEPOSITO CON DOCUMENTOS,2005295,,"$45,850.00","$3,353,774.00",Cart0009
+Cta0196,Bank0002,20/2/2024,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$123,815.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$123,815.00","$1,528,499.00",Cart0009
+Cta0197,Bank0002,20/2/2024,Cliente,Ingreso,Transferencia,98698677-4,rut0099,Pago cuota BCI Generales,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$1,728,499.00",Cart0009
+Cta0198,Bank0002,21/2/2024,Cliente,Egreso,Transferencia,3882056074,Prv0004,Pago Factura 69865797 Febrero 2024,"-$38,928.00",,PAGO POR SWEB DE          MOVI,,"-$38,928.00",,"$1,939,571.00",Cart0009
+Cta0199,Bank0002,21/2/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$250,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$250,000.00","$1,978,499.00",Cart0009
+Cta0200,Bank0002,22/2/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$80,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$80,000.00","$2,019,571.00",Cart0009
+Cta0201,Bank0002,23/2/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$66,100.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$66,100.00","$2,085,671.00",Cart0009
+Cta0202,Bank0002,26/2/2024,Cliente,Egreso,Transferencia,3889611685,Prv0002,Pago Cupón 2069369 Febrero 2024,"-$34,522.00",,TEF 77617950-7 Creattiva Datac,,"-$34,522.00",,"$2,051,149.00",Cart0009
+Cta0203,Bank0002,26/2/2024,Cliente,Egreso,Transferencia,3889637612,rut0146,Devolución pago BCI Gen Cuo 1 Pol 1097955 Jorge Faunes,"-$596,214.00",,TEF  6868879-5 Patricio Franci,,"-$596,214.00",,"$1,454,935.00",Cart0009
+Cta0204,Bank0002,26/2/2024,Interno,Egreso,Transferencia,3889623939,Prv0001,Pago Patente BCL 1er Semestre 2024,"-$32,714.00",,PAGO POR SWEB DE          MUNI,,"-$32,714.00",,"$1,422,221.00",Cart0009
+Cta0205,Bank0002,28/2/2024,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$438,693.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$438,693.00","$1,860,914.00",Cart0009
+Cta0206,Bank0002,5/3/2024,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$434,728.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$434,728.00","$2,295,642.00",Cart0010
+Cta0207,Bank0002,7/3/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$702,424.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$702,424.00","$2,998,066.00",Cart0010
+Cta0208,Bank0002,7/3/2024,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$229,296.00",Comisión,PROVEEDORE 99037000-1 ZURICH C,,,"$229,296.00","$3,227,362.00",Cart0010
+Cta0209,Bank0002,14/3/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Abril 2023,"$70,354.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$70,354.00","$3,297,716.00",Cart0010
+Cta0210,Bank0002,14/3/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Junio 2023,"$197,871.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$197,871.00","$3,495,587.00",Cart0010
+Cta0211,Bank0002,14/3/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Julio 2023,"$1,499,420.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$1,499,420.00","$4,995,007.00",Cart0010
+Cta0212,Bank0002,14/3/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Agosto 2023,"$430,918.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$430,918.00","$5,425,925.00",Cart0010
+Cta0213,Bank0002,14/3/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Noviembre 2023,"$74,751.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$74,751.00","$5,500,676.00",Cart0010
+Cta0214,Bank0002,14/3/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Enero 2024,"$61,560.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$61,560.00","$5,562,236.00",Cart0010
+Cta0215,Bank0002,14/3/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$137,177.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$137,177.00","$5,699,413.00",Cart0010
+Cta0216,Bank0002,14/3/2024,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas,"$889,548.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,,,"$889,548.00","$6,588,961.00",Cart0010
+Cta0217,Bank0002,18/3/2024,Cliente,Egreso,Transferencia,3933943249,rut0146,"Devolución pago Reale, Renta Gen y Zurich Gen cuotas Dival y TSB","-$890,157.00",,TEF  6868879-5 Patricio Franci,,"-$890,157.00",,"$5,698,804.00",Cart0010
+Cta0218,Bank0002,18/3/2024,Interno,Egreso,Transferencia,3933943281,rut0147,Retiro,"-$450,000.00",,TEF  7983284-7 Patricia Pia Ca,,"-$450,000.00",,"$5,248,804.00",Cart0010
+Cta0219,Bank0002,19/3/2024,Interno,Egreso,Transferencia,3936807878,rut0146,Devolución pago Iva Febrero 2024 BCL,"-$374,092.00",,TEF  6868879-5 Patricio Franci,,"-$374,092.00",,"$5,074,712.00",Cart0010
+Cta0220,Bank0002,19/3/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$5,448,804.00",Cart0010
+Cta0221,Bank0002,20/3/2024,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$188,083.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$188,083.00","$5,262,795.00",Cart0010
+Cta0222,Bank0002,20/3/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$5,462,795.00",Cart0010
+Cta0223,Bank0002,21/3/2024,Interno,Egreso,Transferencia,3941420023,rut0146,Devolución pago Movistar Móvil Factura 69993604 Marzo 2024,"-$38,869.00",,TEF 6868879-5 Patricio Francis,,"-$38,869.00",,"$5,570,158.00",Cart0010
+Cta0224,Bank0002,21/3/2024,Cliente,Egreso,Transferencia,3941423729,Prv0002,Pago Cupón 2069765 Marzo 2024,"-$33,951.00",,TEF 77617950-7 Creattiva Datac,,"-$33,951.00",,"$5,536,207.00",Cart0010
+Cta0225,Bank0002,21/3/2024,Cliente,Ingreso,Depósito,56037590-5,rut0196,Pago cuotas BCI y HDI,"$46,232.00",Otro,DEPOSITO CON DOCUMENTOS,2005296,,"$46,232.00","$5,509,027.00",Cart0010
+Cta0226,Bank0002,21/3/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$100,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$100,000.00","$5,609,027.00",Cart0010
+Cta0227,Bank0002,22/3/2024,Cliente,Egreso,Transferencia,3943306653,rut0146,Devolución pago BCI Gen y HDI cuotas 3-10 Pols 1088321 y  11-87934 Studio III,"-$46,277.00",,TEF 6868879-5 Patricio Francis,,"-$46,277.00",,"$5,647,524.00",Cart0010
+Cta0228,Bank0002,22/3/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$157,594.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$157,594.00","$5,693,801.00",Cart0010
+Cta0229,Bank0002,25/3/2024,Cliente,Egreso,Transferencia,3947034523,rut0036,Devolución pago BCI y Reale cuotas Jorge Faunes,"-$657,604.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$657,604.00",,"$4,989,920.00",Cart0010
+Cta0230,Bank0002,27/3/2024,Interno,Egreso,Transferencia,3952234118,rut0146,Devolución pago Renta Gen Pols Garantía y RC BCL,"-$145,608.00",,TEF 6868879-5 Patricio Francis,,"-$145,608.00",,"$4,939,314.00",Cart0010
+Cta0231,Bank0002,27/3/2024,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$95,002.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$95,002.00","$5,084,922.00",Cart0010
+Cta0232,Bank0002,28/3/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$124,407.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$124,407.00","$5,063,721.00",Cart0010
+Cta0233,Bank0002,5/4/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$97,148.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$97,148.00","$5,160,869.00",Cart0011
+Cta0234,Bank0002,5/4/2024,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$139,620.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$139,620.00","$5,300,489.00",Cart0011
+Cta0235,Bank0002,9/4/2024,Cliente,Ingreso,Transferencia,76966275-8,rut0173,Pago cuota,"$92,789.00",Otro,TEF 76966275-8 SERVICIOS INTEG,,,"$92,789.00","$5,393,278.00",Cart0011
+Cta0236,Bank0002,10/4/2024,Interno,Ingreso,Transferencia,99231000-6,Com0005,Comisiones,"$59,694.00",Comisión,PROVEEDORE 99231000-6 HDI SEGU,,,"$59,694.00","$5,452,972.00",Cart0011
+Cta0237,Bank0002,11/4/2024,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$70,749.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$70,749.00","$5,523,721.00",Cart0011
+Cta0238,Bank0002,15/4/2024,Interno,Egreso,Transferencia,3991417177,rut0036,Retiro,"-$1,000,000.00",,,,"-$1,000,000.00",,,Cart0011
+Cta0239,Bank0002,17/4/2024,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas,"$579,000.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,,,"$579,000.00","$5,102,721.00",Cart0011
+Cta0240,Bank0002,19/4/2024,Interno,Egreso,Transferencia,4002893249,rut0146,Devolución pago Iva Marzo 2024 BCL,"-$920,344.00",,TEF  6868879-5 Patricio Franci,,"-$920,344.00",,"$4,295,739.00",Cart0011
+Cta0241,Bank0002,19/4/2024,Cliente,Egreso,Transferencia,4002897863,rut0146,"Devolución pago Reale, Renta Gen y Zurich Gen cuotas Dival y TSB","-$577,948.00",,TEF  6868879-5 Patricio Franci,,"-$577,948.00",,"$3,717,791.00",Cart0011
+Cta0242,Bank0002,19/4/2024,Cliente,Egreso,Transferencia,4002910399,rut0146,Devolución pago BCI y HDI cuotas 4 Comunidad Studio III,"-$46,509.00",,TEF  6868879-5 Patricio Franci,,"-$46,509.00",,"$3,671,282.00",Cart0011
+Cta0243,Bank0002,19/4/2024,Cliente,Egreso,Transferencia,4002910448,rut0146,Devolución Pago Factura 70082442 Abril 2024 de BCL,"-$40,593.00",,TEF  6868879-5 Patricio Franci,,"-$40,593.00",,"$3,630,689.00",Cart0011
+Cta0244,Bank0002,19/4/2024,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$66,858.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$66,858.00","$5,169,579.00",Cart0011
+Cta0245,Bank0002,19/4/2024,Cliente,Ingreso,Depósito,56037590-5,rut0196,Pago cuotas 4 BCI y HDI,"$46,504.00",Otro,DEPOSITO CON DOCUMENTOS,2218653,,"$46,504.00","$5,216,083.00",Cart0011
+Cta0246,Bank0002,23/4/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$3,830,689.00",Cart0011
+Cta0247,Bank0002,24/4/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$300,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$300,000.00","$4,130,689.00",Cart0011
+Cta0248,Bank0002,25/4/2024,Cliente,Ingreso,Transferencia,9153266-2,rut0098,Pago cuota BCI Generales,"$99,000.00",Otro,TEF  9153266-2 FAUNES CORREA J,,,"$99,000.00","$4,229,689.00",Cart0011
+Cta0249,Bank0002,26/4/2024,Cliente,Egreso,Transferencia,4016186409,rut0036,Devolución pago Reale cuota 2 Pol 500008295 Jorge Faunes E.I.R.L.,"-$57,784.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$57,784.00",,"$4,334,635.00",Cart0011
+Cta0250,Bank0002,26/4/2024,Interno,Ingreso,Transferencia,96654180-6,Com0003,Comisiones,"$102,343.00",Comisión,TEF 96654180-6 COMPANIA DE SEG,,,"$102,343.00","$4,332,032.00",Cart0011
+Cta0251,Bank0002,26/4/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$60,387.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$60,387.00","$4,392,419.00",Cart0011
+Cta0252,Bank0002,29/4/2024,Cliente,Egreso,Transferencia,4019069071,Prv0002,Pago Cupón 2070181 Abril 2024,"-$35,343.00",,TEF 77617950-7 Creattiva Datac,,"-$35,343.00",,"$4,299,292.00",Cart0011
+Cta0253,Bank0002,2/5/2024,Cliente,Egreso,Transferencia,4026956931,rut0146,Devolución Pago BCI Gen cuota 3 Pol 1097955 Jorge Faunes E.I.R.L.,"-$603,323.00",,,,"-$603,323.00",,,Cart0012
+Cta0254,Bank0002,3/5/2024,Interno,Ingreso,Transferencia,77096952-2,Com0004,Comisiones,"$134,138.00",Comisión,,,,"$134,138.00",,Cart0012
+Cta0255,Bank0002,8/5/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$293,660.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$293,660.00","$4,123,767.00",Cart0012
+Cta0256,Bank0002,14/5/2024,Interno,Egreso,Transferencia,4053667778,rut0036,Retiro,"-$1,000,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$1,000,000.00",,"$3,123,767.00",Cart0012
+Cta0257,Bank0002,16/5/2024,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas,"$493,002.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,,,"$493,002.00","$3,616,769.00",Cart0012
+Cta0258,Bank0002,17/5/2024,Cliente,Ingreso,Depósito,56037590-5,rut0196,"Pago cuotas 5 BCI, HDI y Liberty","$1,051,908.00",Otro,DEPOSITO CON DOCUMENTOS,2747650,,"$1,051,908.00","$4,668,677.00",Cart0012
+Cta0259,Bank0002,20/5/2024,Interno,Egreso,Transferencia,4064036603,rut0146,Devolución pago Iva Abril 2024 BCL,"-$64,448.00",,TEF  6868879-5 Patricio Franci,,"-$64,448.00",,"$4,604,229.00",Cart0012
+Cta0260,Bank0002,20/5/2024,Cliente,Egreso,Transferencia,4064038821,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$493,276.00",,TEF  6868879-5 Patricio Franci,,"-$493,276.00",,"$4,110,953.00",Cart0012
+Cta0261,Bank0002,20/5/2024,Cliente,Egreso,Transferencia,4064055923,rut0146,"Devolución pago BCI, HDI y Liberty cuotas Studio III","-$1,051,908.00",,TEF  6868879-5 Patricio Franci,,"-$1,051,908.00",,"$3,059,045.00",Cart0012
+Cta0262,Bank0002,20/5/2024,Interno,Egreso,Transferencia,4064063063,rut0146,Devolución pago Movistar Móvil Fac 70260853 BCL,"-$38,000.00",,TEF  6868879-5 Patricio Franci,,"-$38,000.00",,"$3,021,045.00",Cart0012
+Cta0263,Bank0002,22/5/2024,Cliente,Egreso,Transferencia,4067426288,rut0036,Devolución pago Reale cuota 3 Pol 500008295 Jorge Faunes E.I.R.L.,"-$58,021.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$58,021.00",,"$3,163,024.00",Cart0012
+Cta0264,Bank0002,22/5/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota Reale,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$3,221,045.00",Cart0012
+Cta0265,Bank0002,23/5/2024,Interno,Ingreso,Transferencia,99017000-2,Com0009,Comisiones,"$345,649.00",Comisión,PROVEEDORE 99017000-2 Seguros,,,"$345,649.00","$3,508,673.00",Cart0012
+Cta0266,Bank0002,23/5/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$210,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$210,000.00","$3,718,673.00",Cart0012
+Cta0267,Bank0002,24/5/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$140,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$140,000.00","$3,858,673.00",Cart0012
+Cta0268,Bank0002,27/5/2024,Cliente,Egreso,Transferencia,4075558456,rut0146,Devolución pago BCI Gen cuota 4 Pol 1097955 Jorge Funes Vehículos E.I.R.L.,"-$606,494.00",,TEF  6868879-5 Patricio Franci,,"-$606,494.00",,"$3,641,513.00",Cart0012
+Cta0269,Bank0002,27/5/2024,Cliente,Egreso,Transferencia,4075569794,Prv0002,Pago Cupón 2070578 Mayo 2024,"-$32,380.00",,TEF 77617950-7 Creattiva Datac,,"-$32,380.00",,"$3,609,133.00",Cart0012
+Cta0270,Bank0002,27/5/2024,Interno,Egreso,Transferencia,4075551535,rut0147,Retiro,"-$400,000.00",,TEF  7983284-7 Patricia Pia Ca,,"-$400,000.00",,"$3,209,133.00",Cart0012
+Cta0271,Bank0002,27/5/2024,Interno,Ingreso,Transferencia,99017000-2,Com0009,Comisiones,"$95,233.00",Comisión,PROVEEDORE 99017000-2 SEGUROS,,,"$95,233.00","$3,953,906.00",Cart0012
+Cta0272,Bank0002,27/5/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Abril 2024,"$26,693.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$26,693.00","$3,980,599.00",Cart0012
+Cta0273,Bank0002,27/5/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Febrero 2024,"$35,591.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$35,591.00","$4,016,190.00",Cart0012
+Cta0274,Bank0002,27/5/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$117,817.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$117,817.00","$4,134,007.00",Cart0012
+Cta0275,Bank0002,27/5/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$114,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$114,000.00","$4,248,007.00",Cart0012
+Cta0276,Bank0002,31/5/2024,Interno,Ingreso,Transferencia,0-0,Prv0001,Devolución Impuesto A La Renta,"$18,112.00",Otro,DEPOSITO CON DOCUMENTOS,2747652,,"$18,112.00","$3,227,245.00",Cart0012
+Cta0277,Bank0002,5/6/2024,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$40,574.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$40,574.00","$3,267,819.00",Cart0013
+Cta0278,Bank0002,5/6/2024,Interno,Ingreso,Transferencia,77096952-2,Com0004,Comisiones,"$45,063.00",Comisión,TEF 77096952-2 FID CHILE SEGUR,,,"$45,063.00","$3,312,882.00",Cart0013
+Cta0279,Bank0002,6/6/2024,Cliente,Egreso,Transferencia,4100953480,rut0146,Devolución pago Sura Cuota 1 Pol 8308646 TSB,"-$63,323.00",,TEF  6868879-5 Patricio Franci,,"-$63,323.00",,"$4,042,559.00",Cart0013
+Cta0280,Bank0002,6/6/2024,Interno,Egreso,Transferencia,4100976383,rut0036,Retiro,"-$500,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$500,000.00",,"$3,542,559.00",Cart0013
+Cta0281,Bank0002,6/6/2024,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuotas,"$793,000.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,,,"$793,000.00","$4,105,882.00",Cart0013
+Cta0282,Bank0002,10/6/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Exenta,"$8,478.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$8,478.00","$3,551,037.00",Cart0013
+Cta0283,Bank0002,10/6/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$59,786.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$59,786.00","$3,610,823.00",Cart0013
+Cta0284,Bank0002,12/6/2024,Cliente,Egreso,Transferencia,4113016646,rut0146,"Devolución pago Reale, Renta y Sura Cuotas Junio Dival y TSB","-$735,052.00",,TEF  6868879-5 Patricio Franci,,"-$735,052.00",,"$2,875,771.00",Cart0013
+Cta0285,Bank0002,18/6/2024,Interno,Egreso,Giro,8925,rut0146,Giro cajero,"-$10,000.00",,GIRO REDBANC SCOTIABANK,8925,"-$10,000.00",,"$3,922,527.00",Cart0013
+Cta0286,Bank0002,18/6/2024,Cliente,Ingreso,Depósito,56037590-5,rut0196,"Pago cuotas 6 BCI, HDI y Liberty","$1,056,756.00",Otro,DEPOSITO CON DOCUMENTOS,2747653,,"$1,056,756.00","$3,932,527.00",Cart0013
+Cta0287,Bank0002,19/6/2024,Cliente,Egreso,Transferencia,4126442417,rut0146,"Devolución pago BCI, HDI y Liberty cuotas 6 Studio III","-$1,056,756.00",,TEF  6868879-5 Patricio Franci,,"-$1,056,756.00",,"$2,865,771.00",Cart0013
+Cta0288,Bank0002,21/6/2024,Interno,Egreso,Transferencia,4129716024,Prv0005,Declaración Renta AT 2024 BCL,"-$400,000.00",,TEF 12086464-5 Alfredo Patrici,,"-$400,000.00",,"$2,665,771.00",Cart0013
+Cta0289,Bank0002,21/6/2024,Interno,Egreso,Transferencia,4130492924,rut0146,Devolución pago Iva Mayol 2024 BCL,"-$260,642.00",,TEF  6868879-5 Patricio Franci,,"-$260,642.00",,"$2,405,129.00",Cart0013
+Cta0290,Bank0002,21/6/2024,Interno,Egreso,Transferencia,4130643184,rut0146,Devolución pago Movistar Móvil BCL,"-$48,810.00",,TEF  6868879-5 Patricio Franci,,"-$48,810.00",,"$2,356,319.00",Cart0013
+Cta0291,Bank0002,21/6/2024,Cliente,Egreso,Transferencia,4130564780,rut0146,Devolución Pago cuota 2 Pol  500008295 Jorge Faunes EIRL,"-$58,259.00",,TEF  6868879-5 Patricio Franci,,"-$58,259.00",,"$2,298,060.00",Cart0013
+Cta0292,Bank0002,21/6/2024,Cliente,Egreso,Transferencia,4130772380,Prv0002,Pago Cupón 2070997 Junio 2024,"-$33,308.00",,TEF 77617950-7 Creattiva Datac,,"-$33,308.00",,"$2,264,752.00",Cart0013
+Cta0293,Bank0002,21/6/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota Reale,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$3,065,771.00",Cart0013
+Cta0294,Bank0002,24/6/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$250,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$250,000.00","$2,514,752.00",Cart0013
+Cta0295,Bank0002,25/6/2024,Interno,Egreso,Transferencia,4136332527,rut0147,Retiro,"-$350,000.00",,TEF  7983284-7 Patricia Pia Ca,,"-$350,000.00",,"$2,381,386.00",Cart0013
+Cta0296,Bank0002,25/6/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$216,634.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$216,634.00","$2,731,386.00",Cart0013
+Cta0297,Bank0002,26/6/2024,Cliente,Egreso,Transferencia,4138582731,rut0036,Devolución pago cuota 5 Pol 1097955 Jorge Faunes,"-$608,360.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$608,360.00",,"$1,773,026.00",Cart0013
+Cta0298,Bank0002,27/6/2024,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$149,064.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$149,064.00","$1,922,090.00",Cart0013
+Cta0299,Bank0002,5/7/2024,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$35,476.00",Comisión,PROVEEDORE 99037000-1 ZURICH S,,,"$35,476.00","$1,957,566.00",Cart0014
+Cta0300,Bank0002,5/7/2024,Interno,Ingreso,Transferencia,77096952-2,Com0004,Comisiones,"$126,188.00",Comisión,TEF 77096952-2 FID CHILE SEGUR,,,"$126,188.00","$2,083,754.00",Cart0014
+Cta0301,Bank0002,8/7/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$83,137.00",Comisión,,,,"$83,137.00",,Cart0014
+Cta0302,Bank0002,8/7/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Exenta,"$72,409.00",Comisión,,,,"$72,409.00",,Cart0014
+Cta0303,Bank0002,8/7/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$101,513.00",Comisión,,,,"$101,513.00",,Cart0014
+Cta0304,Bank0002,8/7/2024,Interno,Egreso,Transferencia,4166135214,rut0036,Retiro,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$400,000.00",,"$1,940,813.00",Cart0014
+Cta0305,Bank0002,11/7/2024,Interno,Ingreso,Transferencia,99225000-3,Com0002,Comisiones,"$33,533.00",Comisión,PROVEEDORE 99225000-3 ACE SEGU,,,"$33,533.00","$1,974,346.00",Cart0014
+Cta0306,Bank0002,17/7/2024,Interno,Egreso,Transferencia,4184501656,rut0146,Devolución Pago Pat Com 2do Semestre 2024 BCL,"-$32,722.00",,TEF  6868879-5 Patricio Franci,,"-$32,722.00",,"$1,941,624.00",Cart0014
+Cta0307,Bank0002,18/7/2024,Cliente,Ingreso,Transferencia,56037590-5,rut0196,"Pago cuotas 7 BCI, HDI y Liberty","$1,058,701.00",Otro,,,,"$1,058,701.00",,Cart0014
+Cta0308,Bank0002,18/7/2024,Cliente,Ingreso,Transferencia,76127983-1,rut0056,"Pago cuotas Reale, Renta y Sura","$951,147.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$951,147.00","$2,892,771.00",Cart0014
+Cta0309,Bank0002,19/7/2024,Cliente,Egreso,PEL,4189346957,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$951,261.00",,TEF  6868879-5 Patricio Franci,,"-$951,261.00",,"$3,000,211.00",Cart0014
+Cta0310,Bank0002,19/7/2024,Interno,Egreso,Transferencia,4190476006,rut0146,Devolución pago Iva Junio 2024,"-$206,305.00",,TEF  6868879-5 Patricio Franci,,"-$206,305.00",,"$1,735,205.00",Cart0014
+Cta0311,Bank0002,19/7/2024,Interno,Egreso,Transferencia,4190525139,rut0146,Devolución Pago Movistar Fac 70475185 Julio 2024,"-$42,374.00",,TEF  6868879-5 Patricio Franci,,"-$42,374.00",,"$1,692,831.00",Cart0014
+Cta0312,Bank0002,19/7/2024,Cliente,Egreso,Devolución,4189589050,rut0037,Cheque Studio III devuelto firma disconforme,"-$1,058,701.00",,,,"-$1,058,701.00",,,Cart0014
+Cta0313,Bank0002,22/7/2024,Cliente,Egreso,Transferencia,4193234876,rut0146,Devolución pago cuota 5 Pol 50008295 Jorge Faunes,"-$58,339.00",,TEF 6868879-5 Patricio Francis,,"-$58,339.00",,"$1,884,492.00",Cart0014
+Cta0314,Bank0002,22/7/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota Reale,"$250,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$250,000.00","$1,942,831.00",Cart0014
+Cta0315,Bank0002,23/7/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$2,084,492.00",Cart0014
+Cta0316,Bank0002,23/7/2024,Interno,Ingreso,Transferencia,12086464-5,Prv0005,Devolución retención honorarios,"$63,768.00",Otro,TEF 12086464-5 Alfredo Patrici,,,"$63,768.00","$2,148,260.00",Cart0014
+Cta0317,Bank0002,24/7/2024,Cliente,Egreso,Transferencia,4198433347,Prv0002,Pago Cupón 2071411 Julio 2024,"-$33,094.00",,TEF 77617950-7 Creattiva Datac,,"-$33,094.00",,"$3,273,867.00",Cart0014
+Cta0318,Bank0002,24/7/2024,Interno,Egreso,Transferencia,4198452597,Prv0003,Renovación Cowork Julio 2024-2025,"-$174,930.00",,TEF 76277371-6 Virtual Pyme Sp,,"-$174,930.00",,"$3,098,937.00",Cart0014
+Cta0319,Bank0002,24/7/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$100,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$100,000.00","$2,248,260.00",Cart0014
+Cta0320,Bank0002,18/7/2024,Cliente,Ingreso,Transferencia,56037590-5,rut0196,"Pago cuotas 7 BCI, HDI y Liberty","$1,058,701.00",Otro,DEPOSITO CON DOCUMENTOS,2747657,,"$1,058,701.00","$3,306,961.00",Cart0014
+Cta0321,Bank0002,25/7/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$437,436.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$437,436.00","$3,536,373.00",Cart0014
+Cta0322,Bank0002,25/7/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$65,749.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$65,749.00","$3,602,122.00",Cart0014
+Cta0323,Bank0002,25/7/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Exenta,"$59,936.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$59,936.00","$3,662,058.00",Cart0014
+Cta0324,Bank0002,25/7/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$117,233.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$117,233.00","$3,779,291.00",Cart0014
+Cta0325,Bank0002,26/7/2024,Cliente,Egreso,Transferencia,4202824585,rut0146,"Devolución pago BCI, HDI y Liberty cuotas 7 Studio III","-$1,058,633.00",,TEF  6868879-5 Patricio Franci,,"-$1,058,633.00",,"$2,720,658.00",Cart0014
+Cta0326,Bank0002,26/7/2024,Cliente,Egreso,Transferencia,4202835229,rut0146,Devolución pago cuota 6 Pol 1097955 Jorge Faunes,"-$608,877.00",,TEF  6868879-5 Patricio Franci,,"-$608,877.00",,"$2,111,781.00",Cart0014
+Cta0327,Bank0002,29/7/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Junio 2024,"$478,617.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$478,617.00","$2,590,398.00",Cart0014
+Cta0328,Bank0002,29/7/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Mayo 2024,"$22,365.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$22,365.00","$2,612,763.00",Cart0014
+Cta0329,Bank0002,6/8/2024,Interno,Egreso,Transferencia,4227491255,rut0036,Retiro,"-$500,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$500,000.00",,"$2,524,597.00",Cart0015
+Cta0330,Bank0002,6/8/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisiones,"$411,834.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$411,834.00","$3,024,597.00",Cart0015
+Cta0331,Bank0002,8/8/2024,Interno,Egreso,Transferencia,4231852071,rut0147,Retiro,"-$500,000.00",,TEF  7983284-7 Patricia Pia Ca,,"-$500,000.00",,"$2,024,597.00",Cart0015
+Cta0332,Bank0002,13/8/2024,Cliente,Ingreso,Transferencia,76127983-1,rut0056,"Pago cuotas Reale, Renta, Southbridge y Sura","$1,370,000.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$1,370,000.00","$3,394,597.00",Cart0015
+Cta0333,Bank0002,14/8/2024,Cliente,Egreso,Transferencia,4243950102,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$1,368,274.00",,TEF  6868879-5 Patricio Franci,,"-$1,368,274.00",,"$2,026,323.00",Cart0015
+Cta0334,Bank0002,14/8/2024,Cliente,Egreso,Transferencia,4244074593,rut0146,Devolución pago saldo HDI Pol 3-470476 Logosur,"-$85,360.00",,TEF  6868879-5 Patricio Franci,,"-$85,360.00",,"$1,940,963.00",Cart0015
+Cta0335,Bank0002,19/8/2024,Interno,Egreso,Transferencia,4251455750,Prv0001,Pago Iva Julio 2024,"-$373,948.00",,PAGO IMPTO SII 776050369,,"-$373,948.00",,"$1,567,015.00",Cart0015
+Cta0336,Bank0002,21/8/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota Reale,"$180,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$180,000.00","$1,747,015.00",Cart0015
+Cta0337,Bank0002,21/8/2024,Cliente,Ingreso,Transferencia,56037590-5,rut0196,"Pago cuotas 8 BCI, HDI y Liberty","$1,060,280.00",Otro,DEPOSITO CON DOCUMENTOS,2747654,,"$1,060,280.00","$2,807,295.00",Cart0015
+Cta0338,Bank0002,22/8/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$180,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$180,000.00","$2,987,295.00",Cart0015
+Cta0339,Bank0002,23/8/2024,Cliente,Egreso,Transferencia,4261281043,rut0146,"Devolución pago BCI, HDI y Liberty cuotas 8 Studio III","-$1,061,015.00",,TEF  6868879-5 Patricio Franci,,"-$1,061,015.00",,"$2,106,280.00",Cart0015
+Cta0340,Bank0002,23/8/2024,Cliente,Egreso,Transferencia,4261298814,rut0146,Devolución pago Reale cuota 6 Pol 500008295 Jorge Faunes,"-$59,243.00",,TEF 6868879-5 Patricio Francis,,"-$59,243.00",,"$2,047,037.00",Cart0015
+Cta0341,Bank0002,23/8/2024,Interno,Egreso,Transferencia,4261301608,rut0146,Devolución pago Creattiva  Cupón 2071829 Agosto 2024 BCL,"-$33,415.00",,TEF 6868879-5 Patricio Francis,,"-$33,415.00",,"$2,013,622.00",Cart0015
+Cta0342,Bank0002,23/8/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$180,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$180,000.00","$3,167,295.00",Cart0015
+Cta0343,Bank0002,26/8/2024,Cliente,Egreso,Transferencia,4265141410,rut0146,Devolución pago Cuota 7 Pol QP-1097955 Jorge Faunes,"-$610,522.00",,TEF 6868879-5 Patricio Francis,,"-$610,522.00",,"$1,532,500.00",Cart0015
+Cta0344,Bank0002,26/8/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$129,400.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$129,400.00","$2,143,022.00",Cart0015
+Cta0345,Bank0002,29/8/2024,Interno,Egreso,Transferencia,4273026010,rut0146,Devolución pago Movistar Móvil Fac 70632115 BCL,"-$43,743.00",,TEF  6868879-5 Patricio Franci,,"-$43,743.00",,"$1,595,664.00",Cart0015
+Cta0346,Bank0002,29/8/2024,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$106,907.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$106,907.00","$1,639,407.00",Cart0015
+Cta0347,Bank0002,5/9/2024,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$556,839.00",Comisión,PROVEEDORE 99037000-1 ZURICH S,,,"$556,839.00","$2,152,503.00",Cart0016
+Cta0348,Bank0002,9/9/2024,Interno,Egreso,Transferencia,4298059492,rut0146,Traspaso,"-$500,000.00",,TEF  6868879-5 Patricio Franci,,"-$500,000.00",,"$1,652,503.00",Cart0016
+Cta0349,Bank0002,9/9/2024,Interno,Egreso,Transferencia,4298223278,rut0036,Retiro,"-$500,000.00",,TEF  6868879-5 Patricio Franci,,"-$500,000.00",,"$1,652,503.00",Cart0016
+Cta0350,Bank0002,10/9/2024,Interno,Ingreso,Transferencia,99231000-6,Com0005,Comisiones,"$572,329.00",Comisión,PROVEEDORE 99231000-6 HDI SEGU,,,"$572,329.00","$1,724,832.00",Cart0016
+Cta0351,Bank0002,12/9/2024,Cliente,Ingreso,Transferencia,76127983-1,rut0056,"Pago cuotas Reale, Renta, Southbridge y Sura","$964,223.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$964,223.00","$2,689,055.00",Cart0016
+Cta0352,Bank0002,13/9/2024,Cliente,Egreso,Transferencia,4309261067,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$964,341.00",,TEF  6868879-5 Patricio Franci,,"-$964,341.00",,"$1,724,714.00",Cart0016
+Cta0353,Bank0002,17/9/2024,Cliente,Ingreso,Transferencia,56037590-5,rut0196,"Pago cuotas 9 BCI, HDI y Liberty","$1,066,179.00",Otro,DEPOSITO CON DOCUMENTOS,2747658,,"$1,066,179.00","$2,790,893.00",Cart0016
+Cta0354,Bank0002,23/9/2024,Interno,Egreso,Transferencia,4321459841,rut0036,Retiro,"-$150,000.00",,,,"-$150,000.00",,,Cart0016
+Cta0355,Bank0002,23/9/2024,Interno,Egreso,Transferencia,4322667640,Prv0001,Pago Iva Agosto 2024,"-$94,885.00",,PAGO IMPTO SII 776050369,,"-$94,885.00",,"$2,836,008.00",Cart0016
+Cta0356,Bank0002,23/9/2024,Cliente,Egreso,Transferencia,4322680948,rut0146,"Devolución pago BCI, HDI y Liberty cuotas 9 Studio III","-$1,066,173.00",,TEF 6868879-5 Patricio Francis,,"-$1,066,173.00",,"$1,769,835.00",Cart0016
+Cta0357,Bank0002,23/9/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen y Reale,"$290,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$290,000.00","$3,080,893.00",Cart0016
+Cta0358,Bank0002,24/9/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$250,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$250,000.00","$2,019,835.00",Cart0016
+Cta0359,Bank0002,25/9/2024,Cliente,Egreso,Transferencia,4328726153,rut0146,Devolución pago Reale cuota 7 Pol 500008295 Jorge Faunes,"-$58,796.00",,TEF  6868879-5 Patricio Franci,,"-$58,796.00",,"$2,093,679.00",Cart0016
+Cta0360,Bank0002,25/9/2024,Cliente,Egreso,Transferencia,4328792562,rut0146,Devolución pago BCI Gen cuota 8 Pol 1097955 Jorge Faunes,"-$613,842.00",,TEF  6868879-5 Patricio Franci,,"-$613,842.00",,"$1,479,837.00",Cart0016
+Cta0361,Bank0002,25/9/2024,Cliente,Egreso,Transferencia,4328936696,Prv0002,Pago Cupón 2072220 Sep-Oct 2024,"-$33,130.00",,TEF 77617950-7 Creattiva Datac,,"-$33,130.00",,"$1,446,707.00",Cart0016
+Cta0362,Bank0002,25/9/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$132,640.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$132,640.00","$2,152,475.00",Cart0016
+Cta0363,Bank0002,26/9/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$45,447.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$45,447.00","$1,492,154.00",Cart0016
+Cta0364,Bank0002,30/9/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Agosto 2024,"$22,545.00",Profit,,,,"$22,545.00",,Cart0016
+Cta0365,Bank0002,1/10/2024,Interno,Egreso,Transferencia,4343416843,rut0146,Devolución pago Movistar Móvil Fac 70729676 BCL,"-$43,627.00",,TEF  6868879-5 Patricio Franci,,"-$43,627.00",,"$1,471,072.00",Cart0017
+Cta0366,Bank0002,4/10/2024,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$53,363.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$53,363.00","$1,524,435.00",Cart0017
+Cta0367,Bank0002,7/10/2024,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$243,581.00",Comisión,PROVEEDORE 99037000-1 ZURICH S,,,"$243,581.00","$1,768,016.00",Cart0017
+Cta0368,Bank0002,8/10/2024,Interno,Egreso,Transferencia,4360218287,rut0036,Retiro,"-$500,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$500,000.00",,"$1,388,493.00",Cart0017
+Cta0369,Bank0002,8/10/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisión Afecta,"$120,477.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$120,477.00","$1,888,493.00",Cart0017
+Cta0370,Bank0002,9/10/2024,Cliente,Ingreso,Transferencia,76127983-1,rut0056,"Pago cuotas Reale, Renta, Southbridge y Sura","$829,500.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$829,500.00","$2,217,993.00",Cart0017
+Cta0371,Bank0002,10/10/2024,Cliente,Egreso,Transferencia,4365019684,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$829,551.00",,TEF  6868879-5 Patricio Franci,,"-$829,551.00",,"$1,537,450.00",Cart0017
+Cta0372,Bank0002,10/10/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$149,008.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$149,008.00","$2,367,001.00",Cart0017
+Cta0373,Bank0002,17/10/2024,Interno,Egreso,Transferencia,4379846387,Prv0001,Pago Iva Septiembre 2024,"-$299,610.00",,PAGO IMPTO SII 776050369,,"-$299,610.00",,"$2,306,667.00",Cart0017
+Cta0374,Bank0002,17/10/2024,Cliente,Ingreso,Depósito,56037590-5,rut0196,"Pago cuotas 10 BCI, HDI y Liberty","$1,068,827.00",Otro,DEPOSITO CON DOCUMENTOS,2747663,,"$1,068,827.00","$2,606,277.00",Cart0017
+Cta0375,Bank0002,18/10/2024,Cliente,Egreso,Transferencia,4382454647,rut0146,"Devolución pago BCI, HDI y Liberty cuotas Studio III","-$1,069,130.00",,TEF  6868879-5 Patricio Franci,,"-$1,069,130.00",,"$1,237,537.00",Cart0017
+Cta0376,Bank0002,22/10/2024,Interno,Egreso,Transferencia,4389030523,rut0146,Devolución pago Movistar Móvil Fac 70876377 BCL,"-$44,435.00",,TEF 6868879-5 Patricio Francis,,"-$44,435.00",,"$1,393,102.00",Cart0017
+Cta0377,Bank0002,22/10/2024,Cliente,Egreso,Transferencia,4389032018,Prv0002,Pago Cupón 2072566 Oct-Nov 2024,"-$33,772.00",,TEF 77617950-7 Creattiva Datac,,"-$33,772.00",,"$1,359,330.00",Cart0017
+Cta0378,Bank0002,22/10/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen y Reale,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$1,437,537.00",Cart0017
+Cta0379,Bank0002,23/10/2024,Cliente,Egreso,Transferencia,4391466821,rut0146,Devolución pago Reale cuota 8 Pol 500008295 Jorge Faunes,"-$58,924.00",,TEF 6868879-5 Patricio Francis,,"-$58,924.00",,"$1,540,406.00",Cart0017
+Cta0380,Bank0002,23/10/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$240,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$240,000.00","$1,599,330.00",Cart0017
+Cta0381,Bank0002,24/10/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Generales,"$234,040.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$234,040.00","$1,774,446.00",Cart0017
+Cta0382,Bank0002,25/10/2024,Cliente,Egreso,Transferencia,4395962957,rut0036,Devolución pago BCI Gen cuota 9 Pol 1097955 Jorge Faunes,"-$615,018.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$615,018.00",,"$1,159,428.00",Cart0017
+Cta0383,Bank0002,6/11/2024,Interno,Egreso,Transferencia,4420600573,rut0146,Traspaso,"-$400,000.00",,TEF  6868879-5 Patricio Franci,,"-$400,000.00",,"$759,428.00",Cart0018
+Cta0384,Bank0002,8/11/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisión Afecta,"$175,327.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$175,327.00","$934,755.00",Cart0018
+Cta0385,Bank0002,11/11/2024,Interno,Egreso,Transferencia,4430171604,rut0036,Retiro,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$400,000.00",,"$534,755.00",Cart0018
+Cta0386,Bank0002,13/11/2024,Cliente,Egreso,Transferencia,4435762857,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$965,578.00",,TEF  6868879-5 Patricio Franci,,"-$965,578.00",,"$534,832.00",Cart0018
+Cta0387,Bank0002,13/11/2024,Cliente,Ingreso,Transferencia,76127983-1,rut0056,"Pago cuotas Reale, Renta, Southbridge y Sura","$965,655.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$965,655.00","$1,500,410.00",Cart0018
+Cta0388,Bank0002,14/11/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$101,247.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$101,247.00","$636,079.00",Cart0018
+Cta0389,Bank0002,14/11/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Exenta,"$9,039.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$9,039.00","$645,118.00",Cart0018
+Cta0390,Bank0002,18/11/2024,Interno,Egreso,Transferencia,4444894207,Prv0001,Pago Iva Octubre 2024,"-$124,232.00",,PAGO IMPTO SII 776050369,,"-$124,232.00",,"$520,886.00",Cart0018
+Cta0391,Bank0002,20/11/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$720,886.00",Cart0018
+Cta0392,Bank0002,21/11/2024,Interno,Egreso,Transferencia,4453109732,rut0146,Devolución pago Movistar Móvil Fac 70966180 BCL,"-$43,825.00",,TEF  6868879-5 Patricio Franci,,"-$43,825.00",,"$837,061.00",Cart0018
+Cta0393,Bank0002,21/11/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$160,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$160,000.00","$880,886.00",Cart0018
+Cta0394,Bank0002,25/11/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$180,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$180,000.00","$1,017,061.00",Cart0018
+Cta0395,Bank0002,26/11/2024,Cliente,Egreso,Transferencia,4462427458,Prv0002,Pago Cupón 2072936 Nov-Dic 2024,"-$34,986.00",,TEF 77617950-7 Creattiva Datac,,"-$34,986.00",,"$2,304,341.00",Cart0018
+Cta0396,Bank0002,26/11/2024,Cliente,Egreso,Transferencia,4462836508,rut0146,Devolución pago BCI Gen cuota 10 Pol 1097955 Jorge Faunes,"-$618,795.00",,TEF  6868879-5 Patricio Franci,,"-$618,795.00",,"$1,685,546.00",Cart0018
+Cta0397,Bank0002,26/11/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Profit Septiembre 2024,"$27,209.00",Profit,PROVEEDORE 99061000-2 LIBERTY,,,"$27,209.00","$1,044,270.00",Cart0018
+Cta0398,Bank0002,26/11/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$791,437.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$791,437.00","$1,835,707.00",Cart0018
+Cta0399,Bank0002,26/11/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$83,693.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$83,693.00","$1,919,400.00",Cart0018
+Cta0400,Bank0002,26/11/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Exenta,"$341,136.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$341,136.00","$2,260,536.00",Cart0018
+Cta0401,Bank0002,26/11/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$78,791.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$78,791.00","$2,339,327.00",Cart0018
+Cta0402,Bank0002,28/11/2024,Interno,Egreso,Transferencia,4468303110,rut0146,Traspaso,"-$400,000.00",,TEF 6868879-5 Patricio Francis,,"-$400,000.00",,"$1,379,441.00",Cart0018
+Cta0403,Bank0002,28/11/2024,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$93,895.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$93,895.00","$1,779,441.00",Cart0018
+Cta0404,Bank0002,3/12/2024,Interno,Ingreso,Transferencia,77096952-2,Com0004,Comisiones,"$50,061.00",Comisión,,,,"$50,061.00",,Cart0019
+Cta0405,Bank0002,5/12/2024,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$237,805.00",Comisión,PROVEEDORE 99037000-1 ZURICH S,,,"$237,805.00","$1,667,307.00",Cart0019
+Cta0406,Bank0002,5/12/2024,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$297,250.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$297,250.00","$1,964,557.00",Cart0019
+Cta0407,Bank0002,6/12/2024,Interno,Egreso,Transferencia,4488478933,rut0036,Retiro,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$400,000.00",,"$1,564,557.00",Cart0019
+Cta0408,Bank0002,10/12/2024,Interno,Egreso,Transferencia,4496368390,rut0146,Traspaso,"-$800,000.00",,TEF  6868879-5 Patricio Franci,,"-$800,000.00",,"$764,557.00",Cart0019
+Cta0409,Bank0002,11/12/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$177,013.00",Comisión,PROVEEDORE 99061000-2 HDI SEGU,,,"$177,013.00","$941,570.00",Cart0019
+Cta0410,Bank0002,11/12/2024,Cliente,Ingreso,Transferencia,76127983-1,rut0056,"Pago cuotas Reale, Renta, Southbridge y Sura","$880,144.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$880,144.00","$1,821,714.00",Cart0019
+Cta0411,Bank0002,12/12/2024,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisión Afecta,"$127,113.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$127,113.00","$1,948,827.00",Cart0019
+Cta0412,Bank0002,13/12/2024,Cliente,Egreso,Transferencia,4503770941,rut0146,Pago cuotas 8 Pols 8308644 y 8308646 Transportes San Benjamin,"-$134,303.00",,TEF 99017000-2 Seguros General,,"-$134,303.00",,"$1,814,524.00",Cart0019
+Cta0413,Bank0002,13/12/2024,Cliente,Egreso,Transferencia,4503771926,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$676,995.00",,TEF  6868879-5 Patricio Franci,,"-$676,995.00",,"$1,137,529.00",Cart0019
+Cta0414,Bank0002,18/12/2024,Interno,Egreso,Transferencia,4514369522,Prv0001,Pago Iva Noviembre 2024,"-$382,934.00",,PAGO IMPTO SII 776050369,,"-$382,934.00",,"$754,595.00",Cart0019
+Cta0415,Bank0002,23/12/2024,Cliente,Egreso,Transferencia,4526099407,Prv0002,Pago Cupón 2073317 Dic 2024 - Enero 2025,"-$35,522.00",,TEF 77617950-7 Creattiva Datac,,"-$35,522.00",,"$969,073.00",Cart0019
+Cta0416,Bank0002,23/12/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$250,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$250,000.00","$1,004,595.00",Cart0019
+Cta0417,Bank0002,24/12/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$250,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$250,000.00","$1,219,073.00",Cart0019
+Cta0418,Bank0002,26/12/2024,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$125,687.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$125,687.00","$1,344,760.00",Cart0019
+Cta0419,Bank0002,26/12/2024,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$122,300.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$122,300.00","$1,467,060.00",Cart0019
+Cta0420,Bank0002,27/12/2024,Cliente,Egreso,Transferencia,4533634957,rut0146,Devolución pago BCI Gen cuota 11 Pol 1097955 Jorge Faunes,"-$622,150.00",,TEF  6868879-5 Patricio Franci,,"-$622,150.00",,"$844,910.00",Cart0019
+Cta0421,Bank0002,2/1/2025,Interno,Egreso,Débito,11077538,Prv0001,Capuccino y Pan de Molde,"-$3,880.00",,REDCOMPRA SERVICIOS Y COMER,,"-$3,880.00",,,Cart0020
+Cta0422,Bank0002,3/1/2025,Interno,Egreso,Transferencia,4549001131,rut0146,Devolucón pago factura 71128142 Telefónica Móviles de BCL,"-$43,784.00",,TEF 6868879-5 Patricio Francis,,"-$43,784.00",,"$797,246.00",Cart0020
+Cta0423,Bank0002,6/1/2025,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$133,999.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$133,999.00",,Cart0020
+Cta0424,Bank0002,7/1/2025,Interno,Ingreso,Transferencia,77096952-2,Com0004,Comisiones,"$288,421.00",Comisión,TEF 77096952-2 FID CHILE SEGUR,,,"$288,421.00","$1,219,666.00",Cart0020
+Cta0425,Bank0002,8/1/2025,Interno,Ingreso,Transferencia,99037000-1,Com0010,Comisiones,"$190,226.00",Comisión,PROVEEDORE 99037000-1 ZURICH S,,,"$190,226.00","$1,409,892.00",Cart0020
+Cta0426,Bank0002,8/1/2025,Cliente,Ingreso,Transferencia,76127983-1,rut0056,"Pago cuotas Reale, Renta, Southbridge y Sura","$722,606.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$722,606.00","$2,132,498.00",Cart0020
+Cta0427,Bank0002,9/1/2025,Cliente,Egreso,Transferencia,4561799130,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$722,377.00",,TEF  6868879-5 Patricio Franci,,"-$722,377.00",,"$1,623,627.00",Cart0020
+Cta0428,Bank0002,9/1/2025,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisión Afecta,"$213,506.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$213,506.00","$2,346,004.00",Cart0020
+Cta0429,Bank0002,10/1/2025,Interno,Egreso,Transferencia,4564289952,rut0036,Retiro,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$400,000.00",,"$1,223,627.00",Cart0020
+Cta0430,Bank0002,16/1/2025,Interno,Egreso,Transferencia,4576327027,Prv0001,Pago Iva Diciembre 2024,"-$234,673.00",,PAGO IMPTO SII 776050369,,"-$234,673.00",,"$1,406,172.00",Cart0020
+Cta0431,Bank0002,16/1/2025,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$417,218.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$417,218.00","$1,640,845.00",Cart0020
+Cta0432,Bank0002,22/1/2025,Interno,Egreso,Transferencia,4587926504,rut0146,Devolucón pago factura 71252440 Telefónica Móviles de BCL,"-$54,869.00",,TEF  6868879-5 Patricio Franci,,"-$54,869.00",,"$1,351,303.00",Cart0020
+Cta0433,Bank0002,22/1/2025,Cliente,Egreso,Transferencia,4587926528,Prv0002,Pago Cupón 2073664 Ene-Feb 2025,"-$36,271.00",,TEF 77617950-7 Creattiva Datac,,"-$36,271.00",,"$1,315,032.00",Cart0020
+Cta0434,Bank0002,3/2/2025,Interno,Egreso,Transferencia,4612222541,rut0036,Retiro,"-$400,000.00",,,,"-$400,000.00",,,Cart0021
+Cta0435,Bank0002,5/2/2025,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$74,430.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$74,430.00","$989,462.00",Cart0021
+Cta0436,Bank0002,6/2/2025,Cliente,Ingreso,Transferencia,76127983-1,rut0056,"Pago cuotas Reale, Renta, Southbridge y Sura","$976,505.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$976,505.00","$1,965,967.00",Cart0021
+Cta0437,Bank0002,7/2/2025,Cliente,Egreso,Transferencia,4625403832,rut0146,Devolución pago cuotas Dival y Transportes San Benjamin,"-$976,191.00",,TEF  6868879-5 Patricio Franci,,"-$976,191.00",,"$989,776.00",Cart0021
+Cta0438,Bank0002,12/2/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$1,189,776.00",Cart0021
+Cta0439,Bank0002,13/2/2025,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$16,924.00",Comisión,,,,"$16,924.00",,Cart0021
+Cta0440,Bank0002,13/2/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$150,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$150,000.00","$1,356,700.00",Cart0021
+Cta0441,Bank0002,14/2/2025,Interno,Egreso,Transferencia,4639934403,rut0146,Devolución pago Patente Comercial 1er Semestre 2025 BCL,"-$33,539.00",,TEF  6868879-5 Patricio Franci,,"-$33,539.00",,"$1,444,212.00",Cart0021
+Cta0442,Bank0002,14/2/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$121,051.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$121,051.00","$1,477,751.00",Cart0021
+Cta0443,Bank0002,17/2/2025,Cliente,Ingreso,Depósito,56037590-5,rut0196,"Pago cuotas BCI, Chubb, HDI y Liberty","$1,110,291.00",Otro,DEPOSITO CON DOCUMENTOS,2005298,,"$1,110,291.00","$2,672,597.00",Cart0021
+Cta0444,Bank0002,17/2/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$100,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$100,000.00","$1,544,212.00",Cart0021
+Cta0445,Bank0002,17/2/2025,Cliente,Ingreso,Transferencia,4795857-1,rut0074,Pago saldo Pol Liberty,"$18,094.00",Otro,TEF  4795857-1 Gerardo De Jesu,,,"$18,094.00","$1,562,306.00",Cart0021
+Cta0446,Bank0002,18/2/2025,Interno,Egreso,Transferencia,4647853781,Prv0001,Pago Iva Enero 2025,"-$292,578.00",,PAGO IMPTO SII 776050369,,"-$292,578.00",,"$2,380,019.00",Cart0021
+Cta0447,Bank0002,19/2/2025,Cliente,Egreso,Transferencia,4649176432,rut0146,Devolución pago BCI Gen cuota 12 Pol 1097955 Jorge Faunes,"-$573,385.00",,TEF  6868879-5 Patricio Franci,,"-$573,385.00",,"$1,806,634.00",Cart0021
+Cta0448,Bank0002,19/2/2025,Cliente,Egreso,Transferencia,4649176447,rut0146,Devolución pago Liberty Gerardo Hortal,"-$18,094.00",,TEF  6868879-5 Patricio Franci,,"-$18,094.00",,"$1,788,540.00",Cart0021
+Cta0449,Bank0002,19/2/2025,Cliente,Egreso,Transferencia,4649252633,rut0146,"Devolución pago cuotas Febrero BCI, Chubb, HDI y Liberty Stufio III","-$1,111,253.00",,TEF  6868879-5 Patricio Franci,,"-$1,111,253.00",,"$677,287.00",Cart0021
+Cta0450,Bank0002,20/2/2025,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$96,737.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$96,737.00","$774,024.00",Cart0021
+Cta0451,Bank0002,21/2/2025,Cliente,Egreso,Transferencia,4653855843,Prv0002,Pago Cupón 2074020 Feb-Mar 2025,"-$34,094.00",,TEF 77617950-7 Creattiva Datac,,"-$34,094.00",,"$739,930.00",Cart0021
+Cta0452,Bank0002,21/2/2025,Interno,Egreso,Transferencia,4653887613,rut0146,Devolucón pago factura 71376365 Telefónica Móviles de BCL,"-$44,385.00",,TEF  6868879-5 Patricio Franci,,"-$44,385.00",,"$695,545.00",Cart0021
+Cta0453,Bank0002,26/2/2025,Interno,Ingreso,Transferencia,99288000-7,Com0011,Comisiones,"$350,689.00",Comisión,PROVEEDORE 99288000-7 SOUTHBRI,,,"$350,689.00","$1,046,234.00",Cart0021
+Cta0454,Bank0002,27/2/2025,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisiones,"$101,600.00",Comisión,PROVEEDORE 99061000-2 LIBERTY,,,"$101,600.00","$1,147,834.00",Cart0021
+Cta0455,Bank0002,3/3/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$200,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$200,000.00","$1,347,834.00",Cart0022
+Cta0456,Bank0002,4/3/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$180,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$180,000.00","$1,527,834.00",Cart0022
+Cta0457,Bank0002,5/3/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$185,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$185,000.00","$1,782,416.00",Cart0022
+Cta0458,Bank0002,5/3/2025,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$69,582.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$69,582.00","$1,597,416.00",Cart0022
+Cta0459,Bank0002,6/3/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$37,386.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$37,386.00","$1,819,802.00",Cart0022
+Cta0460,Bank0002,7/3/2025,Cliente,Egreso,Transferencia,4685851376,rut0146,Devolución pago cuota 1-12 BCI Pol 1151951 Jorge Faunes E.I.R.L.,"-$602,621.00",,TEF  6868879-5 Patricio Franci,,"-$602,621.00",,"$1,217,181.00",Cart0022
+Cta0461,Bank0002,10/3/2025,Interno,Egreso,Transferencia,4612222541,rut0036,Retiro,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$400,000.00",,"$817,181.00",Cart0022
+Cta0462,Bank0002,11/3/2025,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisión Afecta,"$1,391,126.00",Comisión,,,,"$1,391,126.00",,Cart0022
+Cta0463,Bank0002,11/3/2025,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago cuotas Reale y Renta Nacional,"$583,075.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,,,"$583,075.00","$2,791,382.00",Cart0022
+Cta0464,Bank0002,12/3/2025,Cliente,Egreso,Transferencia,4695792379,rut0146,Devoluciòn pago cuotas Dival y TSB en Reale y Renta,"-$582,761.00",,TEF  6868879-5 Patricio Franci,,"-$582,761.00",,"$2,208,621.00",Cart0022
+Cta0465,Bank0002,13/3/2025,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$18,922.00",Comisión,PROVEEDORE 99061000-2 HDI SEGU,,,"$18,922.00","$2,227,543.00",Cart0022
+Cta0466,Bank0002,13/3/2025,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Exenta,"$20,308.00",Comisión,PROVEEDORE 99061000-2 HDI SEGU,,,"$20,308.00","$2,247,851.00",Cart0022
+Cta0467,Bank0002,13/3/2025,Interno,Ingreso,Transferencia,76743492-8,Com0007,Comisiones,"$49,873.00",Comisión,PROVEEDORE 76743492-8 REALE CH,,,"$49,873.00","$2,297,724.00",Cart0022
+Cta0468,Bank0002,17/3/2025,Interno,Ingreso,Transferencia,99588060-1,Com0012,Comisiones,"$80,484.00",Comisión,PROVEEDORE 99588060-1 CHUBB SE,,,"$80,484.00","$2,378,208.00",Cart0022
+Cta0469,Bank0002,17/3/2025,Cliente,Ingreso,Transferencia,56037590-5,rut0196,"Pago cuotas BCI, Chubb, HDI y Liberty","$1,123,963.00",Otro,DEPOSITO CON DOCUMENTOS,6299222,,"$1,123,963.00","$3,502,171.00",Cart0022
+Cta0470,Bank0002,18/3/2025,Interno,Egreso,Transferencia,4707559082,Prv0001,Pago Iva Febrero 2025,"-$139,403.00",,PAGO IMPTO SII 776050369,,"-$139,403.00",,"$3,362,768.00",Cart0022
+Cta0471,Bank0002,24/3/2025,Interno,Ingreso,Transferencia,96654180-6,Com0003,Comisiones,"$106,631.00",Comisión,PROVEEDORE 96654180-6 COMPANIA,,,"$106,631.00","$3,469,399.00",Cart0022
+Cta0472,Bank0002,27/3/2025,Cliente,Egreso,Transferencia,4726140099,rut0146,"Devolución pago cuotas Marzo BCI, Chubb, HDI y Liberty Stufio III","-$1,120,782.00",,TEF  6868879-5 Patricio Franci,,"-$1,120,782.00",,"$2,348,617.00",Cart0022
+Cta0473,Bank0002,27/3/2025,Interno,Egreso,Transferencia,4726136925,rut0146,Devolución pago Pólizas Garantía y RC Corredor De Seguros,"-$147,957.00",,TEF  6868879-5 Patricio Franci,,"-$147,957.00",,"$2,200,660.00",Cart0022
+Cta0474,Bank0002,27/3/2025,Interno,Egreso,Transferencia,4726131855,rut0146,Devolucón pago factura 71489481 Telefónica Móviles de BCL,"-$44,818.00",,TEF  6868879-5 Patricio Franci,,"-$44,818.00",,"$2,155,842.00",Cart0022
+Cta0475,Bank0002,27/3/2025,Cliente,Egreso,Transferencia,4726140170,Prv0002,Pago Cupón 2074425 Feb-Mar 2025,"-$33,451.00",,TEF 77617950-7 Creattiva Datac,,"-$33,451.00",,"$2,122,391.00",Cart0022
+Cta0476,Bank0002,2/4/2025,Cliente,Ingreso,Transferencia,76129522-5,rut0057,Pago cuota 9-10 Pol 20109730 Transporte TSB,"$229,145.00",Otro,TEF 76129522-5 EMPRESA DE TRAN,,,"$229,145.00","$2,351,536.00",Cart0023
+Cta0477,Bank0002,4/4/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$180,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$180,000.00","$2,531,536.00",Cart0023
+Cta0478,Bank0002,7/4/2025,Cliente,Egreso,Transferencia,4751443410,rut0146,Devolución pago Southbridge cuota 9-10 Pol 20109730 TSB,"-$229,145.00",,TEF  6868879-5 Patricio Franci,,"-$229,145.00",,"$2,539,646.00",Cart0023
+Cta0479,Bank0002,7/4/2025,Interno,Egreso,Transferencia,4751745678,rut0036,Retiro,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,,"-$400,000.00",,"$2,139,646.00",Cart0023
+Cta0480,Bank0002,7/4/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$100,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$100,000.00","$2,631,536.00",Cart0023
+Cta0481,Bank0002,7/4/2025,Interno,Ingreso,Transferencia,77096952-2,Com0004,Comisiones,"$137,255.00",Comisión,TEF 77096952-2 FID CHILE SEGUR,,,"$137,255.00","$2,768,791.00",Cart0023
+Cta0482,Bank0002,8/4/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$95,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$95,000.00","$2,234,646.00",Cart0023
+Cta0483,Bank0002,9/4/2025,Interno,Ingreso,Transferencia,99147000-K,Com0001,Comisión Afecta,"$1,296,285.00",Comisión,PROVEEDORE 99147000-K BCI SEGU,,,"$1,296,285.00","$3,530,931.00",Cart0023
+Cta0484,Bank0002,10/4/2025,Interno,Ingreso,Transferencia,99061000-2,Com0006,Comisión Afecta,"$316,470.00",Comisión,PROVEEDORE 99061000-2 HDI SEGU,,,"$316,470.00","$3,847,401.00",Cart0023
+Cta0485,Bank0002,11/4/2025,Cliente,Ingreso,Transferencia,76127983-1,rut0056,Pago Cuotas,"$626,000.00",Otro,,,,"$626,000.00",,Cart0023
+Cta0486,Bank0002,11/4/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago Cuotas,"$100,000.00",Otro,,,,"$100,000.00",,Cart0023
+Cta0487,Bank0002,16/4/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago Cuotas,"$80,000.00",Otro,,,,"$80,000.00",,Cart0023
+Cta0488,Bank0002,17/4/2025,Interno,Egreso,Transferencia,4774432991,Prv0001,Pago Iva Marzo 2025,"-$244,856.00",,PAGO IMPTO SII 776050369,,"-$244,856.00",,"$4,408,545.00",Cart0023
+Cta0489,Bank0002,21/4/2025,Interno,Ingreso,Transferencia,94510000-1,Com0008,Comisiones,"$73,823.00",Comisión,PROVEEDORE 94510000-1 Renta Na,,,"$73,823.00","$4,482,368.00",Cart0023
+Cta0490,Bank0002,21/4/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota BCI Gen,"$91,586.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,,,"$91,586.00","$4,573,954.00",Cart0023
+Cta0491,Bank0002,21/4/2025,Cliente,Ingreso,Transferencia,56037590-5,rut0196,"Pago cuotas 9 BCI, HDI y Liberty","$1,153,495.00",Otro,DEPOSITO CON DOCUMENTOS,2747656,,"$1,153,495.00","$5,727,449.00",Cart0023
+Cta0492,Bank0002,22/4/2025,Cliente,Ingreso,Transferencia,77132459-2,rut0097,Pago cuota Chubb Gen,"$59,197.00",Otro,,,,"$59,197.00",,Cart0023
+Cta0493,Bank0002,5/5/2025,Interno,Ingreso,Transferencia,,Com0008,Comisiones,"$73,065.00",Comisión,PROVEEDORE 94510000-1 Renta Na,0,,"$73,065.00","$5,859,711.00",Cart0024
+Cta0494,Bank0002,6/5/2025,Cliente,Ingreso,Transferencia,,rut0056,Pago Cuotas,"$626,000.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,0,,"$626,000.00","$6,485,711.00",Cart0024
+Cta0495,Bank0002,6/5/2025,,Egreso,Transferencia,,rut0036,,"-$600,000.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$600,000.00",,"$5,885,711.00",Cart0024
+Cta0496,Bank0002,7/5/2025,,Egreso,Transferencia,,rut0036,,"-$625,670.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$625,670.00",,"$5,260,041.00",Cart0024
+Cta0497,Bank0002,8/5/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$100,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$100,000.00","$5,360,041.00",Cart0024
+Cta0498,Bank0002,12/5/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$100,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$100,000.00","$5,460,041.00",Cart0024
+Cta0499,Bank0002,14/5/2025,,Ingreso,Transferencia,,Prv0006,,"$210,022.00",Otro,DEV IMPTO  60805000-0 TESORERI,0,,"$210,022.00","$5,670,063.00",Cart0024
+Cta0500,Bank0002,14/5/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$100,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$100,000.00","$5,770,063.00",Cart0024
+Cta0501,Bank0002,16/5/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$105,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$105,000.00","$5,875,063.00",Cart0024
+Cta0502,Bank0002,19/5/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$98,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$98,000.00","$5,973,063.00",Cart0024
+Cta0503,Bank0002,20/5/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$80,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$80,000.00","$6,053,063.00",Cart0024
+Cta0504,Bank0002,20/5/2025,,Ingreso,Depósito,,rut0196,,"$1,133,230.00",Otro,DEPOSITO CON DOCUMENTOS,6845300,,"$1,133,230.00","$7,186,293.00",Cart0024
+Cta0505,Bank0002,20/5/2025,,Egreso,Transferencia,,rut0036,,"-$474,468.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$474,468.00",,"$6,711,825.00",Cart0024
+Cta0506,Bank0002,22/5/2025,,Egreso,Transferencia,,rut0036,,"-$1,130,529.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$1,130,529.00",,"$5,581,296.00",Cart0024
+Cta0507,Bank0002,23/5/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$125,952.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$125,952.00","$5,707,248.00",Cart0024
+Cta0508,Bank0002,26/5/2025,,Egreso,Transferencia,,Com0001,,"-$500,000.00",,TEF 99147000-K BCI Seguros Gen,0,"-$500,000.00",,"$5,207,248.00",Cart0024
+Cta0509,Bank0002,26/5/2025,,Egreso,Transferencia,,rut0036,,"-$149,749.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$149,749.00",,"$5,057,499.00",Cart0024
+Cta0510,Bank0002,26/5/2025,,Egreso,Transferencia,,rut0036,,"-$59,203.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$59,203.00",,"$4,998,296.00",Cart0024
+Cta0511,Bank0002,26/5/2025,,Egreso,Transferencia,,rut0036,,"-$33,737.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$33,737.00",,"$4,964,559.00",Cart0024
+Cta0512,Bank0002,27/5/2025,,Egreso,Transferencia,,rut0036,,"-$300,000.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$300,000.00",,"$4,664,559.00",Cart0024
+Cta0513,Bank0002,28/5/2025,,Egreso,Transferencia,,rut0146,,"-$1,126,285.00",,TEF  6868879-5 Patricio Franci,0,"-$1,126,285.00",,"$3,538,274.00",Cart0024
+Cta0514,Bank0002,28/5/2025,,Egreso,Transferencia,,rut0146,,"-$59,197.00",,TEF  6868879-5 Patricio Franci,0,"-$59,197.00",,"$3,479,077.00",Cart0024
+Cta0515,Bank0002,4/6/2025,,Egreso,Transferencia,,Prv0005,,"-$500,000.00",,TEF 12086464-5 Alfredo Patrici,0,"-$500,000.00",,"$2,979,077.00",Cart0025
+Cta0516,Bank0002,4/6/2025,,Egreso,Transferencia,,rut0036,,"-$45,000.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$45,000.00",,"$2,934,077.00",Cart0025
+Cta0517,Bank0002,5/6/2025,Interno,Ingreso,Transferencia,,Com0008,,"$27,097.00",Comisión,PROVEEDORE 94510000-1 Renta Na,0,,"$27,097.00","$2,961,174.00",Cart0025
+Cta0518,Bank0002,9/6/2025,Interno,Ingreso,Transferencia,,Com0010,,"$519,474.00",Comisión,PROVEEDORE 99037000-1 ZURICH S,0,,"$519,474.00","$3,480,648.00",Cart0025
+Cta0519,Bank0002,9/6/2025,Cliente,Ingreso,Transferencia,,rut0056,Pago Cuotas,"$942,661.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,0,,"$942,661.00","$4,423,309.00",Cart0025
+Cta0520,Bank0002,9/6/2025,Interno,Ingreso,Transferencia,,Com0004,Comisiones,"$122,783.00",Comisión,TEF 77096952-2 FID CHILE SEGUR,0,,"$122,783.00","$4,546,092.00",Cart0025
+Cta0521,Bank0002,9/6/2025,,Egreso,Transferencia,,rut0146,,"-$942,661.00",,TEF  6868879-5 Patricio Franci,0,"-$942,661.00",,"$3,603,431.00",Cart0025
+Cta0522,Bank0002,16/6/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$150,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$150,000.00","$3,753,431.00",Cart0025
+Cta0523,Bank0002,16/6/2025,,Egreso,Transferencia,,rut0146,,"-$59,513.00",,TEF 6868879-5 Patricio Francis,0,"-$59,513.00",,"$3,693,918.00",Cart0025
+Cta0524,Bank0002,17/6/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$110,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$110,000.00","$3,803,918.00",Cart0025
+Cta0525,Bank0002,17/6/2025,,Ingreso,Depósito,,rut0196,,"$1,129,924.00",Otro,DEPOSITO CON DOCUMENTOS,7236169,,"$1,129,924.00","$4,933,842.00",Cart0025
+Cta0526,Bank0002,18/6/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$97,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$97,000.00","$5,030,842.00",Cart0025
+Cta0527,Bank0002,19/6/2025,Interno,Ingreso,Transferencia,,Com0008,Comisiones,"$48,560.00",Comisión,PROVEEDORE 94510000-1 Renta Na,0,,"$48,560.00","$5,079,402.00",Cart0025
+Cta0528,Bank0002,19/6/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$135,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$135,000.00","$5,214,402.00",Cart0025
+Cta0529,Bank0002,23/6/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$150,000.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$150,000.00","$5,364,402.00",Cart0025
+Cta0530,Bank0002,23/6/2025,Cliente,Ingreso,Transferencia,,rut0097,Pago Cuotas,"$68,596.00",Otro,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$68,596.00","$5,432,998.00",Cart0025
+Cta0531,Bank0002,23/6/2025,,Egreso,Transferencia,,rut0036,,"-$500,000.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$500,000.00",,"$4,932,998.00",Cart0025
+Cta0532,Bank0002,24/6/2025,,Egreso,Transferencia,,Com0001,,"-$651,095.00",,TEF 99147000-K BCI Seguros Gen,0,"-$651,095.00",,"$4,281,903.00",Cart0025
+Cta0533,Bank0002,24/6/2025,,Egreso,Transferencia,,rut0146,,"-$1,129,924.00",,TEF  6868879-5 Patricio Franci,0,"-$1,129,924.00",,"$3,151,979.00",Cart0025
+Cta0534,Bank0002,30/6/2025,,Egreso,Transferencia,,rut0036,,"-$124,469.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$124,469.00",,"$3,027,510.00",Cart0025
+Cta0535,Bank0002,3/7/2025,,Egreso,Transferencia,,rut0146,,"-$31,027.00",,TEF 6868879-5 Patricio Francis,4937786536,"-$31,027.00",,"$2,996,483.00",ec2ab01d
+Cta0536,Bank0002,4/7/2025,,Egreso,Transferencia,,rut0146,,"-$1,238,635.00",,TEF  6868879-5 Patricio Franci,4940674521,"-$1,238,635.00",,"$2,996,848.00",ec2ab01d
+Cta0537,Bank0002,4/7/2025,Cliente,Ingreso,Transferencia,,rut0056,Pago Cuotas,"$1,239,000.00",Otro,TEF 76127983-1 DISTRIBUIDORA Y,4939579180,,"$1,239,000.00","$4,235,483.00",ec2ab01d
+Cta0538,Bank0002,7/7/2025,Interno,Ingreso,Transferencia,,Com0004,Comisiones,"$655,288.00",Comisión,TEF 77096952-2 FID CHILE SEGUR,4946188585,,"$655,288.00","$3,704,512.00",ec2ab01d
+Cta0539,Bank0002,7/7/2025,,Egreso,Transferencia,,rut0146,,"-$500,000.00",,TEF  6868879-5 Patricio Franci,4944477843,"-$500,000.00",,"$3,049,224.00",ec2ab01d
+Cta0540,Bank0002,7/7/2025,Interno,Ingreso,Transferencia,,Com0010,,"$364,880.00",Comisión,PROVEEDORE 99037000-1 ZURICH S,4942008252,,"$364,880.00","$3,549,224.00",ec2ab01d
+Cta0541,Bank0002,7/7/2025,Interno,Ingreso,Transferencia,,Com0002,,"$152,520.00",Comisión,PROVEEDORE 99225000-3 ACE SEGU,4941994351,,"$152,520.00","$3,184,344.00",ec2ab01d
+Cta0542,Bank0002,7/7/2025,Interno,Ingreso,Transferencia,,Com0002,,"$34,976.00",Comisión,PROVEEDORE 99225000-3 ACE SEGU,4941992999,,"$34,976.00","$3,031,824.00",ec2ab01d
+Cta0543,Bank0002,8/7/2025,,Egreso,Transferencia,,rut0146,,"-$350,000.00",,TEF  6868879-5 Patricio Franci,4947566040,"-$350,000.00",,"$3,354,512.00",ec2ab01d
+Cta0544,Bank0002,10/7/2025,Interno,Ingreso,Transferencia,,Com0006,Comisiones,"$79,296.00",Comisión,,4947566040,,"$79,296.00","$3,433,808.00",ec2ab01d
+Cta0545,Bank0002,15/7/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$180,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,4962258022,,"$180,000.00","$3,613,808.00",ec2ab01d
+Cta0546,Bank0002,17/7/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$195,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,4965265902,,"$195,000.00","$3,808,808.00",ec2ab01d
+Cta0547,Bank0002,17/7/2025,Interno,Egreso,PEL,,Prv0001,,"-$211,334.00",,PAGO IMPTO SII 776050369,4965509169,"-$211,334.00",,"$3,597,474.00",ec2ab01d
+Cta0548,Bank0002,17/7/2025,Cliente,Ingreso,Depósito,,rut0196,,"$1,133,651.00",,DEPOSITO CON DOCUMENTOS,7236179,,"$1,133,651.00","$4,731,125.00",ec2ab01d
+Cta0549,Bank0002,18/7/2025,Interno,Ingreso,Transferencia,,Com0006,,"$661,127.00",,PROVEEDORE 99061000-2 HDI SEGU,4967680315,,"$661,127.00","$5,392,252.00",ec2ab01d
+Cta0550,Bank0002,18/7/2025,Interno,Ingreso,Transferencia,,Com0006,,"$34,992.00",,PROVEEDORE 99061000-2 HDI SEGU,4967680316,,"$34,992.00","$5,427,244.00",ec2ab01d
+Cta0551,Bank0002,18/7/2025,Interno,Ingreso,Transferencia,,Com0006,,"$20,355.00",,PROVEEDORE 99061000-2 HDI SEGU,4967680317,,"$20,355.00","$5,447,599.00",ec2ab01d
+Cta0552,Bank0002,18/7/2025,Interno,Ingreso,Transferencia,,Com0006,,"$1,872,814.00",,PROVEEDORE 99061000-2 HDI SEGU,4967680318,,"$1,872,814.00","$7,320,413.00",ec2ab01d
+Cta0553,Bank0002,18/7/2025,Interno,Ingreso,Transferencia,,Com0006,,"$2,023,592.00",,PROVEEDORE 99061000-2 HDI SEGU,4967680321,,"$2,023,592.00","$9,344,005.00",ec2ab01d
+Cta0554,Bank0002,18/7/2025,Interno,Ingreso,Transferencia,,Com0006,,"$18,966.00",,PROVEEDORE 99061000-2 HDI SEGU,4967680334,,"$18,966.00","$9,362,971.00",ec2ab01d
+Cta0555,Bank0002,18/7/2025,Interno,Ingreso,Transferencia,,Com0006,,"$62,652.00",,PROVEEDORE 99061000-2 HDI SEGU,4967680337,,"$62,652.00","$9,425,623.00",ec2ab01d
+Cta0556,Bank0002,18/7/2025,Interno,Ingreso,Transferencia,,Com0006,,"$75,679.00",,PROVEEDORE 99061000-2 HDI SEGU,4967680338,,"$75,679.00","$9,501,302.00",ec2ab01d
+Cta0557,Bank0002,18/7/2025,Interno,Egreso,Transferencia,,rut0036,,"-$750,000.00",,TEF 17402356-5 Danko Ivan Brzo,4968328168,"-$750,000.00",,"$8,751,302.00",ec2ab01d
+Cta0558,Bank0002,18/7/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$120,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,4968787909,,"$120,000.00","$8,871,302.00",ec2ab01d
+Cta0559,Bank0002,18/7/2025,Interno,Egreso,Transferencia,,rut0146,,"-$350,000.00",,TEF  6868879-5 Patricio Franci,4968778123,"-$350,000.00",,"$8,521,302.00",ec2ab01d
+Cta0560,Bank0002,21/7/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$97,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,4971739100,,"$97,000.00","$8,618,302.00",ec2ab01d
+Cta0561,Bank0002,21/7/2025,Interno,Egreso,Transferencia,,rut0146,,"-$1,132,646.00",,TEF  6868879-5 Patricio Franci,4972101359,"-$1,132,646.00",,"$7,485,656.00",ec2ab01d
+Cta0562,Bank0002,21/7/2025,Interno,Egreso,Transferencia,,rut0146,,"-$59,519.00",,TEF 6868879-5 Patricio Francis,4972380538,"-$59,519.00",,"$7,426,137.00",ec2ab01d
+Cta0563,Bank0002,23/7/2025,Interno,Ingreso,Transferencia,,Com0001,,"$481,565.00",,PROVEEDORE 99147000-K BCI SEGU,4976915179,,"$481,565.00","$7,907,702.00",ec2ab01d
+Cta0564,Bank0002,23/7/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$122,485.00",,TEF 77132459-2 SOCIEDAD HORTEN,4977445944,,"$122,485.00","$8,030,187.00",ec2ab01d
+Cta0565,Bank0002,23/7/2025,Interno,Egreso,Transferencia,,rut0146,,"-$654,966.00",,TEF  6868879-5 Patricio Franci,4977437391,"-$654,966.00",,"$7,375,221.00",ec2ab01d
+Cta0566,Bank0002,23/7/2025,Interno,Egreso,Transferencia,,rut0146,,"-$73,043.00",,TEF  6868879-5 Patricio Franci,4977488863,"-$73,043.00",,"$7,302,178.00",ec2ab01d
+Cta0567,Bank0002,24/7/2025,Interno,Egreso,Transferencia,,Prv0002,,"-$34,665.00",,TEF 77617950-7 Creattiva Datac,4980152050,"-$34,665.00",,"$7,267,513.00",ec2ab01d
+Cta0568,Bank0002,28/7/2025,Interno,Ingreso,Transferencia,,Com0001,,"$2,723.00",,PROVEEDORE 99147000-K BCI SEGU,4983954301,,"$2,723.00","$7,270,236.00",ec2ab01d
+Cta0569,Bank0002,29/7/2025,Interno,Egreso,Transferencia,,rut0146,,"-$1,000,000.00",,TEF  6868879-5 Patricio Franci,4989531950,"-$1,000,000.00",,"$6,270,236.00",ec2ab01d
+Cta0570,Bank0002,31/7/2025,Interno,Egreso,Transferencia,,rut0146,,"-$1,000,000.00",,TEF  6868879-5 Patricio Franci,4993864361,"-$1,000,000.00",,"$5,270,236.00",ec2ab01d
+Cta0571,Bank0002,31/7/2025,Interno,Egreso,Transferencia,,rut0146,,"-$34,324.00",,TEF 6868879-5 Patricio Francis,4994536681,"-$34,324.00",,"$5,235,912.00",ec2ab01d
+Cta0572,Bank0002,11/8/2025,Cliente,Egreso,Transferencia,,rut0036,,"-$100,000.00",,TEF 17402356-5 Danko Ivan Brzo,5018616422,"-$100,000.00",,"$5,135,912.00",6c16b6cc
+Cta0573,Bank0002,12/8/2025,Interno,Ingreso,Transferencia,,Com0006,,"$545,511.00",,PROVEEDORE 99061000-2 HDI SEGU,5021188481,,"$545,511.00","$5,681,423.00",6c16b6cc
+Cta0574,Bank0002,12/8/2025,Cliente,Ingreso,Transferencia,,rut0056,,"$1,283,000.00",,TEF 76127983-1 DISTRIBUIDORA Y,5021421942,,"$1,283,000.00","$6,964,423.00",6c16b6cc
+Cta0575,Bank0002,12/8/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$1,283,000.00",,TEF  6868879-5 Patricio Franci,5021815064,"-$1,283,000.00",,"$5,681,423.00",6c16b6cc
+Cta0576,Bank0002,14/8/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$500,000.00",,TEF 6868879-5 Patricio Francis,5026170741,"-$500,000.00",,"$5,181,423.00",6c16b6cc
+Cta0577,Bank0002,14/8/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$230,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5026818734,,"$230,000.00","$5,411,423.00",6c16b6cc
+Cta0578,Bank0002,14/8/2025,Cliente,Ingreso,Depósito,,rut0196,,"$1,129,440.00",,DEPOSITO CON DOCUMENTOS,7539884,,"$1,129,440.00","$6,540,863.00",6c16b6cc
+Cta0579,Bank0002,18/8/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$1,131,855.00",,TEF  6868879-5 Patricio Franci,5029423468,"-$1,131,855.00",,"$5,409,008.00",6c16b6cc
+Cta0580,Bank0002,18/8/2025,Interno,Egreso,PEL,,Prv0001,,"-$1,282,205.00",,PAGO IMPTO SII 776050369,5029968341,"-$1,282,205.00",,"$4,126,803.00",6c16b6cc
+Cta0581,Bank0002,18/8/2025,Interno,Egreso,Transferencia,,f9868661,,"-$121,309.00",,TEF 76249381-0 Oneduc SPA,5031232437,"-$121,309.00",,"$4,005,494.00",6c16b6cc
+Cta0582,Bank0002,18/8/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$240,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5032246724,,"$240,000.00","$4,245,494.00",6c16b6cc
+Cta0583,Bank0002,20/8/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$130,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5037077782,,"$130,000.00","$4,375,494.00",6c16b6cc
+Cta0584,Bank0002,20/8/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$370,000.00",,TEF  6868879-5 Patricio Franci,5037273831,"-$370,000.00",,"$4,005,494.00",6c16b6cc
+Cta0585,Bank0002,22/8/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$64,277.00",,TEF 6868879-5 Patricio Francis,5041674755,"-$64,277.00",,"$3,941,217.00",6c16b6cc
+Cta0586,Bank0002,22/8/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$114,775.00",,TEF 77132459-2 SOCIEDAD HORTEN,5042606468,,"$114,775.00","$4,055,992.00",6c16b6cc
+Cta0587,Bank0002,25/8/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$345,736.00",,TEF  6868879-5 Patricio Franci,5044192422,"-$345,736.00",,"$3,710,256.00",6c16b6cc
+Cta0588,Bank0002,25/8/2025,Cliente,Egreso,Transferencia,,rut0036,,"-$750,000.00",,TEF 17402356-5 Danko Ivan Brzo,5045677423,"-$750,000.00",,"$2,960,256.00",6c16b6cc
+Cta0589,Bank0002,2/9/2025,Interno,Ingreso,Transferencia,,Com0007,,"$43,647.00",,PROVEEDORE 76743492-8 REALE CH,5066086492,,"$43,647.00","$3,003,903.00",d3dfb888
+Cta0590,Bank0002,5/9/2025,Interno,Ingreso,Transferencia,,Com0010,,"$37,286.00",,PROVEEDORE 99037000-1 ZURICH S,5073884915,,"$37,286.00","$3,041,189.00",d3dfb888
+Cta0591,Bank0002,5/9/2025,Interno,Ingreso,Transferencia,,Com0008,,"$86,827.00",,PROVEEDORE 94510000-1 Renta Na,5074060276,,"$86,827.00","$3,128,016.00",d3dfb888
+Cta0592,Bank0002,9/9/2025,Interno,Ingreso,Transferencia,,Com0001,,"$46,424.00",,PROVEEDORE 99147000-K BCI SEGU,5082020060,,"$46,424.00","$3,174,440.00",d3dfb888
+Cta0593,Bank0002,10/9/2025,Cliente,Ingreso,Transferencia,,rut0056,,"$1,159,000.00",,TEF 76127983-1 DISTRIBUIDORA Y,5084814078,,"$1,159,000.00","$4,333,440.00",d3dfb888
+Cta0594,Bank0002,10/9/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$1,159,108.00",,TEF  6868879-5 Patricio Franci,5085108622,"-$1,159,108.00",,"$3,174,332.00",d3dfb888
+Cta0595,Bank0002,10/9/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$400,000.00",,TEF  6868879-5 Patricio Franci,5085097283,"-$400,000.00",,"$2,774,332.00",d3dfb888
+Cta0596,Bank0002,12/9/2025,Cliente,Egreso,Transferencia,,rut0036,,"-$100,000.00",,TEF 17402356-5 Danko Ivan Brzo,5090319436,"-$100,000.00",,"$2,674,332.00",d3dfb888
+Cta0597,Bank0002,15/9/2025,Cliente,Ingreso,Depósito,,rut0196,,"$1,139,857.00",,DEPOSITO CON DOCUMENTOS,445739,,"$1,139,857.00","$3,814,189.00",d3dfb888
+Cta0598,Bank0002,17/9/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$150,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5102357277,,"$150,000.00","$3,964,189.00",d3dfb888
+Cta0599,Bank0002,22/9/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$122,834.00",,TEF  6868879-5 Patricio Franci,5104427351,"-$122,834.00",,"$3,841,355.00",d3dfb888
+Cta0600,Bank0002,22/9/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$1,139,857.00",,TEF  6868879-5 Patricio Franci,5104461012,"-$1,139,857.00",,"$2,701,498.00",d3dfb888
+Cta0601,Bank0002,22/9/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$600,000.00",,TEF  6868879-5 Patricio Franci,5104922597,"-$600,000.00",,"$2,101,498.00",d3dfb888
+Cta0602,Bank0002,22/9/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$200,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5105332010,,"$200,000.00","$2,301,498.00",d3dfb888
+Cta0603,Bank0002,22/9/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$240,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5106531204,,"$240,000.00","$2,541,498.00",d3dfb888
+Cta0604,Bank0002,22/9/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$59,908.00",,TEF  6868879-5 Patricio Franci,5106580532,"-$59,908.00",,"$2,481,590.00",d3dfb888
+Cta0605,Bank0002,23/9/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$99,138.00",,TEF 77132459-2 SOCIEDAD HORTEN,5109703586,,"$99,138.00","$2,580,728.00",d3dfb888
+Cta0606,Bank0002,23/9/2025,Cliente,Ingreso,Transferencia,,rut0095,,"$30,180.00",,TEF 18640677-K Macarena Stefan,5110700644,,"$30,180.00","$2,610,908.00",d3dfb888
+Cta0607,Bank0002,24/9/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$659,410.00",,TEF  6868879-5 Patricio Franci,5112001826,"-$659,410.00",,"$1,951,498.00",d3dfb888
+Cta0608,Bank0002,25/9/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$500,000.00",,TEF  6868879-5 Patricio Franci,5114291089,"-$500,000.00",,"$1,451,498.00",d3dfb888
+Cta0609,Bank0002,25/9/2025,Cliente,Egreso,Transferencia,,rut0036,,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,5114329571,"-$400,000.00",,"$1,051,498.00",d3dfb888
+Cta0610,Bank0002,7/10/2025,Interno,Ingreso,Transferencia,,Com0010,,"$106,461.00",,PROVEEDORE 99037000-1 ZURICH S,5142678833,,"$106,461.00","$1,157,959.00",2a69bbc4
+Cta0611,Bank0002,7/10/2025,Interno,Egreso,Transferencia,,f9868661,,"-$35,629.00",,TEF 76249381-0 Oneduc SPA,5143251021,"-$35,629.00",,"$1,122,330.00",2a69bbc4
+Cta0612,Bank0002,9/10/2025,Interno,Ingreso,Transferencia,,Com0001,,"$125,458.00",,PROVEEDORE 99147000-K BCI SEGU,5147779969,,"$125,458.00","$1,247,788.00",2a69bbc4
+Cta0613,Bank0002,9/10/2025,Interno,Ingreso,Transferencia,,Com0006,,"$64,559.00",,PROVEEDORE 99061000-2 HDI SEGU,5147781035,,"$64,559.00","$1,312,347.00",2a69bbc4
+Cta0614,Bank0002,15/10/2025,Cliente,Ingreso,Transferencia,,rut0056,,"$1,160,000.00",,TEF 76127983-1 DISTRIBUIDORA Y,5160718091,,"$1,160,000.00","$2,472,347.00",2a69bbc4
+Cta0615,Bank0002,15/10/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$1,060,000.00",,TEF  6868879-5 Patricio Franci,5161190064,"-$1,060,000.00",,"$1,412,347.00",2a69bbc4
+Cta0616,Bank0002,16/10/2025,Cliente,Ingreso,Depósito,,rut0196,,"$1,138,293.00",,DEPOSITO CON DOCUMENTOS,216586,,"$1,138,293.00","$2,550,640.00",2a69bbc4
+Cta0617,Bank0002,17/10/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$1,139,328.00",,TEF  6868879-5 Patricio Franci,5166245087,"-$1,139,328.00",,"$1,411,312.00",2a69bbc4
+Cta0618,Bank0002,17/10/2025,Interno,Egreso,PEL,,Prv0001,,"-$10,551.00",,PAGO IMPTO SII 776050369,5166966875,"-$10,551.00",,"$1,400,761.00",2a69bbc4
+Cta0619,Bank0002,20/10/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$200,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5169872818,,"$200,000.00","$1,600,761.00",2a69bbc4
+Cta0620,Bank0002,20/10/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$200,000.00",,TEF  6868879-5 Patricio Franci,5169940818,"-$200,000.00",,"$1,400,761.00",2a69bbc4
+Cta0621,Bank0002,20/10/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$300,000.00",,TEF  6868879-5 Patricio Franci,5170130225,"-$300,000.00",,"$1,100,761.00",2a69bbc4
+Cta0622,Bank0002,21/10/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$230,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5173343302,,"$230,000.00","$1,330,761.00",2a69bbc4
+Cta0623,Bank0002,21/10/2025,Cliente,Egreso,Transferencia,,rut0036,,"-$200,000.00",,TEF 17402356-5 Danko Ivan Brzo,5173648656,"-$200,000.00",,"$1,130,761.00",2a69bbc4
+Cta0624,Bank0002,22/10/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$205,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5175957038,,"$205,000.00","$1,335,761.00",2a69bbc4
+Cta0625,Bank0002,23/10/2025,Cliente,Ingreso,Transferencia,,rut0095,,"$28,000.00",,TEF 18640677-K Macarena Stefan,5178904373,,"$28,000.00","$1,363,761.00",2a69bbc4
+Cta0626,Bank0002,23/10/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$57,600.00",,TEF 77132459-2 SOCIEDAD HORTEN,5178929996,,"$57,600.00","$1,421,361.00",2a69bbc4
+Cta0627,Bank0002,24/10/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$520,670.00",,TEF  6868879-5 Patricio Franci,5180239967,"-$520,670.00",,"$900,691.00",2a69bbc4
+Cta0628,Bank0002,27/10/2025,Cliente,Egreso,Transferencia,,rut0036,,"-$500,000.00",,TEF 17402356-5 Danko Ivan Brzo,5184548345,"-$500,000.00",,"$400,691.00",2a69bbc4
+Cta0629,Bank0002,28/10/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$100,000.00",,TEF 6868879-5 Patricio Francis,5188013024,"-$100,000.00",,"$300,691.00",2a69bbc4
+Cta0630,Bank0002,3/11/2025,Interno,Egreso,Transferencia,,f9868661,,"-$35,629.00",,TEF 76249381-0 Oneduc SPA,5200290857,"-$35,629.00",,"$265,062.00",67dec306
+Cta0631,Bank0002,3/11/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$19,959.00",,TEF 6868879-5 Patricio Francis,5200340007,"-$19,959.00",,"$245,103.00",67dec306
+Cta0632,Bank0002,7/11/2025,Interno,Ingreso,Transferencia,,Com0010,,"$37,211.00",,PROVEEDORE 99037000-1 ZURICH S,5212818464,,"$37,211.00","$282,314.00",67dec306
+Cta0633,Bank0002,11/11/2025,Interno,Ingreso,Transferencia,,Com0006,,"$36,797.00",,PROVEEDORE 99061000-2 HDI SEGU,5220554635,,"$36,797.00","$319,111.00",67dec306
+Cta0634,Bank0002,12/11/2025,Interno,Ingreso,Transferencia,,Com0001,,"$49,496.00",,PROVEEDORE 99147000-K BCI SEGU,5222905286,,"$49,496.00","$368,607.00",67dec306
+Cta0635,Bank0002,14/11/2025,Cliente,Ingreso,Transferencia,,rut0056,,"$1,291,000.00",,TEF 76127983-1 DISTRIBUIDORA Y,5228001893,,"$1,291,000.00","$1,659,607.00",67dec306
+Cta0636,Bank0002,14/11/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$1,000,000.00",,TEF  6868879-5 Patricio Franci,5228381234,"-$1,000,000.00",,"$659,607.00",67dec306
+Cta0637,Bank0002,17/11/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$290,603.00",,TEF  6868879-5 Patricio Franci,5232466239,"-$290,603.00",,"$369,004.00",67dec306
+Cta0638,Bank0002,18/11/2025,Interno,Ingreso,Transferencia,,Com0003,,"$147,958.00",,PROVEEDORE 96654180-6 COMPANIA,5235597838,,"$147,958.00","$516,962.00",67dec306
+Cta0639,Bank0002,18/11/2025,Interno,Egreso,PEL,,Prv0001,,"-$83,586.00",,PAGO IMPTO SII 776050369,5235861144,"-$83,586.00",,"$433,376.00",67dec306
+Cta0640,Bank0002,20/11/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$180,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5240499677,,"$180,000.00","$613,376.00",67dec306
+Cta0641,Bank0002,21/11/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$210,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5243328306,,"$210,000.00","$823,376.00",67dec306
+Cta0642,Bank0002,24/11/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$200,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5245529950,,"$200,000.00","$1,023,376.00",67dec306
+Cta0643,Bank0002,24/11/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$128,400.00",,TEF 77132459-2 SOCIEDAD HORTEN,5246729968,,"$128,400.00","$1,151,776.00",67dec306
+Cta0644,Bank0002,24/11/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$721,391.00",,TEF  6868879-5 Patricio Franci,5246976781,"-$721,391.00",,"$430,385.00",67dec306
+Cta0645,Bank0002,24/11/2025,Interno,Egreso,Transferencia,,Falta,,"-$72,840.00",,TEF 76187287-7 khipu CLBS D,5247104904,"-$72,840.00",,"$357,545.00",67dec306
+Cta0646,Bank0002,5/12/2025,Interno,Ingreso,Transferencia,,Com0001,,"$158,040.00",,PROVEEDORE 99147000-K BCI SEGU,5276551138,,"$158,040.00","$515,585.00",efd4d1f1
+Cta0647,Bank0002,5/12/2025,Interno,Ingreso,Transferencia,,Com0008,,"$307,586.00",,PROVEEDORE 94510000-1 Renta Na,5276751521,,"$307,586.00","$823,171.00",efd4d1f1
+Cta0648,Bank0002,10/12/2025,Interno,Ingreso,Transferencia,,Com0006,,"$30,664.00",,PROVEEDORE 99061000-2 HDI SEGU,5286504744,,"$30,664.00","$853,835.00",efd4d1f1
+Cta0649,Bank0002,10/12/2025,Interno,Ingreso,Transferencia,,Com0006,,"$9,436.00",,PROVEEDORE 99061000-2 HDI SEGU,5286504749,,"$9,436.00","$863,271.00",efd4d1f1
+Cta0650,Bank0002,12/12/2025,Cliente,Ingreso,Transferencia,,rut0056,,"$1,188,000.00",,TEF 76127983-1 DISTRIBUIDORA Y,5292487250,,"$1,188,000.00","$2,051,271.00",efd4d1f1
+Cta0651,Bank0002,12/12/2025,Cliente,Egreso,Transferencia,,rut0036,,"-$400,000.00",,TEF 17402356-5 Danko Ivan Brzo,5293306244,"-$400,000.00",,"$1,651,271.00",efd4d1f1
+Cta0652,Bank0002,15/12/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$1,188,000.00",,TEF  6868879-5 Patricio Franci,5296228312,"-$1,188,000.00",,"$463,271.00",efd4d1f1
+Cta0653,Bank0002,15/12/2025,Cliente,Ingreso,Transferencia,,rut0056,,"$104,323.00",,TEF 76127983-1 DISTRIBUIDORA Y,5297028437,,"$104,323.00","$567,594.00",efd4d1f1
+Cta0654,Bank0002,18/12/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$180,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5305907860,,"$180,000.00","$747,594.00",efd4d1f1
+Cta0655,Bank0002,18/12/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$57,113.00",,TEF  6868879-5 Patricio Franci,5305956248,"-$57,113.00",,"$690,481.00",efd4d1f1
+Cta0656,Bank0002,19/12/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$220,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5308654032,,"$220,000.00","$910,481.00",efd4d1f1
+Cta0657,Bank0002,22/12/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$50,000.00",,TEF  6868879-5 Patricio Franci,5311577282,"-$50,000.00",,"$860,481.00",efd4d1f1
+Cta0658,Bank0002,22/12/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$170,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5313783154,,"$170,000.00","$1,030,481.00",efd4d1f1
+Cta0659,Bank0002,22/12/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$104,279.00",,TEF  6868879-5 Patricio Franci,5313892997,"-$104,279.00",,"$926,202.00",efd4d1f1
+Cta0660,Bank0002,23/12/2025,Cliente,Ingreso,Transferencia,,rut0097,,"$62,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5317345212,,"$62,000.00","$988,202.00",efd4d1f1
+Cta0661,Bank0002,23/12/2025,Interno,Egreso,Transferencia,,Com0001,,"-$632,000.00",,TEF 99147000-K BCI Seguros Gen,5317512907,"-$632,000.00",,"$356,202.00",efd4d1f1
+Cta0662,Bank0002,26/12/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$100,000.00",,TEF 6868879-5 Patricio Francis,5323768794,"-$100,000.00",,"$256,202.00",efd4d1f1
+Cta0663,Bank0002,29/12/2025,Cliente,Egreso,Transferencia,,rut0146,,"-$64,375.00",,TEF  6868879-5 Patricio Franci,5327235792,"-$64,375.00",,"$191,827.00",efd4d1f1
+Cta0664,Bank0002,6/1/2026,Cliente,Ingreso,Transferencia,,rut0056,,"$1,126,000.00",,TEF 76127983-1 DISTRIBUIDORA Y,0,,"$1,126,000.00","$1,317,827.00",af5e03e4
+Cta0665,Bank0002,6/1/2026,Cliente,Egreso,Transferencia,,rut0146,,"-$1,126,000.00",,TEF  6868879-5 Patricio Franci,0,"-$1,126,000.00",,"$191,827.00",af5e03e4
+Cta0666,Bank0002,8/1/2026,Interno,Ingreso,Transferencia,,Com0010,,"$134,105.00",,PROVEEDORE 99037000-1 ZURICH S,0,,"$134,105.00","$325,932.00",af5e03e4
+Cta0667,Bank0002,12/1/2026,Interno,Ingreso,Transferencia,,Com0006,,"$144,898.00",,PROVEEDORE 99061000-2 HDI SEGU,0,,"$144,898.00","$470,830.00",af5e03e4
+Cta0668,Bank0002,16/1/2026,Cliente,Egreso,Transferencia,,rut0036,,"-$100,000.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$100,000.00",,"$370,830.00",af5e03e4
+Cta0669,Bank0002,19/1/2026,Cliente,Ingreso,Transferencia,,rut0097,,"$200,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$200,000.00","$570,830.00",af5e03e4
+Cta0670,Bank0002,19/1/2026,Interno,Egreso,PEL,,Prv0001,,"-$104,148.00",,PAGO IMPTO SII 776050369,0,"-$104,148.00",,"$466,682.00",af5e03e4
+Cta0671,Bank0002,20/1/2026,Cliente,Ingreso,Transferencia,,rut0097,,"$210,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$210,000.00","$676,682.00",af5e03e4
+Cta0672,Bank0002,21/1/2026,Interno,Ingreso,Transferencia,,Com0001,,"$214,676.00",,PROVEEDORE 99147000-K BCI SEGU,0,,"$214,676.00","$891,358.00",af5e03e4
+Cta0673,Bank0002,21/1/2026,Cliente,Ingreso,Transferencia,,rut0097,,"$180,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$180,000.00","$1,071,358.00",af5e03e4
+Cta0674,Bank0002,21/1/2026,Cliente,Ingreso,Depósito,,rut0196,,"$1,153,701.00",,DEPOSITO CON DOCUMENTOS,7236176,,"$1,153,701.00","$2,225,059.00",af5e03e4
+Cta0675,Bank0002,21/1/2026,Interno,Egreso,Transferencia,,f9868661,,"-$35,629.00",,TEF 76249381-0 Oneduc SPA,0,"-$35,629.00",,"$2,189,430.00",af5e03e4
+Cta0676,Bank0002,21/1/2026,Interno,Egreso,Transferencia,,f9868661,,"-$35,629.00",,TEF 76249381-0 Oneduc SPA,0,"-$35,629.00",,"$2,153,801.00",af5e03e4
+Cta0677,Bank0002,22/1/2026,Cliente,Egreso,Transferencia,,rut0036,,"-$100,000.00",,TEF 17402356-5 Danko Ivan Brzo,0,"-$100,000.00",,"$2,053,801.00",af5e03e4
+Cta0678,Bank0002,23/1/2026,Cliente,Ingreso,Transferencia,,rut0097,,"$42,172.00",,TEF 77132459-2 SOCIEDAD HORTEN,0,,"$42,172.00","$2,095,973.00",af5e03e4
+Cta0679,Bank0002,23/1/2026,Cliente,Egreso,Transferencia,,rut0146,,"-$632,172.00",,TEF  6868879-5 Patricio Franci,0,"-$632,172.00",,"$1,463,801.00",af5e03e4
+Cta0680,Bank0002,26/1/2026,Interno,Ingreso,Transferencia,,Com0006,,"$290,127.00",,PROVEEDORE 99061000-2 HDI SEGU,0,,"$290,127.00","$1,753,928.00",af5e03e4
+Cta0681,Bank0002,26/1/2026,Interno,Ingreso,Transferencia,,Com0006,,"$252,406.00",,PROVEEDORE 99061000-2 HDI SEGU,0,,"$252,406.00","$2,006,334.00",af5e03e4
+Cta0682,Bank0002,26/1/2026,Cliente,Egreso,Transferencia,,rut0146,,"-$65,012.00",,TEF  6868879-5 Patricio Franci,0,"-$65,012.00",,"$1,941,322.00",af5e03e4
+Cta0683,Bank0002,26/1/2026,Interno,Egreso,Transferencia,,Com0001,,"-$1,125,309.00",,TEF 99147000-K BCI Seguros Gen,0,"-$1,125,309.00",,"$816,013.00",af5e03e4
+Cta0684,Bank0002,28/1/2026,Interno,Ingreso,Transferencia,,Com0001,,"$116,070.00",,PROVEEDORE 99147000-K BCI SEGU,0,,"$116,070.00","$932,083.00",af5e03e4
+Cta0685,Bank0002,29/1/2026,Interno,Ingreso,Transferencia,,Com0011,,"$500,142.00",,PROVEEDORE 99288000-7 SOUTHBRI,0,,"$500,142.00","$1,432,225.00",af5e03e4
+Cta0686,Bank0002,4/2/2026,Cliente,Egreso,Transferencia,,rut0036,,"-$300,000.00",,TEF 17402356-5 Danko Ivan Brzo,5415610744,"-$300,000.00",,"$1,132,225.00",
+Cta0687,Bank0002,5/2/2026,Cliente,Egreso,Transferencia,,rut0146,,"-$700,000.00",,TEF  6868879-5 Patricio Franci,5418449419,"-$700,000.00",,"$556,453.00",
+Cta0688,Bank0002,5/2/2026,Interno,Ingreso,Transferencia,,Com0008,,"$124,228.00",,PROVEEDORE 94510000-1 Renta Na,5416750546,,"$124,228.00","$1,256,453.00",
+Cta0689,Bank0002,10/2/2026,Cliente,Egreso,Transferencia,,rut0036,,"-$350,000.00",,TEF 17402356-5 Danko Ivan Brzo,5428247184,"-$350,000.00",,"$206,453.00",
+Cta0690,Bank0002,12/2/2026,Interno,Ingreso,Transferencia,,Com0001,,"$1,505,573.00",,PROVEEDORE 99147000-K BCI SEGU,5432766438,,"$1,505,573.00","$1,712,026.00",
+Cta0691,Bank0002,16/2/2026,Cliente,Ingreso,Transferencia,,rut0056,,"$1,292,872.00",,TEF 76127983-1 DISTRIBUIDORA Y,5440057704,,"$1,292,872.00","$3,004,898.00",
+Cta0692,Bank0002,17/2/2026,Cliente,Ingreso,Depósito,,rut0196,,"$1,188,735.00",,DEPOSITO CON DOCUMENTOS,7236177,,"$1,188,735.00","$4,193,633.00",
+Cta0693,Bank0002,18/2/2026,Cliente,Ingreso,Transferencia,,rut0097,,"$215,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5446713764,,"$215,000.00","$4,408,633.00",
+Cta0694,Bank0002,19/2/2026,Cliente,Egreso,Transferencia,,rut0036,,"-$1,188,735.00",,TEF 17402356-5 Danko Ivan Brzo,5448438367,"-$1,188,735.00",,"$1,831,026.00",
+Cta0695,Bank0002,19/2/2026,Cliente,Ingreso,Transferencia,,rut0036,,"$104,000.00",,TEF 17402356-5 Danko Ivan Brzo,5448523073,,"$104,000.00","$3,019,761.00",
+Cta0696,Bank0002,19/2/2026,Cliente,Egreso,Transferencia,,rut0036,,"-$200,000.00",,TEF 17402356-5 Danko Ivan Brzo,5448354886,"-$200,000.00",,"$2,915,761.00",
+Cta0697,Bank0002,19/2/2026,Cliente,Egreso,Transferencia,,rut0036,,"-$1,292,872.00",,TEF 17402356-5 Danko Ivan Brzo,5448363870,"-$1,292,872.00",,"$3,115,761.00",
+Cta0698,Bank0002,20/2/2026,Cliente,Ingreso,Transferencia,,rut0097,,"$230,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5451919685,,"$230,000.00","$1,230,000.00",
+Cta0699,Bank0002,20/2/2026,Cliente,Ingreso,Transferencia,,rut0146,,"$1,000,000.00",,TEF DE PATRICIO FRANCISCO,5451807295,,"$1,000,000.00","$1,000,000.00",
+Cta0700,Bank0002,20/2/2026,Cliente,Egreso,Transferencia,,rut0146,,"-$1,831,026.00",,TEF  6868879-5 Patricio Franci,5451693681,"-$1,831,026.00",,$0.00,
+Cta0701,Bank0002,23/2/2026,Cliente,Ingreso,Transferencia,,rut0097,,"$7,618.00",,TEF 77132459-2 SOCIEDAD HORTEN,5456261786,,"$7,618.00","$1,417,618.00",
+Cta0702,Bank0002,23/2/2026,Cliente,Ingreso,Transferencia,,rut0097,,"$180,000.00",,TEF 77132459-2 SOCIEDAD HORTEN,5454298044,,"$180,000.00","$1,410,000.00",
+Cta0703,Bank0002,24/2/2026,Cliente,Egreso,Transferencia,,rut0036,,"-$250,000.00",,TEF 17402356-5 Danko Ivan Brzo,5458520353,"-$250,000.00",,"$535,000.00",
+Cta0704,Bank0002,24/2/2026,Interno,Egreso,Transferencia,,Com0001,,"-$632,618.00",,TEF 99147000-K BCI Seguros Gen,5457873436,"-$632,618.00",,"$785,000.00",
+Cta0705,Bank0002,27/2/2026,Interno,Egreso,Transferencia,,f9868661,,"$35,629.00",,TEF 76249381-0 Oneduc SPA,,"$35,629.00",,"$499,371.00",
+Cta0706,Bank0002,5/3/2026,Interno,Ingreso,Transferencia,,Com0008,,"$71,551.00",,,,,,,
+Cta0707,Bank0002,5/3/2026,Interno,Egreso,Transferencia,,rut0036,,"-$300,000.00",,,,,,,
+Cta0708,Bank0002,9/3/2026,Interno,Egreso,Transferencia,,rut0036,,"-$70,000.00",,,,,,,
+Cta0709,Bank0002,10/3/2026,Interno,Ingreso,Transferencia,,rut0056,,"$1,064,969.00",,,,,,,
+Cta0710,Bank0002,11/3/2026,Interno,Egreso,Transferencia,,rut0036,,"-$1,064,969.00",,,,,,,
+Cta0711,Bank0002,12/3/2026,Interno,Ingreso,Transferencia,,Com0001,,"$364,284.00",Comisión,,,,,,
+Cta0712,Bank0002,12/3/2026,Interno,Ingreso,Transferencia,,Com0006,,"$353,819.00",Comisión,,,,,,
+Cta0713,Bank0002,12/3/2026,Interno,Ingreso,Transferencia,,Com0007,,"$64,785.00",Comisión,,,,,,
+Cta0714,Bank0002,12/3/2026,Interno,Ingreso,Transferencia,,Com0004,,"$7,758.00",Comisión,,,,,,
+Cta0715,Bank0002,13/3/2026,Interno,Ingreso,Transferencia,,Com0010,,"$371,279.00",Comisión,,,,,,
+Cta0716,Bank0002,13/3/2026,Interno,Ingreso,Transferencia,,Com0012,,"$84,758.00",Comisión,,,,,,
+7b33606b,Bank0002,13-03-2026,Cliente,Ingreso,Transferencia,,rut0097,PAgo SOAP 2026,136060,Otro,,1,0,136060,1583665,
+a46f7475,Bank0002,16-03-2026,Interno,Ingreso,Transferencia,5502879621,Com0003,Comisiones,109785,Comisión,,5502879621,0,109785,1693450,
+73d62282,Bank0002,16-03-2026,Interno,Egreso,Transferencia,,rut0036,Pago SOAP Jorge Faunes,136060,,,5503167697,136060,0,1557390,
+648c9785,Bank0002,17-03-2026,Interno,Ingreso,Transferencia,,Com0007,Comisiones,136913,Comisión,,5507899235,0,136913,1694303,
+3f34b310,Bank0002,17-03-2026,Interno,Egreso,Transferencia,,rut0036,Retiro,500000,,,5508555643,500000,0,1194303,
+83b881ab,Bank0002,17-03-2026,Cliente,Ingreso,Transferencia,8453051,rut0196,Pago Cuotas Seguros,1201373,Otro,,8453051,0,1201373,2395676,
+8bab3e0d,Bank0002,18-03-2026,Interno,Egreso,Transferencia,,rut0147,Retiro,500000,,,5510603241,500000,0,1895676,
+Cta0717,Bank0002,19-03-2026,Cliente,Egreso,Transferencia,,rut0036,,-200000,,TEF 17402356-5 Danko Ivan Brzo,5513408678,-200000,,1327211,
+Cta0718,Bank0002,19-03-2026,Cliente,Egreso,Transferencia,,rut0036,,-1201373,,TEF 17402356-5 Danko Ivan Brzo,5513139739,-1201373,,1527211,
+Cta0719,Bank0002,19-03-2026,Interno,Ingreso,Transferencia,,Com0006,,820860,,PROVEEDORE 99061000-2 HDI SEGU,5512684615,,820860,2728584,
+Cta0720,Bank0002,19-03-2026,Interno,Ingreso,Transferencia,,Com0007,,12048,,PROVEEDORE 76743492-8 REALE CH,5512652023,,12048,1907724,
+Cta0721,Bank0002,23-03-2026,Cliente,Ingreso,Transferencia,,rut0097,,180000,,TEF 77132459-2 SOCIEDAD HORTEN,5519548217,,180000,1807211,
+Cta0722,Bank0002,23-03-2026,Cliente,Ingreso,Transferencia,,rut0097,,300000,,TEF 77132459-2 SOCIEDAD HORTEN,5518859518,,300000,1627211,
+Cta0723,Bank0002,24-03-2026,Cliente,Egreso,Transferencia,,rut0036,,-692000,,TEF 17402356-5 Danko Ivan Brzo,5522999328,-692000,,1327211,
+Cta0724,Bank0002,24-03-2026,Cliente,Ingreso,Transferencia,,rut0097,,212000,,TEF 77132459-2 SOCIEDAD HORTEN,5522780329,,212000,2019211,
+Cta0725,Bank0002,26-03-2026,Cliente,Egreso,Transferencia,,rut0036,,-150000,,TEF 17402356-5 Danko Ivan Brzo,5528443775,-150000,,1328597,
+Cta0726,Bank0002,26-03-2026,Interno,Ingreso,Transferencia,,Com0007,,151386,,PROVEEDORE 76743492-8 REALE CH,5527455935,,151386,1478597,
+Cta0727,Bank0002,27-03-2026,Cliente,Egreso,Transferencia,,rut0036,,-342432,,TEF 17402356-5 Danko Ivan Brzo,5530360213,-342432,,986165,
+Cta0728,Bank0002,01-04-2026,Interno,Egreso,Transferencia,,f9868661,,-35629,,TEF 76249381-0 Oneduc SPA,5542765945,-35629,,950536,
+Cta0729,Bank0002,06-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-500000,,TEF 17402356-5 Danko Ivan Brzo,5549744757,-500000,,450536,
+Cta0730,Bank0002,08-04-2026,Cliente,Ingreso,Transferencia,,rut0056,,587665,,TEF 76127983-1 DISTRIBUIDORA Y,5559009743,,587665,1038201,
+Cta0731,Bank0002,10-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-587665,,TEF 17402356-5 Danko Ivan Brzo,5563802434,-587665,,293907,
+Cta0732,Bank0002,10-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-156629,,TEF 17402356-5 Danko Ivan Brzo,5563787391,-156629,,881572,
+Cta0733,Bank0002,14-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-100000,,TEF 17402356-5 Danko Ivan Brzo,5571380440,-100000,,193907,
+Cta0734,Bank0002,16-04-2026,Interno,Ingreso,Transferencia,,Com0004,,150767,,TEF 77096952-2 FID CHILE SEGUR,5577868971,,150767,2798112,
+Cta0735,Bank0002,16-04-2026,Cliente,Ingreso,Transferencia,,rut0097,,300000,,TEF 77132459-2 SOCIEDAD HORTEN,5576805798,,300000,2647345,
+Cta0736,Bank0002,16-04-2026,Interno,Ingreso,Transferencia,,Com0001,,2077579,,PROVEEDORE 99147000-K BCI SEGU,5576518374,,2077579,2347345,
+Cta0737,Bank0002,16-04-2026,Interno,Ingreso,Transferencia,,Com0007,,75859,,PROVEEDORE 76743492-8 REALE CH,5576509913,,75859,269766,
+Cta0738,Bank0002,17-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-100000,,TEF 17402356-5 Danko Ivan Brzo,5580083484,-100000,,2898112,
+Cta0739,Bank0002,17-04-2026,Cliente,Ingreso,Transferencia,,rut0097,,200000,,TEF 77132459-2 SOCIEDAD HORTEN,5580212814,,200000,2998112,
+Cta0740,Bank0002,20-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-379977,,TEF 17402356-5 Danko Ivan Brzo,5582729160,-379977,,2582613,
+Cta0741,Bank0002,20-04-2026,Interno,Ingreso,Transferencia,,Com0003,,64478,,PROVEEDORE 96654180-6 COMPANIA,5581546801,,64478,2962590,
+Cta0742,Bank0002,21-04-2026,Cliente,Ingreso,Depósito,,rut0196,,1191950,,DEPOSITO CON DOCUMENTOS,9488347,,1191950,3874563,
+Cta0743,Bank0002,21-04-2026,Cliente,Ingreso,Transferencia,,rut0097,,100000,,TEF 77132459-2 SOCIEDAD HORTEN,5586578125,,100000,2682613,
+Cta0744,Bank0002,23-04-2026,Cliente,Ingreso,Transferencia,,rut0097,,95041,,TEF 77132459-2 SOCIEDAD HORTEN,5591052617,,95041,3969604,
+Cta0745,Bank0002,24-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-95817,,TEF 17402356-5 Danko Ivan Brzo,5594716228,-95817,,1753051,
+Cta0746,Bank0002,24-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-73251,,TEF 17402356-5 Danko Ivan Brzo,5594692745,-73251,,1848868,
+Cta0747,Bank0002,24-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-695041,,TEF 17402356-5 Danko Ivan Brzo,5593799782,-695041,,1922119,
+Cta0748,Bank0002,24-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-10494,,TEF 17402356-5 Danko Ivan Brzo,5593799766,-10494,,2617160,
+Cta0749,Bank0002,24-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-150000,,TEF 17402356-5 Danko Ivan Brzo,5593787706,-150000,,2627654,
+Cta0750,Bank0002,24-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-1191950,,TEF 17402356-5 Danko Ivan Brzo,5593758073,-1191950,,2777654,
+Cta0751,Bank0002,27-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-260000,,TEF 17402356-5 Danko Ivan Brzo,5597012325,-260000,,1493051,
+Cta0752,Bank0002,28-04-2026,Interno,Ingreso,Transferencia,,Com0006,,137071,,PROVEEDORE 99061000-2 HDI SEGU,5600660865,,137071,2782097,
+Cta0753,Bank0002,28-04-2026,Interno,Ingreso,Transferencia,,Com0006,,246444,,PROVEEDORE 99061000-2 HDI SEGU,5600660864,,246444,2645026,
+Cta0754,Bank0002,28-04-2026,Interno,Ingreso,Transferencia,,Com0006,,763533,,PROVEEDORE 99061000-2 HDI SEGU,5600660863,,763533,2398582,
+Cta0755,Bank0002,28-04-2026,Interno,Ingreso,Transferencia,,Com0006,,29159,,PROVEEDORE 99061000-2 HDI SEGU,5600660862,,29159,1635049,
+Cta0756,Bank0002,28-04-2026,Interno,Ingreso,Transferencia,,Com0006,,112839,,PROVEEDORE 99061000-2 HDI SEGU,5600660861,,112839,1605890,
+Cta0757,Bank0002,30-04-2026,Cliente,Egreso,Transferencia,,rut0036,,-574000,,TEF 17402356-5 Danko Ivan Brzo,5607622963,-574000,,2256398,
+Cta0758,Bank0002,30-04-2026,Interno,Egreso,Transferencia,,f9868661,,-35629,,TEF 76249381-0 Oneduc SPA,5607622906,-35629,,2830398,
+Cta0759,Bank0002,30-04-2026,Interno,Ingreso,Transferencia,,Com0007,,83930,,PROVEEDORE 76743492-8 REALE CH,5606143026,,83930,2866027,
+Cta0760,Bank0002,05-05-2026,Interno,Ingreso,Transferencia,,Com0008,,149821,,PROVEEDORE 94510000-1 Renta Na,5618197527,,149821,1756219,
+Cta0761,Bank0002,04-05-2026,Cliente,Egreso,Transferencia,,rut0036,,-650000,,TEF 17402356-5 Danko Ivan Brzo,5611710651,-650000,,1606398,
+cf8be143,Bank0002,08/05/2026,Interno,Ingreso,Transferencia,5626759041,Com0001,Pago Profit 2025,737197,Profit,Pago Profit 2025,5626759041,,737197,2493416,
+54ab2ef3,Bank0002,08/05/2026,Interno,Egreso,Transferencia,5628233338,rut0147,Retiro,700000,,,,-700000,,1793416,
+a0818c6a,Bank0002,08/05/2026,Interno,Egreso,Transferencia,,rut0036,Pago Movistar Mayo/26,64546,,,,-64546,,1728870,

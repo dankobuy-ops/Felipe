@@ -1,7 +1,53 @@
-.env
+# ── Entorno virtual ───────────────────────────────────────
 venv/
+.venv/
+env/
+ENV/
+
+# ── Variables de entorno (NUNCA subir) ────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python cache ──────────────────────────────────────────
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.pyo
+*.pyd
+.Python
+
+# ── Distribución / build ──────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+
+# ── Tests ─────────────────────────────────────────────────
 .pytest_cache/
-alembic/versions/*.py
+.coverage
+htmlcov/
+
+# ── IDEs ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Alembic ───────────────────────────────────────────────
+# Las migraciones se versionan para tener trazabilidad de cambios de schema
+
+# ── Logs ──────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Node (frontend) ───────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+.gstack/

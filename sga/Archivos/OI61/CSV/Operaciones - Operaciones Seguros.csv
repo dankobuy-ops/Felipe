@@ -1,0 +1,40 @@
+ID,Seguro,Perfil,Info Técnica,Guia Corredor,Info Venta
+Seg0000,Comunidad,Comunidades,,,
+Seg0001,Accidentes Personales,Empresas,/Operaciones/Seguros/Seg0001.Info Técnica.160741.pdf,/Operaciones/Seguros/Seg0001.Guia Corredor.160741.pdf,/Operaciones/Seguros/Seg0001.Info Venta.160741.pdf
+Seg0003,Asiento Pasajero,Empresas,/Operaciones/Seguros/Seg0003.Info Técnica.162831.pdf,/Operaciones/Seguros/Seg0003.Guia Corredor.162831.pdf,/Operaciones/Seguros/Seg0003.Info Venta.162831.pdf
+Seg0004,Asistencia Viajes,Personas,,/Operaciones/Seguros/Seg0004.Info Técnica.172928.pdf,/Operaciones/Seguros/Seg0004.Info Venta.172928.pdf
+Seg0005,Bicicleta,Personas,,/Operaciones/Seguros/Seg0005.Info Técnica.183519.pdf,/Operaciones/Seguros/Seg0005.Info Venta.183519.pdf
+Seg0006,Catastrófico,Personas,,/Operaciones/Seguros/Seg0006.Info Técnica.185542.pdf,/Operaciones/Seguros/Seg0006.Info Venta.185542.pdf
+Seg0007,Crédito,Empresas,,,
+Seg0008,Deporte,Personas,,/Operaciones/Seguros/Seg0008.Info Técnica.180201.pdf,/Operaciones/Seguros/Seg0008.Info Venta.180201.pdf
+Seg0009,Edificio,Comunidades,,,
+Seg0010,Equipo Móvil Agricola,Empresas,/Operaciones/Seguros/Seg0010.Info Técnica.165816.pdf,/Operaciones/Seguros/Seg0010.Guia Corredor.165816.pdf,/Operaciones/Seguros/Seg0010.Info Venta.165816.pdf
+Seg0011,Equipo móvil Contratista,Empresas,/Operaciones/Seguros/Seg0011.Info Técnica.170904.pdf,/Operaciones/Seguros/Seg0011.Guia Corredor.170904.pdf,/Operaciones/Seguros/Seg0011.Info Venta.170904.pdf
+Seg0015,Equipos Eléctricos,Empresas,/Operaciones/Seguros/Seg0015.Info Técnica.173736.pdf,/Operaciones/Seguros/Seg0015.Guia Corredor.173736.pdf,/Operaciones/Seguros/Seg0015.Info Venta.173736.pdf
+Seg0012,Espacios Comunes,Comunidades,,,
+Seg0013,Garantía,Empresas,,,
+Seg0014,Hogar,Personas,,/Operaciones/Seguros/Seg0014.Info Técnica.204731.pdf,/Operaciones/Seguros/Seg0014.Info Venta.204731.pdf
+Seg0016,Movilidad,Personas,,/Operaciones/Seguros/Seg0016.Info Técnica.150248.pdf,/Operaciones/Seguros/Seg0016.Info Venta.150248.pdf
+Seg0002,Protección Financiera,Empresas,/Operaciones/Seguros/Seg0002.Info Técnica.181240.pdf,/Operaciones/Seguros/Seg0002.Guia Corredor.181240.pdf,/Operaciones/Seguros/Seg0002.Info Venta.181240.pdf
+Seg0017,Pyme,Empresas,/Operaciones/Seguros/Seg0017.Info Técnica.183639.pdf,/Operaciones/Seguros/Seg0017.Guia Corredor.183639.pdf,/Operaciones/Seguros/Seg0017.Info Venta.183639.pdf
+Seg0018,RC Comunidad,Comunidades,,,
+68ae9fdc,RC Construcción/MOP,Empresas,/Operaciones/Seguros/68ae9fdc.Info Técnica.181945.pdf,/Operaciones/Seguros/68ae9fdc.Guia Corredor.181945.pdf,/Operaciones/Seguros/68ae9fdc.Info Venta.181945.pdf
+85f00dd6,RC D&O,Empresas,/Operaciones/Seguros/85f00dd6.Info Técnica.183955.pdf,/Operaciones/Seguros/85f00dd6.Guia Corredor.183955.pdf,/Operaciones/Seguros/85f00dd6.Info Venta.183955.pdf
+4424436f,RC Eventos,Empresas,/Operaciones/Seguros/4424436f.Info Técnica.191637.pdf,/Operaciones/Seguros/4424436f.Guia Corredor.191637.pdf,/Operaciones/Seguros/4424436f.Info Venta.191637.pdf
+Seg0019,RC Internacional,Personas,,/Operaciones/Seguros/Seg0019.Info Técnica.163417.pdf,/Operaciones/Seguros/Seg0019.Info Venta.163417.pdf
+Seg0020,RC Médica,Personas,/Operaciones/Seguros/Seg0020.Info Técnica.172121.pdf,/Operaciones/Seguros/Seg0020.Guia Corredor.172121.pdf,/Operaciones/Seguros/Seg0020.Info Venta.172121.pdf
+Seg0021,RC Personal,Personas,/Operaciones/Seguros/Seg0021.Info Técnica.173653.pdf,/Operaciones/Seguros/Seg0021.Guia Corredor.173653.pdf,/Operaciones/Seguros/Seg0021.Info Venta.173653.pdf
+Seg0022,RC Profesional,Personas,/Operaciones/Seguros/Seg0022.Info Técnica.180158.pdf,/Operaciones/Seguros/Seg0022.Guia Corredor.180158.pdf,/Operaciones/Seguros/Seg0022.Info Venta.180158.pdf
+Seg0023,RC Pyme,Empresas,/Operaciones/Seguros/Seg0023.Info Técnica.185021.pdf,/Operaciones/Seguros/Seg0023.Guia Corredor.185021.pdf,/Operaciones/Seguros/Seg0023.Info Venta.185021.pdf
+Seg0024,Salud,Personas,/Operaciones/Seguros/Seg0024.Info Técnica.182836.pdf,/Operaciones/Seguros/Seg0024.Guia Corredor.182836.pdf,/Operaciones/Seguros/Seg0024.Info Venta.182836.pdf
+Seg0025,Salud Compelmentario,Empresas,/Operaciones/Seguros/Seg0025.Info Técnica.152930.pdf,/Operaciones/Seguros/Seg0025.Guia Corredor.152930.pdf,/Operaciones/Seguros/Seg0025.Info Venta.152930.pdf
+Seg0026,Transporte,Empresas,/Operaciones/Seguros/Seg0026.Info Técnica.192950.pdf,/Operaciones/Seguros/Seg0026.Guia Corredor.192950.pdf,/Operaciones/Seguros/Seg0026.Info Venta.192950.pdf
+Seg0027,TRC,Empresas,/Operaciones/Seguros/Seg0027.Info Técnica.195243.pdf,/Operaciones/Seguros/Seg0027.Guia Corredor.195243.pdf,/Operaciones/Seguros/Seg0027.Info Venta.195243.pdf
+Seg0028,Vehículo,Personas,/Operaciones/Seguros/Seg0028.Info Técnica.185357.pdf,/Operaciones/Seguros/Seg0028.Guia Corredor.185357.pdf,/Operaciones/Seguros/Seg0028.Info Venta.185357.pdf
+Seg0029,Vehiculos,Empresas,/Operaciones/Seguros/Seg0029.Info Técnica.165607.pdf,/Operaciones/Seguros/Seg0029.Guia Corredor.165607.pdf,/Operaciones/Seguros/Seg0029.Info Venta.165607.pdf
+Seg0030,Viaje Empresa,Empresas,,,
+Seg0031,Vida,Personas,,,
+Seg0032,Vida Guardias (OS10),Comunidades,/Operaciones/Seguros/Seg0032.Info Técnica.172636.pdf,/Operaciones/Seguros/Seg0032.Guia Corredor.172636.pdf,/Operaciones/Seguros/Seg0032.Info Venta.172636.pdf
+Seg0033,Vida Guardias (OS10),Empresas,/Operaciones/Seguros/Seg0033.Info Técnica.172615.pdf,/Operaciones/Seguros/Seg0033.Guia Corredor.172615.pdf,/Operaciones/Seguros/Seg0033.Info Venta.172615.pdf
+Seg0034,SOAP,Personas,,,
+Seg0035,RC Exceso,Empresas,,,

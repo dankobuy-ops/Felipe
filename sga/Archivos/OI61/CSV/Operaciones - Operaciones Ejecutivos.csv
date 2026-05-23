@@ -1,0 +1,27 @@
+ID,Tipo,Banco,Compañía,Proveedor,Nombre,2do Nombre,Paterno,Materno,Corto,Correo,Correo 2,Celular,Fijo,Sexo,Cargo
+Eje0001,Compañía,,Com0001,,Carlos,,Fuentes,,C Fuentes,carlos.fuentes@bciseguros.com,,9 34053186,,Masculino,Subgerente Centro de Negocios
+Eje0002,Compañía,,Com0007,,Álvaro,,Rodriguez,,A Rodriguez,alvaro.rodriguez@reale.cl,,9 59222971,,Femenino,Ejecutivo Cuenta
+Eje0003,Compañía,,Com0008,,Erwin,,Cea,,E Cea,ecea@rentanacional.cl,,9 92221492,,Masculino,Ejecutivo Cuenta
+Eje0005,Compañía,,Com0010,,Fernanda,,Araya,,F Araya,fernanda.araya@zurich.cl,,9 68037787,,Femenino,Ejecutivo Cuenta
+Eje0006,Compañía,,Com0004,,Francisca,,Plummer,,F Plummer,francisca.plummer@fidseguros.cl,,9 77330144,,Masculino,Ejecutivo Cuenta
+Eje0007,Compañía,,Com0005,,Evelyn,,Bortolaso,,E Bartolaso,Evelyn.Bortolaso@hdi.cl,,9 92396397,,Femenino,Ejecutivo Cuenta
+Eje0008,Compañía,,Com0011,,Marco,,Rojas,,M Rojas,marco.rojas@sbins.cl,,9 56478732,,Masculino,Suscriptor Marine
+Eje0009,Compañía,,Com0011,,Nicole,,Gonzalez,,N Gonzalez,nicole.gonzalez@sbins.cl,,9 56478724,,Femenino,Ejecutiva Banca
+Eje0010,Compañía,,Com0013,,Lorena,,Castro,,L Castro1,lorena.castro@hdi.cl,,9 84585739,,Femenino,Ejecutivo Cuenta
+Eje0011,Compañía,,Com0003,,Andrea,,Madariaga,,A Madariaga,Andrea.Madariaga@consorcio.cl,,9 69184910,,Femenino,Ejecutiva Banca
+Eje0012,Compañía,,Com0010,,Cristina,,Mora,,C Mora,c.mora1@zurich.com,,9 91933001,,Femenino,Ejecutiva de cuenta
+c8bd8933,Compañía,,Com0007,,Eduardo,,Uribe,,E Uribe,eduardo.uribe@hdi.cl,,,2 23915758,Masculino,Cobranzas
+5d69d156,Compañía,,Com0001,,Luis,Alberto,Montecinos,Navarro,L Montecinos,luis.montecinos@bciseguros.com,,9 98058689,,Masculino,Ejecutivo Comercial
+6a00b56b,Compañía,,Com0001,,Jonathan,,Alle,,J Alle,jonathan.alle@bciseguros.com,,,,Masculino,Gerente Santiago Canal Tradicional
+0c5caf19,Compañía,,Com0002,,Ana,,Correa,,A Correa,ana.correa@chubb.com,,,,Femenino,Ejecutiva
+38dda013,Compañía,,Com0002,,Valentina,,Granifo,,V Granifo,Valentina.GranifoAbramson@chubb.com,,,,Femenino,Ejecutiva
+829fad5e,Compañía,,Com0004,,Jesús,,Valero,Uzcategui,J Valero,jesus.valero@fidseguros.cl,,56966423166,,Masculino,Ejecutivo Comercial
+a07fa305,Compañía,,Com0002,,Nicolas,,Molina,,N Molina,Nicolas.Molina@chubb.com,,,,Masculino,Ejecutivo
+5c3c14d2,Compañía,,Com0001,,Camila,Alejandra,Encina,Arancibia,C Encina,camila.encina@bciseguros.com,,9 50952910,,Femenino,Ejecutiva Comercial Salud Individual
+c18e149e,Compañía,,Com0008,,Mónica,,Sepulveda,,M Sepulveda,msepulveda@rentanacional.cl,,9 39428494,2 26700840,Femenino,Recepcionista
+96689375,Compañía,,Com0007,,Felipe,,Badilla,Philips,F Badilla,felipe.badilla@reale.cl,,9 74189174,,Masculino,Gerente Red
+0cfc0afc,Compañía,,Com0007,,Juana,,García,,J García,Juana.garcia@reale.cl,,9 50519843,,Femenino,Gerente Red
+5748d238,Compañía,,Com0007,,Cristián,,Fernandez,,C Fernandez,Cristian.fernandez@reale.cl,,9 89776920,,Masculino,Analista
+c4303f66,Compañía,,Com0003,,Patricia,,Binder,Vargas,P Binder,patricia.binder@consorcio.cl,,,65 2772811,Femenino,Ejecutiva
+664b8c95,Compañía,,Com0005,,Lorena,,Castro,,L Castro,lorena.castro@hdi.cl,,9 84585739,,Femenino,Ejecutiva Comercial
+c138f65a,Compañía,,Com0002,,Soledad,,Carcamo,M,Sole C,Soledad.Carcamo@chubb.com,,.,,Femenino,Contacto Gral

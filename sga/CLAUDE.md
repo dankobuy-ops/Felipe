@@ -2,6 +2,25 @@
 
 Sistema de gestión para corredora de seguros. Stack: FastAPI + PostgreSQL + React/Vite.
 
+## Core Principles (Phase 2 — FastAPI & Business Logic)
+
+### AEGIS CORPORATE OS
+The **Precio/Cobertura** (Price/Coverage) ratio is absolute. NEVER write algorithms that sort,
+filter, or rank results by broker commission amounts or commission percentages. The client's
+interest (best coverage for best price) is the only valid optimization criterion.
+
+### ARCHITECTURE
+Strict adherence to the 9 semantic schemas: `datos`, `operaciones`, `gestion`, `contabilidad`,
+`grupos`, `comunicacion`, `agenda`, `cruce_tablas`, `configuracion`. Extend existing schemas.
+NEVER create independent data silos or tables outside this taxonomy.
+
+### CODE
+- Do NOT hardcode SLAs, business rules, or configurable thresholds — read them from
+  `configuracion.parametro` (key-value store).
+- All endpoints MUST use server-side pagination (`limit` + `offset`). Fetching unbounded result
+  sets is forbidden in new code.
+- Use the custom skills (`.claude/skills/`) as enforcement gates before submitting code.
+
 ## Template: Datos Materias
 
 Patrón arquitectónico para tablas de registro maestro de ítems asegurados.
