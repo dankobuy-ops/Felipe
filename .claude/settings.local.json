@@ -84,7 +84,9 @@
       "Bash(git pull *)",
       "Bash(gh auth *)",
       "Bash(git ls-remote *)",
-      "Bash(cmdkey /list)"
+      "Bash(cmdkey /list)",
+      "Bash(git restore *)",
+      "Bash(sed 's/^.. //')"
     ]
   }
 }
