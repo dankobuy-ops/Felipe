@@ -1,0 +1,90 @@
+name: scrape
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Unique job identifier (UUID)"
+        required: true
+      search_code:
+        description: "Search code to query on the target"
+        required: true
+      target_url:
+        description: "URL of the target site to scrape"
+        required: true
+      resume_attempt:
+        description: "How many times this job has been re-dispatched"
+        required: false
+        default: "0"
+
+env:
+  MAX_RESUME_ATTEMPTS: "10"
+  MAX_RUNTIME_SECONDS: "240"
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
+
+      - name: Validate inputs
+        run: python felipe/scraper/validate_inputs.py "${{ github.event.inputs.target_url }}"
+
+      - name: Check resume cap
+        run: |
+          attempt="${{ github.event.inputs.resume_attempt }}"
+          if [ "$attempt" -ge "$MAX_RESUME_ATTEMPTS" ]; then
+            echo "Resume cap reached ($attempt / $MAX_RESUME_ATTEMPTS). Marking job stalled."
+            cd felipe/scraper && python mark_stalled.py \
+              --job-id "${{ github.event.inputs.job_id }}" \
+              --supabase-url "${{ secrets.SUPABASE_URL }}" \
+              --supabase-key "${{ secrets.SUPABASE_SERVICE_KEY }}"
+            exit 0
+          fi
+
+      - name: Run scraper
+        env:
+          JOB_ID: ${{ github.event.inputs.job_id }}
+          SEARCH_CODE: ${{ github.event.inputs.search_code }}
+          TARGET_URL: ${{ github.event.inputs.target_url }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+        run: |
+          cd felipe/scraper && python run.py \
+            --job-id "$JOB_ID" \
+            --search-code "$SEARCH_CODE" \
+            --target-url "$TARGET_URL" \
+            --max-seconds "$MAX_RUNTIME_SECONDS"
+
+      - name: Re-dispatch if not complete
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_PAT }}
+        run: |
+          status=$(cat /tmp/scrape_status 2>/dev/null || echo "unknown")
+          if [ "$status" = "complete" ] || [ "$status" = "stalled" ]; then
+            echo "Job $status — no re-dispatch."
+          else
+            next_attempt=$(( ${{ github.event.inputs.resume_attempt }} + 1 ))
+            echo "Re-dispatching as attempt $next_attempt (status=$status)..."
+            gh workflow run scrape.yml \
+              --repo "${{ github.repository }}" \
+              --field job_id="${{ github.event.inputs.job_id }}" \
+              --field search_code="${{ github.event.inputs.search_code }}" \
+              --field target_url="${{ github.event.inputs.target_url }}" \
+              --field resume_attempt="$next_attempt"
+          fi
