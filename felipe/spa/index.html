@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scraper</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Screen 1: trigger -->
+  <div id="screen-trigger" class="screen active">
+    <div class="card">
+      <h1>Web Scraper</h1>
+      <form id="trigger-form">
+        <label>
+          Search code
+          <input type="text" id="search-code" name="search_code" required placeholder="e.g. ABC-2024" />
+        </label>
+        <label>
+          Target URL
+          <input type="url" id="target-url" name="target_url" required placeholder="https://example.com/search" />
+        </label>
+        <button type="submit" id="submit-btn">Start scrape</button>
+      </form>
+      <p id="trigger-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- Screen 2: results -->
+  <div id="screen-results" class="screen hidden">
+    <div class="card wide">
+      <div class="results-header">
+        <h1>Results</h1>
+        <span id="job-status-badge" class="badge">running</span>
+        <button id="back-btn" class="secondary">New search</button>
+      </div>
+      <p class="job-meta">Job ID: <code id="job-id-display"></code></p>
+      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+      <p id="progress-label">Loading…</p>
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Record</th>
+            <th>Status</th>
+            <th>Text</th>
+            <th>PDF</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+      <p id="results-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
