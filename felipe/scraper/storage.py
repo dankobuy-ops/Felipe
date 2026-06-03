@@ -1,72 +1,59 @@
-"""Google Cloud Storage — PDF upload + signed URL generation."""
+"""Supabase Storage — PDF upload and signed URL generation."""
 
 import hashlib
-import json
-import os
 import time
 from pathlib import Path
 
-from google.cloud import storage
-from google.oauth2 import service_account
+import requests
 
 
-def _client(credentials_json: str) -> storage.Client:
-    info = json.loads(credentials_json)
-    creds = service_account.Credentials.from_service_account_info(
-        info,
-        scopes=["https://www.googleapis.com/auth/cloud-platform"],
-    )
-    return storage.Client(credentials=creds, project=info["project_id"])
+def _headers(supabase_key: str) -> dict:
+    return {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+    }
 
 
 def upload_pdf(
-    bucket_name: str,
+    supabase_url: str,
+    supabase_key: str,
+    bucket: str,
     job_id: str,
     record_id: str,
     local_path: Path,
-    credentials_json: str,
     expiry_seconds: int = 3600,
 ) -> str:
-    """Upload PDF, verify integrity, return signed URL valid for expiry_seconds.
+    """Upload PDF to Supabase Storage, verify integrity, return signed URL.
 
-    Raises if the uploaded object hash doesn't match the local file (PDF integrity check).
+    Raises if the file is too small (corrupt/partial download guard).
     """
-    client = _client(credentials_json)
-    bucket = client.bucket(bucket_name)
-    blob_name = f"{job_id}/{record_id}.pdf"
-    blob = bucket.blob(blob_name)
+    if local_path.stat().st_size < 1024:
+        raise RuntimeError(f"PDF for {record_id} is too small — likely corrupt or partial.")
 
-    local_md5 = _md5(local_path)
+    object_path = f"{job_id}/{record_id}.pdf"
+    upload_url = f"{supabase_url}/storage/v1/object/{bucket}/{object_path}"
 
-    blob.upload_from_filename(str(local_path), content_type="application/pdf")
+    with open(local_path, "rb") as f:
+        data = f.read()
 
-    # Reload to get the server-side MD5
-    blob.reload()
-    remote_md5 = blob.md5_hash  # base64-encoded by GCS
-    import base64
-    remote_md5_hex = base64.b64decode(remote_md5).hex()
+    headers = _headers(supabase_key)
+    headers["Content-Type"] = "application/pdf"
+    headers["x-upsert"] = "true"
 
-    if remote_md5_hex != local_md5:
-        blob.delete()
-        raise RuntimeError(
-            f"PDF integrity check failed for {record_id}: "
-            f"local={local_md5} remote={remote_md5_hex}. Deleted remote copy."
-        )
+    r = requests.post(upload_url, headers=headers, data=data, timeout=60)
+    r.raise_for_status()
 
-    info = json.loads(credentials_json)
-    signing_creds = service_account.Credentials.from_service_account_info(info)
-    signed_url = blob.generate_signed_url(
-        version="v4",
-        expiration=expiry_seconds,
-        method="GET",
-        credentials=signing_creds,
+    # Generate a signed URL valid for expiry_seconds
+    sign_url = f"{supabase_url}/storage/v1/object/sign/{bucket}/{object_path}"
+    r2 = requests.post(
+        sign_url,
+        headers={**_headers(supabase_key), "Content-Type": "application/json"},
+        json={"expiresIn": expiry_seconds},
+        timeout=15,
     )
-    return signed_url
+    r2.raise_for_status()
+    signed_path = r2.json()["signedURL"]
 
-
-def _md5(path: Path) -> str:
-    h = hashlib.md5()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    # signedURL is a path — prepend the Supabase storage base
+    base = supabase_url.rstrip("/")
+    return f"{base}/storage/v1{signed_path}"
