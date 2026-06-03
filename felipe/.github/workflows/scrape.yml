@@ -19,7 +19,7 @@ on:
 
 env:
   MAX_RESUME_ATTEMPTS: "10"
-  MAX_RUNTIME_SECONDS: "240"   # 4 min — leaves 1 min margin before GHA kills at 6h but more importantly before target crashes at ~5 min
+  MAX_RUNTIME_SECONDS: "240"
 
 jobs:
   scrape:
@@ -37,22 +37,21 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install playwright google-cloud-storage google-api-python-client \
-            google-auth-httplib2 google-auth-oauthlib requests
+          pip install playwright requests
           playwright install chromium --with-deps
 
       - name: Validate inputs
-        run: python scraper/validate_inputs.py "${{ github.event.inputs.target_url }}"
+        run: python felipe/scraper/validate_inputs.py "${{ github.event.inputs.target_url }}"
 
       - name: Check resume cap
         run: |
           attempt="${{ github.event.inputs.resume_attempt }}"
           if [ "$attempt" -ge "$MAX_RESUME_ATTEMPTS" ]; then
             echo "Resume cap reached ($attempt / $MAX_RESUME_ATTEMPTS). Marking job stalled."
-            python scraper/mark_stalled.py \
+            cd felipe/scraper && python mark_stalled.py \
               --job-id "${{ github.event.inputs.job_id }}" \
-              --sheets-id "${{ secrets.SHEETS_ID }}" \
-              --gcp-credentials "${{ secrets.GCP_CREDENTIALS_JSON }}"
+              --supabase-url "${{ secrets.SUPABASE_URL }}" \
+              --supabase-key "${{ secrets.SUPABASE_SERVICE_KEY }}"
             exit 0
           fi
 
@@ -61,11 +60,11 @@ jobs:
           JOB_ID: ${{ github.event.inputs.job_id }}
           SEARCH_CODE: ${{ github.event.inputs.search_code }}
           TARGET_URL: ${{ github.event.inputs.target_url }}
-          SHEETS_ID: ${{ secrets.SHEETS_ID }}
-          GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
-          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
         run: |
-          python scraper/run.py \
+          cd felipe/scraper && python run.py \
             --job-id "$JOB_ID" \
             --search-code "$SEARCH_CODE" \
             --target-url "$TARGET_URL" \
@@ -77,13 +76,11 @@ jobs:
           GH_TOKEN: ${{ secrets.DISPATCH_PAT }}
         run: |
           status=$(cat /tmp/scrape_status 2>/dev/null || echo "unknown")
-          if [ "$status" = "complete" ]; then
-            echo "Job complete — no re-dispatch needed."
-          elif [ "$status" = "stalled" ]; then
-            echo "Job stalled — no re-dispatch."
+          if [ "$status" = "complete" ] || [ "$status" = "stalled" ]; then
+            echo "Job $status — no re-dispatch."
           else
             next_attempt=$(( ${{ github.event.inputs.resume_attempt }} + 1 ))
-            echo "Job not complete (status=$status). Re-dispatching as attempt $next_attempt..."
+            echo "Re-dispatching as attempt $next_attempt (status=$status)..."
             gh workflow run scrape.yml \
               --repo "${{ github.repository }}" \
               --field job_id="${{ github.event.inputs.job_id }}" \
