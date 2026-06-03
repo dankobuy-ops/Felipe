@@ -160,33 +160,36 @@ python -c "import google.cloud.storage; print('gcs ok')"
 ### CEO Plan: Resilient On-Demand Web Scraper
 
 **File:** `docs/2026-06-02-resilient-web-scraper-ceo-plan.md`  
-**Status:** ACTIVE — plan complete, implementation not started.
+**Status:** ACTIVE — implementation complete, needs selector adaptation for real target.
 
 **What it is:**  
-A static SPA (GitHub Pages) where the user enters a `search_code` + `target_url`. Submit triggers a GitHub Actions workflow that scrapes a highly unstable target (crashes ~every 5 min), iterates a result list, extracts text, downloads PDFs, stores PDFs to Google Cloud Storage (private bucket, signed expiring URLs), and writes data to Google Sheets.
+A static SPA (GitHub Pages) where the user enters a `search_code` + `target_url`. Submit triggers a GitHub Actions workflow that scrapes a highly unstable target (crashes ~every 5 min), iterates a result list, extracts text, downloads PDFs, stores PDFs to Supabase Storage, and writes checkpoint data to Supabase PostgreSQL.
 
-**Core architecture:**  
-Checkpointed self-healing on GitHub Actions. Google Sheets is the checkpoint store (`jobId + recordId + status`, written as each record finishes). On crash/timeout the workflow re-dispatches itself and resumes from the first record not marked `done`. Idempotent on `(jobId, recordId)`.
+**Stack:**
+- Checkpoint store: Supabase PostgreSQL (`checkpoints` table, RLS enabled)
+- PDF storage: Supabase Storage (`pdfs` bucket, private)
+- Trigger: local `backend/server.py` → GitHub `workflow_dispatch`
+- Scraper: Playwright (headless Chromium) running on GitHub Actions
+- Frontend: static SPA in `spa/` (Screen 1: trigger, Screen 2: live results)
 
-**Security model:**  
-SPA never holds the PAT. A thin server-side hop (small function or local trigger script) holds the credential and fires `workflow_dispatch`. SPA is owner-gated, no public trigger surface.
+**Supabase project:** `xjlpsgchgfxryvhhrklx.supabase.co`
 
-**7 critical gaps to close before writing a line of code:**
-1. 0-results vs page-broke discriminator — require a positive "results loaded" signal before accepting 0-count
-2. Resume read safety — a failed/partial Sheets read must NEVER default to "nothing done"
-3. Re-dispatch cap — max N resumes (e.g. 10), then mark job `stalled`
-4. No catch-all exceptions around the scrape loop — name every exception explicitly
-5. SSRF — validate/allowlist `target_url`, block private IP ranges
-6. Sheets formula injection — write all values as strings, guard against leading `=`/`+`/`-`/`@`
-7. Sheets write-quota — batch checkpoint writes on large jobs (stay under 300 writes/min)
+**GitHub secrets (already set):** `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET`, `DISPATCH_PAT`
 
-**Suggested implementation order:**
-1. GitHub Actions workflow skeleton with checkpoint logic
-2. Scraper script (Playwright) with crash-aware loop
-3. Sheets integration (checkpoint read/write)
-4. GCS PDF upload + signed URL generation
-5. Static SPA (Screen 1: trigger, Screen 2: results)
-6. Thin backend hop for PAT-safe `workflow_dispatch`
+**Infrastructure — all gaps closed:**
+All 7 critical gaps from the CEO plan are implemented (0-results discriminator, resume-read safety, re-dispatch cap, named exceptions, SSRF guard, injection guard, batch writes).
+
+**What's next:**
+1. Adapt selectors in `scraper/run.py` to the real target site — update `page.fill()`, `wait_for_selector()`, and `query_selector_all()` calls after inspecting target HTML
+2. Run backend locally to trigger real jobs:
+
+```bash
+set DISPATCH_PAT=<GITHUB_PAT_REDACTED>
+set GH_REPO=dankobuy-ops/Felipe
+set SUPABASE_URL=https://xjlpsgchgfxryvhhrklx.supabase.co
+set SUPABASE_SERVICE_KEY=sb_secret_HOehhXtQUca0Fb9cEuM3oQ_6B9M-DK3
+python felipe/backend/server.py
+```
 
 ---
 
@@ -205,3 +208,4 @@ git push origin main
 | Date | What happened |
 |---|---|
 | 2026-06-03 | Connected repo to Felipe.git, pulled remote state (CEO plan + README), installed gstack at root level (54 skills), created this handoff file |
+| 2026-06-03 | Built full scraper stack: GHA workflow, Playwright scraper, Supabase checkpoint store, Supabase Storage for PDFs, static SPA (Screen 1 + 2), local backend hop. Tested end-to-end — pipeline fires, re-dispatches, and caps correctly. |
