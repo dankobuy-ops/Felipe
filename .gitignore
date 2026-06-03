@@ -22,3 +22,7 @@ build/
 !*.pdf
 !*.md
 !*.csv
+
+# EXCEPCIÓN: felipe/ es un proyecto de código — rastrear todo
+!felipe/**
+!felipe/.github/**
