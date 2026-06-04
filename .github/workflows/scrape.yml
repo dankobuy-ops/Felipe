@@ -7,10 +7,10 @@ on:
         description: "Unique job identifier (UUID)"
         required: true
       search_code:
-        description: "Search code to query on the target"
+        description: "RUT to search (e.g. 12345678-9)"
         required: true
       target_url:
-        description: "URL of the target site to scrape"
+        description: "Municipality juzgado page URL (parent site with CONSULTA DE CAUSAS link)"
         required: true
       resume_attempt:
         description: "How many times this job has been re-dispatched"
