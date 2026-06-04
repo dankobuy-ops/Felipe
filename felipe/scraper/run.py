@@ -1,11 +1,9 @@
 """Scraper for Chilean JPL (Juzgado de Policía Local) — vitacura.cl pattern.
 
 Flow:
-  1. Navigate to municipality parent page, click "CONSULTA DE CAUSAS" (session recovery)
-  2. Fill RUT field, submit search
-  3. Results list: FECHA PROCESO | JUZGADO | ROL | DESCRIPCIÓN | Ver
-  4. For each ROL: click Ver → extract Sección A.1, A.2, B, C → download PDFs from Sección C
-  5. Write checkpoint immediately after each case
+  1. Navigate to municipality parent page → click CONSULTA DE CAUSAS (session recovery)
+  2. Fill RUT → submit → results list
+  3. For each ROL: click Ver → extract all sections via JS → download PDFs → checkpoint
 """
 
 import argparse
@@ -24,40 +22,37 @@ from storage import upload_pdf
 STATUS_FILE  = Path("/tmp/scrape_status")
 DOWNLOAD_DIR = Path("/tmp/pdfs")
 
-# ── Selectors ─────────────────────────────────────────────────────────────────
-SEL_ENTRY_LINK  = "a:has-text('CONSULTA DE CAUSAS'), a:has-text('Consulta de Causas'), a:has-text('consulta de causas')"
-SEL_RUT_INPUT   = "input[type='text'][id*='Rut'], input[type='text'][id*='rut'], input[type='text'][name*='Rut'], input[type='text'][name*='rut'], input[type='text'][id*='txt']"
-SEL_SEARCH_BTN  = "input[id*='Buscar'], input[id*='buscar'], input[id*='Search'], button:has-text('Buscar'), input[type='submit']"
-SEL_RESULTS_TBL = "table tbody tr"
-SEL_VER_LINK    = "a"  # last <a> in each results row (the Ver eye icon)
-SEL_ABRIR_LINK  = "a:has-text('Abrir'), a:has-text('abrir'), a[href*='documento'], a[href*='Documento'], a[href*='.pdf']"
+SEL_ENTRY_LINK = "a:has-text('CONSULTA DE CAUSAS'), a:has-text('Consulta de Causas')"
+SEL_RUT_INPUT  = "input[type='text'][id*='Rut'], input[type='text'][id*='rut'], input[type='text'][id*='txt']"
+SEL_SEARCH_BTN = "input[id*='Buscar'], input[id*='buscar'], input[type='submit']"
+SEL_RESULTS    = "table tbody tr"
 
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--job-id",       required=True)
-    p.add_argument("--search-code",  required=True, help="RUT")
-    p.add_argument("--target-url",   required=True, help="Municipality parent page URL")
-    p.add_argument("--max-seconds",  type=int, default=240)
+    p.add_argument("--job-id",      required=True)
+    p.add_argument("--search-code", required=True)
+    p.add_argument("--target-url",  required=True)
+    p.add_argument("--max-seconds", type=int, default=240)
     return p.parse_args()
 
 
-def write_status(s: str) -> None:
+def write_status(s):
     STATUS_FILE.write_text(s)
 
 
-def log(msg: str) -> None:
+def log(msg):
     print(msg, flush=True)
 
 
-def dump_page(page, label: str) -> None:
+def dump_page(page, label):
     log(f"[DEBUG {label}] URL: {page.url}")
     log(f"[DEBUG {label}] HTML:\n{page.content()[:4000]}")
 
 
-# ── Phase 1: Entry via parent ──────────────────────────────────────────────────
-def enter_via_parent(page, context, parent_url: str):
-    """Navigate via parent page to establish a fresh JPL session. Returns active page."""
+# ── Entry ─────────────────────────────────────────────────────────────────────
+
+def enter_via_parent(page, context, parent_url):
     try:
         page.goto(parent_url, wait_until="domcontentloaded", timeout=45_000)
     except PlaywrightTimeout:
@@ -67,14 +62,12 @@ def enter_via_parent(page, context, parent_url: str):
     try:
         page.wait_for_selector(SEL_ENTRY_LINK, timeout=15_000)
     except PlaywrightTimeout:
-        dump_page(page, "entry-link-not-found")
+        dump_page(page, "no-entry-link")
         write_status("crashed")
-        raise RuntimeError("'CONSULTA DE CAUSAS' link not found on parent page.")
+        raise RuntimeError("CONSULTA DE CAUSAS link not found.")
 
-    link = page.query_selector(SEL_ENTRY_LINK)
-    opens_new_tab = (link.get_attribute("target") or "").strip() == "_blank"
-
-    if opens_new_tab:
+    target_attr = page.get_attribute(SEL_ENTRY_LINK, "target") or ""
+    if target_attr.strip() == "_blank":
         with context.expect_page(timeout=30_000) as info:
             page.click(SEL_ENTRY_LINK)
         p = info.value
@@ -86,237 +79,241 @@ def enter_via_parent(page, context, parent_url: str):
         return page
 
 
-# ── Phase 2: RUT search ────────────────────────────────────────────────────────
-def search_rut(page, rut: str) -> None:
+# ── Search ────────────────────────────────────────────────────────────────────
+
+def search_rut(page, rut):
     try:
         page.wait_for_selector(SEL_RUT_INPUT, timeout=20_000)
     except PlaywrightTimeout:
-        dump_page(page, "rut-input-not-found")
+        dump_page(page, "no-rut-input")
         write_status("crashed")
-        raise RuntimeError("RUT input field not found.")
+        raise RuntimeError("RUT input not found.")
 
     page.fill(SEL_RUT_INPUT, rut)
+    log(f"[INFO] Filled RUT: {rut}")
 
     try:
         page.wait_for_selector(SEL_SEARCH_BTN, timeout=5_000)
         page.click(SEL_SEARCH_BTN)
     except PlaywrightTimeout:
         page.keyboard.press("Enter")
+    log("[INFO] Search submitted")
 
 
-# ── Phase 3: Results list ──────────────────────────────────────────────────────
-def get_results_list(page) -> list[dict]:
-    """Wait for results table and return list of {rol, fecha, juzgado, descripcion, row_index}."""
+# ── Results list ──────────────────────────────────────────────────────────────
+
+def get_results_list(page):
     try:
-        page.wait_for_selector(SEL_RESULTS_TBL, timeout=25_000)
+        page.wait_for_selector(SEL_RESULTS, timeout=25_000)
     except PlaywrightTimeout:
-        dump_page(page, "results-not-found")
+        dump_page(page, "no-results")
         write_status("crashed")
-        raise RuntimeError(
-            "Results table never appeared — target crashed or RUT returned nothing. "
-            "Cannot distinguish 0-results from crash."
-        )
+        raise RuntimeError("Results table never appeared.")
 
-    rows = page.query_selector_all(SEL_RESULTS_TBL)
-    records = []
-    for i, row in enumerate(rows):
-        if row.query_selector("th"):
-            continue  # skip header
-        cells = row.query_selector_all("td")
-        if len(cells) < 3:
-            continue
-        records.append({
-            "row_index": i,
-            "fecha_proceso": cells[0].inner_text().strip() if len(cells) > 0 else "",
-            "juzgado":       cells[1].inner_text().strip() if len(cells) > 1 else "",
-            "rol":           cells[2].inner_text().strip() if len(cells) > 2 else "",
-            "descripcion":   cells[3].inner_text().strip() if len(cells) > 3 else "",
-        })
+    # Extract all row data using JS — avoids element handle issues
+    records = page.evaluate("""() => {
+        const rows = Array.from(document.querySelectorAll('table tbody tr'));
+        return rows
+            .filter(r => !r.querySelector('th'))
+            .map(r => {
+                const cells = Array.from(r.querySelectorAll('td'));
+                return {
+                    fecha_proceso: cells[0] ? cells[0].innerText.trim() : '',
+                    juzgado:       cells[1] ? cells[1].innerText.trim() : '',
+                    rol:           cells[2] ? cells[2].innerText.trim() : '',
+                    descripcion:   cells[3] ? cells[3].innerText.trim() : '',
+                };
+            })
+            .filter(r => r.rol !== '');
+    }""")
 
     if not records:
         write_status("crashed")
-        raise RuntimeError("No data rows found in results table.")
+        raise RuntimeError("No data rows found.")
 
     log(f"[INFO] Found {len(records)} cases")
     return records
 
 
-# ── Phase 4: Detail page extraction ───────────────────────────────────────────
-def extract_label_value_table(page, section_text: str) -> list[dict]:
-    """Extract label→value pairs from a section identified by its header text."""
-    parties = []
-    # Find all tables or divs within the section
-    # ASP.NET WebForms uses nested tables — scan all <tr> pairs near the section header
-    try:
-        # Get the section container by looking for td containing section_text
-        section_cells = page.query_selector_all("td")
-        in_section = False
-        current_party: dict = {}
+# ── Detail page extraction (all via JS) ───────────────────────────────────────
 
-        for cell in section_cells:
-            text = cell.inner_text().strip().upper()
+def extract_detail_page(page):
+    """Extract all sections from detail page using a single JS evaluation."""
+    return page.evaluate("""() => {
+        function rowsOfTable(table) {
+            if (!table) return [];
+            return Array.from(table.querySelectorAll('tr'))
+                .map(r => Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim()));
+        }
 
-            if section_text.upper() in text and len(text) < 80:
-                in_section = True
-                if current_party:
-                    parties.append(current_party)
-                    current_party = {}
-                continue
+        function extractParties(sectionLabel) {
+            const parties = [];
+            const tds = Array.from(document.querySelectorAll('td'));
+            let inSection = false;
+            let party = null;
 
-            # Stop at next section header
-            if in_section and any(s in text for s in ["SECCION A.2", "SECCION B", "SECCION C", "SECCIÓN"]):
-                if current_party:
-                    parties.append(current_party)
-                break
+            for (let i = 0; i < tds.length; i++) {
+                const txt = tds[i].innerText.trim().toUpperCase();
 
-            if not in_section:
-                continue
+                if (txt.includes(sectionLabel.toUpperCase()) && txt.length < 100) {
+                    inSection = true;
+                    continue;
+                }
+                if (inSection && (txt.includes('SECCION') || txt.includes('SECCIÓN'))) {
+                    if (party) parties.push(party);
+                    break;
+                }
+                if (!inSection) continue;
 
-            if "NOMBRE O RAZON SOCIAL" in text or "NOMBRE O RAZÓN SOCIAL" in text:
-                if current_party:
-                    parties.append(current_party)
-                current_party = {}
-                # Get next sibling cell value
-                val = _next_sibling_text(page, cell)
-                current_party["nombre"] = val
-                rut_val = _find_label_value(page, cell, "RUT")
-                if rut_val:
-                    current_party["rut"] = rut_val
-            elif "DIRECCION" in text or "DIRECCIÓN" in text:
-                current_party["direccion"] = _next_sibling_text(page, cell)
-            elif "COMUNA" in text:
-                current_party["comuna"] = _next_sibling_text(page, cell)
+                if (txt.includes('NOMBRE') || txt.includes('RAZÓN') || txt.includes('RAZON')) {
+                    if (party) parties.push(party);
+                    party = {};
+                    const next = tds[i+1] ? tds[i+1].innerText.trim() : '';
+                    party.nombre = next;
+                    // Look for RUT in same row
+                    const row = tds[i].closest('tr');
+                    if (row) {
+                        const rowCells = Array.from(row.querySelectorAll('td'));
+                        for (let j = 0; j < rowCells.length - 1; j++) {
+                            if (rowCells[j].innerText.trim().toUpperCase() === 'RUT:' ||
+                                rowCells[j].innerText.trim().toUpperCase() === 'RUT') {
+                                party.rut = rowCells[j+1].innerText.trim();
+                            }
+                        }
+                    }
+                } else if (party && (txt === 'DIRECCION:' || txt === 'DIRECCIÓN:' || txt === 'DIRECCION' || txt === 'DIRECCIÓN')) {
+                    party.direccion = tds[i+1] ? tds[i+1].innerText.trim() : '';
+                } else if (party && txt === 'COMUNA:' || txt === 'COMUNA') {
+                    party.comuna = tds[i+1] ? tds[i+1].innerText.trim() : '';
+                }
+            }
+            if (party) parties.push(party);
+            return parties;
+        }
 
-        if current_party:
-            parties.append(current_party)
-    except Exception as e:
-        log(f"[WARN] Section extraction error ({section_text}): {e}")
+        function extractSectionB() {
+            const fields = {};
+            const labels = ['ROL INICIO','DESCRIPCION','DESCRIPCIÓN','FECHA CAUSA',
+                            'ACTUARIO','PLACA PATENTE','REMISOR','FECHA CITACION',
+                            'FECHA CITACIÓN','ESTADO','FECHA ESTADO'];
+            const tds = Array.from(document.querySelectorAll('td'));
+            for (let i = 0; i < tds.length - 1; i++) {
+                const txt = tds[i].innerText.trim().replace(':','').toUpperCase();
+                if (labels.some(l => l === txt)) {
+                    const val = tds[i+1].innerText.trim();
+                    if (val && !labels.some(l => l === val.toUpperCase().replace(':',''))) {
+                        fields[txt.toLowerCase().replace(/ /g,'_')] = val;
+                    }
+                }
+            }
+            return fields;
+        }
 
-    return parties
+        function extractSectionC() {
+            const tramites = [];
+            const links = Array.from(document.querySelectorAll('a')).filter(a =>
+                a.innerText.trim().toLowerCase() === 'abrir' ||
+                (a.href && (a.href.includes('.pdf') || a.href.includes('documento') || a.href.includes('Documento')))
+            );
+            links.forEach(link => {
+                const row = link.closest('tr');
+                const cells = row ? Array.from(row.querySelectorAll('td')) : [];
+                tramites.push({
+                    fecha:       cells[0] ? cells[0].innerText.trim() : '',
+                    descripcion: cells[1] ? cells[1].innerText.trim() : '',
+                    href:        link.href || '',
+                    text:        link.innerText.trim(),
+                });
+            });
+            return tramites;
+        }
+
+        return {
+            demandados:  extractParties('SECCION A.1'),
+            demandantes: extractParties('SECCION A.2'),
+            causa:       extractSectionB(),
+            tramites:    extractSectionC(),
+        };
+    }""")
 
 
-def _next_sibling_text(page, cell) -> str:
-    """Try to get the text of the next <td> sibling."""
-    try:
-        return cell.evaluate("el => { const next = el.nextElementSibling; return next ? next.innerText.trim() : ''; }")
-    except Exception:
-        return ""
+# ── Click Ver and navigate ────────────────────────────────────────────────────
 
-
-def _find_label_value(page, anchor_cell, label: str) -> str:
-    """Find a label in the same row and return its value."""
-    try:
-        return anchor_cell.evaluate(f"""el => {{
-            const row = el.closest('tr');
-            if (!row) return '';
+def click_ver_for_rol(page, rol):
+    """Find the row with this ROL and click its Ver link. Uses JS to find the link href."""
+    # Get the Ver link href for this ROL using JS
+    ver_href = page.evaluate(f"""() => {{
+        const rows = Array.from(document.querySelectorAll('table tbody tr'));
+        for (const row of rows) {{
             const cells = row.querySelectorAll('td');
-            for (let i = 0; i < cells.length - 1; i++) {{
-                if (cells[i].innerText.includes('{label}')) return cells[i+1].innerText.trim();
+            if (cells[2] && cells[2].innerText.trim() === '{rol}') {{
+                const links = row.querySelectorAll('a');
+                const last = links[links.length - 1];
+                return last ? last.href : null;
             }}
-            return '';
+        }}
+        return null;
+    }}""")
+
+    if ver_href and not ver_href.startswith("javascript"):
+        # Direct link — navigate to it
+        page.goto(ver_href, wait_until="domcontentloaded", timeout=30_000)
+    else:
+        # Postback — click via JS to avoid element handle issues
+        clicked = page.evaluate(f"""() => {{
+            const rows = Array.from(document.querySelectorAll('table tbody tr'));
+            for (const row of rows) {{
+                const cells = row.querySelectorAll('td');
+                if (cells[2] && cells[2].innerText.trim() === '{rol}') {{
+                    const links = row.querySelectorAll('a');
+                    if (links.length > 0) {{ links[links.length-1].click(); return true; }}
+                }}
+            }}
+            return false;
         }}""")
-    except Exception:
-        return ""
+        if clicked:
+            page.wait_for_load_state("domcontentloaded", timeout=30_000)
+        else:
+            raise RuntimeError(f"Could not find Ver link for ROL {rol}")
 
 
-def extract_section_b(page) -> dict:
-    """Extract Sección B: Datos de la Causa."""
-    fields = {}
-    labels = [
-        "ROL INICIO", "DESCRIPCION", "DESCRIPCIÓN", "FECHA CAUSA",
-        "ACTUARIO", "PLACA PATENTE", "REMISOR", "FECHA CITACION",
-        "FECHA CITACIÓN", "ESTADO", "FECHA ESTADO"
-    ]
-    try:
-        all_cells = page.query_selector_all("td")
-        cells_text = [(c, c.inner_text().strip()) for c in all_cells]
+# ── PDF download ──────────────────────────────────────────────────────────────
 
-        for i, (cell, text) in enumerate(cells_text):
-            for label in labels:
-                if text.upper() == label.upper() and i + 1 < len(cells_text):
-                    val = cells_text[i + 1][1]
-                    if val and not any(l.upper() == val.upper() for l in labels):
-                        fields[label.lower().replace(" ", "_")] = val
-    except Exception as e:
-        log(f"[WARN] Section B extraction error: {e}")
-    return fields
-
-
-def extract_section_c(page) -> tuple[list[dict], list[str]]:
-    """Extract Sección C: Trámites. Returns (tramites_list, abrir_hrefs)."""
-    tramites = []
-    hrefs = []
-    try:
-        abrir_links = page.query_selector_all(SEL_ABRIR_LINK)
-        for link in abrir_links:
-            row = link.evaluate_handle("el => el.closest('tr')")
-            fecha = ""
-            desc = ""
-            try:
-                cells = row.as_element().query_selector_all("td")
-                if len(cells) >= 2:
-                    fecha = cells[0].inner_text().strip()
-                    desc  = cells[1].inner_text().strip()
-            except Exception:
-                pass
-            href = link.get_attribute("href") or ""
-            tramites.append({"fecha": fecha, "descripcion": desc, "href": href})
-            hrefs.append(href)
-    except Exception as e:
-        log(f"[WARN] Section C extraction error: {e}")
-    return tramites, hrefs
-
-
-def download_and_upload_pdfs(page, context, job_id: str, rol: str,
-                              tramites: list[dict],
-                              supabase_url: str, supabase_key: str, bucket: str) -> list[str]:
-    """Click each Abrir link, download PDF, upload to Supabase. Returns list of signed URLs."""
+def download_pdfs(page, context, tramites, job_id, rol, supabase_url, supabase_key, bucket):
+    """Download PDFs from Sección C Abrir links. Returns list of uploaded URLs."""
     pdf_urls = []
-    abrir_links = page.query_selector_all(SEL_ABRIR_LINK)
+    abrir_links = [t for t in tramites if t.get("href") or t.get("text", "").lower() == "abrir"]
 
-    for i, link in enumerate(abrir_links):
+    for i, tramite in enumerate(abrir_links):
         local_pdf = DOWNLOAD_DIR / f"{rol}_doc{i}.pdf"
+        href = tramite.get("href", "")
         try:
-            with context.expect_page(timeout=20_000) as new_page_info:
-                link.click()
-            doc_page = new_page_info.value
-            doc_page.wait_for_load_state("load", timeout=20_000)
+            if href and not href.startswith("javascript"):
+                with page.expect_download(timeout=25_000) as dl:
+                    page.goto(href, wait_until="domcontentloaded", timeout=25_000)
+                dl.value.save_as(str(local_pdf))
+            else:
+                # Click via JS to avoid stale element
+                with page.expect_download(timeout=25_000) as dl:
+                    page.evaluate(f"""() => {{
+                        const links = Array.from(document.querySelectorAll('a'));
+                        const abrir = links.filter(a => a.innerText.trim().toLowerCase() === 'abrir');
+                        if (abrir[{i}]) abrir[{i}].click();
+                    }}""")
+                dl.value.save_as(str(local_pdf))
 
-            # Some docs open as PDF in new tab — trigger download
-            with doc_page.expect_download(timeout=20_000) as dl_info:
-                doc_page.evaluate("window.print()")  # won't work for actual download
-            dl_info.value.save_as(str(local_pdf))
-            doc_page.close()
-        except Exception:
-            # Try direct download via fetch if page approach fails
-            try:
-                href = link.get_attribute("href") or ""
-                if href and not href.startswith("javascript"):
-                    with page.expect_download(timeout=20_000) as dl_info:
-                        link.click()
-                    dl_info.value.save_as(str(local_pdf))
-                else:
-                    # postback — click and wait for download
-                    with page.expect_download(timeout=20_000) as dl_info:
-                        link.click()
-                    dl_info.value.save_as(str(local_pdf))
-            except Exception as e2:
-                log(f"[WARN] PDF download failed for {rol} doc{i}: {e2}")
-                continue
-
-        try:
-            url = upload_pdf(supabase_url, supabase_key, bucket,
-                             job_id, f"{rol}_doc{i}", local_pdf)
+            url = upload_pdf(supabase_url, supabase_key, bucket, job_id, f"{rol}_doc{i}", local_pdf)
             pdf_urls.append(url)
-            log(f"[INFO] Uploaded PDF {i} for ROL {rol}")
+            log(f"[INFO] PDF {i} uploaded for ROL {rol}")
         except Exception as e:
-            log(f"[WARN] PDF upload failed for {rol} doc{i}: {e}")
+            log(f"[WARN] PDF {i} failed for ROL {rol}: {e}")
 
     return pdf_urls
 
 
-# ── Main scrape loop ───────────────────────────────────────────────────────────
-def scrape(args, supabase_url: str, supabase_key: str, supabase_bucket: str) -> None:
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def scrape(args, supabase_url, supabase_key, supabase_bucket):
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + args.max_seconds
 
@@ -324,17 +321,13 @@ def scrape(args, supabase_url: str, supabase_key: str, supabase_bucket: str) -> 
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(accept_downloads=True, ignore_https_errors=True)
-        page = context.new_page()
+        ctx     = browser.new_context(accept_downloads=True, ignore_https_errors=True)
+        page    = ctx.new_page()
 
-        # Enter via parent site every time (session recovery)
-        active = enter_via_parent(page, context, args.target_url)
-
-        # Search RUT
+        active = enter_via_parent(page, ctx, args.target_url)
         search_rut(active, args.search_code)
-
-        # Get full results list before navigating away
         records = get_results_list(active)
+        results_url = active.url  # save to return here after each detail page
 
         for rec in records:
             if time.monotonic() >= deadline:
@@ -345,59 +338,25 @@ def scrape(args, supabase_url: str, supabase_key: str, supabase_bucket: str) -> 
             if not rol:
                 continue
             if checkpoint.get(rol) == "done":
-                log(f"[INFO] Skip (already done): ROL {rol}")
+                log(f"[INFO] Skip (done): {rol}")
                 continue
 
             log(f"[INFO] Processing ROL {rol}")
-
             try:
-                # Re-query rows (page may have refreshed after go_back)
-                rows = active.query_selector_all(SEL_RESULTS_TBL)
-                data_rows = [r for r in rows if not r.query_selector("th")]
+                # Navigate to detail page
+                click_ver_for_rol(active, rol)
 
-                # Find the row matching this ROL
-                target_row = None
-                for row in data_rows:
-                    cells = row.query_selector_all("td")
-                    if len(cells) > 2 and cells[2].inner_text().strip() == rol:
-                        target_row = row
-                        break
+                # Extract everything via JS (no element handle issues)
+                detail = extract_detail_page(active)
+                case_data = {**rec, **detail}
 
-                if not target_row:
-                    log(f"[WARN] Could not re-find ROL {rol} in table — skipping")
-                    continue
-
-                # Click the Ver link (last <a> in the row)
-                links_in_row = target_row.query_selector_all("a")
-                if not links_in_row:
-                    log(f"[WARN] No Ver link found for ROL {rol}")
-                    continue
-
-                ver_link = links_in_row[-1]
-                with active.expect_navigation(wait_until="domcontentloaded", timeout=30_000):
-                    ver_link.click()
-
-                # ── Extract detail page ──────────────────────────────────────
-                demandados  = extract_label_value_table(active, "SECCION A.1")
-                demandantes = extract_label_value_table(active, "SECCION A.2")
-                causa_data  = extract_section_b(active)
-                tramites, _ = extract_section_c(active)
-
-                case_data = {
-                    **rec,
-                    "demandados":  demandados,
-                    "demandantes": demandantes,
-                    "causa":       causa_data,
-                    "tramites":    tramites,
-                }
-
-                # ── Download PDFs from Sección C ─────────────────────────────
-                pdf_urls = download_and_upload_pdfs(
-                    active, context, args.job_id, rol, tramites,
-                    supabase_url, supabase_key, supabase_bucket,
+                # Download PDFs from Sección C
+                pdf_urls = download_pdfs(
+                    active, ctx, detail.get("tramites", []),
+                    args.job_id, rol, supabase_url, supabase_key, supabase_bucket,
                 )
 
-                # ── Write checkpoint ─────────────────────────────────────────
+                # Checkpoint
                 write_checkpoints(supabase_url, supabase_key, [{
                     "job_id":    args.job_id,
                     "record_id": rol,
@@ -405,14 +364,14 @@ def scrape(args, supabase_url: str, supabase_key: str, supabase_bucket: str) -> 
                     "text":      json.dumps(case_data, ensure_ascii=False),
                     "pdf_url":   pdf_urls[0] if pdf_urls else "",
                 }])
-                log(f"[INFO] Done: ROL {rol} — {len(pdf_urls)} PDFs")
+                log(f"[INFO] Done ROL {rol} — {len(pdf_urls)} PDFs")
 
-                # ── Go back to results list ───────────────────────────────────
-                active.go_back(wait_until="domcontentloaded", timeout=20_000)
-                active.wait_for_selector(SEL_RESULTS_TBL, timeout=15_000)
+                # Return to results page
+                active.goto(results_url, wait_until="domcontentloaded", timeout=30_000)
+                active.wait_for_selector(SEL_RESULTS, timeout=15_000)
 
             except PlaywrightTimeout as e:
-                log(f"[WARN] Timeout on ROL {rol}: {e}")
+                log(f"[WARN] Timeout ROL {rol}: {e}")
                 write_checkpoints(supabase_url, supabase_key, [{
                     "job_id": args.job_id, "record_id": rol,
                     "status": "failed", "text": json.dumps(rec), "pdf_url": "",
@@ -420,13 +379,13 @@ def scrape(args, supabase_url: str, supabase_key: str, supabase_bucket: str) -> 
                 write_status("crashed")
                 raise
             except Exception as e:
-                log(f"[WARN] Error on ROL {rol}: {e}")
+                log(f"[WARN] Error ROL {rol}: {e}")
                 write_checkpoints(supabase_url, supabase_key, [{
                     "job_id": args.job_id, "record_id": rol,
                     "status": "failed", "text": json.dumps(rec), "pdf_url": "",
                 }])
 
-        context.close()
+        ctx.close()
         browser.close()
 
     final    = read_checkpoint(supabase_url, supabase_key, args.job_id)
@@ -442,12 +401,10 @@ def scrape(args, supabase_url: str, supabase_key: str, supabase_bucket: str) -> 
 
 
 def main():
-    args          = parse_args()
-    supabase_url  = os.environ["SUPABASE_URL"]
-    supabase_key  = os.environ["SUPABASE_SERVICE_KEY"]
-    supabase_bucket = os.environ.get("SUPABASE_BUCKET", "pdfs")
+    args = parse_args()
     try:
-        scrape(args, supabase_url, supabase_key, supabase_bucket)
+        scrape(args, os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"],
+               os.environ.get("SUPABASE_BUCKET", "pdfs"))
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
