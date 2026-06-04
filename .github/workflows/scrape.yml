@@ -1,19 +1,20 @@
-name: scrape
+name: Consulta JPL
 
 on:
   workflow_dispatch:
     inputs:
-      job_id:
-        description: "Unique job identifier (UUID)"
-        required: true
       search_code:
-        description: "RUT to search (e.g. 12345678-9)"
+        description: "RUT a consultar (ej: 12345678-9)"
         required: true
       target_url:
-        description: "Municipality juzgado page URL (parent site with CONSULTA DE CAUSAS link)"
+        description: "URL del juzgado municipal (página con botón CONSULTA DE CAUSAS)"
         required: true
+      job_id:
+        description: "ID del trabajo (dejar vacío para nueva consulta — se auto-genera)"
+        required: false
+        default: ""
       resume_attempt:
-        description: "How many times this job has been re-dispatched"
+        description: "Uso interno — no modificar"
         required: false
         default: "0"
 
@@ -35,21 +36,34 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Resolve job ID
+        id: job
+        run: |
+          provided="${{ github.event.inputs.job_id }}"
+          if [ -z "$provided" ]; then
+            # New job — use run ID as stable identifier
+            echo "id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+            echo "New job: ${{ github.run_id }}"
+          else
+            echo "id=$provided" >> "$GITHUB_OUTPUT"
+            echo "Resuming job: $provided"
+          fi
+
       - name: Install dependencies
         run: |
           pip install playwright requests
           playwright install chromium --with-deps
 
-      - name: Validate inputs
+      - name: Validate URL
         run: python felipe/scraper/validate_inputs.py "${{ github.event.inputs.target_url }}"
 
       - name: Check resume cap
         run: |
           attempt="${{ github.event.inputs.resume_attempt }}"
           if [ "$attempt" -ge "$MAX_RESUME_ATTEMPTS" ]; then
-            echo "Resume cap reached ($attempt / $MAX_RESUME_ATTEMPTS). Marking job stalled."
+            echo "Límite de reintentos alcanzado ($attempt / $MAX_RESUME_ATTEMPTS). Marcando trabajo como detenido."
             cd felipe/scraper && python mark_stalled.py \
-              --job-id "${{ github.event.inputs.job_id }}" \
+              --job-id "${{ steps.job.outputs.id }}" \
               --supabase-url "${{ secrets.SUPABASE_URL }}" \
               --supabase-key "${{ secrets.SUPABASE_SERVICE_KEY }}"
             exit 0
@@ -57,7 +71,7 @@ jobs:
 
       - name: Run scraper
         env:
-          JOB_ID: ${{ github.event.inputs.job_id }}
+          JOB_ID: ${{ steps.job.outputs.id }}
           SEARCH_CODE: ${{ github.event.inputs.search_code }}
           TARGET_URL: ${{ github.event.inputs.target_url }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -77,13 +91,13 @@ jobs:
         run: |
           status=$(cat /tmp/scrape_status 2>/dev/null || echo "unknown")
           if [ "$status" = "complete" ] || [ "$status" = "stalled" ]; then
-            echo "Job $status — no re-dispatch."
+            echo "Trabajo $status — sin re-despacho."
           else
             next_attempt=$(( ${{ github.event.inputs.resume_attempt }} + 1 ))
-            echo "Re-dispatching as attempt $next_attempt (status=$status)..."
+            echo "Re-despachando como intento $next_attempt (estado=$status)..."
             gh workflow run scrape.yml \
               --repo "${{ github.repository }}" \
-              --field job_id="${{ github.event.inputs.job_id }}" \
+              --field job_id="${{ steps.job.outputs.id }}" \
               --field search_code="${{ github.event.inputs.search_code }}" \
               --field target_url="${{ github.event.inputs.target_url }}" \
               --field resume_attempt="$next_attempt"
