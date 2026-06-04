@@ -23,7 +23,7 @@ DOWNLOAD_DIR = Path("/tmp/pdfs")
 
 # Selectors for Chilean JPL (ASP.NET WebForms pattern, shared by all municipalities)
 SEL_ENTRY_LINK   = "a:has-text('CONSULTA DE CAUSAS'), a:has-text('Consulta de Causas'), a:has-text('consulta de causas')"
-SEL_RUT_INPUT    = "input[id$='txtRut'], input[name*='Rut'], input[name*='rut'], input[id*='Rut']"
+SEL_RUT_INPUT    = "input[type='text'][id*='Rut'], input[type='text'][id*='rut'], input[type='text'][name*='Rut'], input[type='text'][name*='rut'], input[type='text'][id*='txt']"
 SEL_SEARCH_BTN   = "input[id$='btnBuscar'], input[id$='btnSearch'], button:has-text('Buscar'), input[type='submit']"
 SEL_RESULTS_ROW  = "table#gvResultados tbody tr, table[id*='Grid'] tbody tr, table[id*='grid'] tbody tr, table tbody tr"
 SEL_PDF_LINK     = "a[href$='.pdf'], a[href*='GetDocumento'], a[href*='documento'], a[href*='Documento']"
