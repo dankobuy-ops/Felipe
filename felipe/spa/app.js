@@ -1,6 +1,6 @@
 // ── Config ────────────────────────────────────────────────────────────────────
 const SUPABASE_URL     = "https://xjlpsgchgfxryvhhrklx.supabase.co";
-const SUPABASE_ANON    = "sbp_f5b4f0ccd50441c4d152b61e0685a6114c3f9ff4";
+const SUPABASE_ANON    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqbHBzZ2NoZ2Z4cnl2aGhya2x4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDU2NzAsImV4cCI6MjA5NjA4MTY3MH0.LVxF3eX8S8FqcLHHHr7l_LkM1R3fJ7SSbg0ZNM1hM-g";
 const GH_REPO          = "dankobuy-ops/Felipe";
 const WORKFLOW_FILE    = "scrape.yml";
 const POLL_INTERVAL_MS = 8000;
