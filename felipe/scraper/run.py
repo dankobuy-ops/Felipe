@@ -48,13 +48,17 @@ def _dump_page(page, label: str) -> None:
     print(f"[DEBUG {label}] HTML (first 3000 chars):\n{page.content()[:3000]}", flush=True)
 
 
-def enter_via_parent(page, parent_url: str) -> None:
-    """Navigate to municipality page and click the entry link to establish a fresh JPL session."""
+def enter_via_parent(page, context, parent_url: str):
+    """Navigate to municipality page, click the entry link, return the page with the JPL session.
+
+    Handles both same-tab navigation and new-tab links (target="_blank").
+    Returns the active page after navigation (may be a new tab).
+    """
     try:
-        page.goto(parent_url, wait_until="domcontentloaded", timeout=30_000)
+        page.goto(parent_url, wait_until="domcontentloaded", timeout=45_000)
     except PlaywrightTimeout:
         write_status("crashed")
-        raise RuntimeError(f"Parent page did not load within 30s: {parent_url}")
+        raise RuntimeError(f"Parent page did not load within 45s: {parent_url}")
 
     try:
         page.wait_for_selector(SEL_ENTRY_LINK, timeout=15_000)
@@ -62,12 +66,24 @@ def enter_via_parent(page, parent_url: str) -> None:
         _dump_page(page, "entry-link-not-found")
         write_status("crashed")
         raise RuntimeError(
-            f"Could not find 'CONSULTA DE CAUSAS' link on parent page. "
-            f"Check selector SEL_ENTRY_LINK or parent URL."
+            "Could not find 'CONSULTA DE CAUSAS' link on parent page. "
+            "Check selector SEL_ENTRY_LINK or parent URL."
         )
 
-    with page.expect_navigation(wait_until="domcontentloaded", timeout=30_000):
-        page.click(SEL_ENTRY_LINK)
+    # Detect whether the link opens in a new tab
+    link = page.query_selector(SEL_ENTRY_LINK)
+    opens_new_tab = (link.get_attribute("target") or "").strip() == "_blank"
+
+    if opens_new_tab:
+        with context.expect_page(timeout=30_000) as new_page_info:
+            page.click(SEL_ENTRY_LINK)
+        new_page = new_page_info.value
+        new_page.wait_for_load_state("domcontentloaded", timeout=30_000)
+        return new_page
+    else:
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=30_000):
+            page.click(SEL_ENTRY_LINK)
+        return page
 
 
 def search_rut(page, rut: str) -> None:
@@ -180,13 +196,14 @@ def scrape(args, supabase_url: str, supabase_key: str, supabase_bucket: str) -> 
         page = context.new_page()
 
         # Always enter via parent site to establish a fresh session
-        enter_via_parent(page, args.target_url)
+        # Returns the active page (may be a new tab if link has target="_blank")
+        active_page = enter_via_parent(page, context, args.target_url)
 
         # Fill RUT and search
-        search_rut(page, args.search_code)
+        search_rut(active_page, args.search_code)
 
         # Wait for results
-        rows = wait_for_results(page)
+        rows = wait_for_results(active_page)
         print(f"[INFO] Found {len(rows)} result rows", flush=True)
 
         pending: list[dict] = []
@@ -209,7 +226,7 @@ def scrape(args, supabase_url: str, supabase_key: str, supabase_bucket: str) -> 
 
             try:
                 pdf_urls = download_pdfs_for_row(
-                    page, row, args.job_id, record_id,
+                    active_page, row, args.job_id, record_id,
                     supabase_url, supabase_key, supabase_bucket,
                 )
 
