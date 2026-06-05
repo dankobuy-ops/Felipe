@@ -57,7 +57,10 @@ def write_checkpoints(
     Each item in rows: {job_id, record_id, status, text, pdf_url}
     Sanitizes text against formula injection (defensive even without Sheets).
     """
-    url = f"{supabase_url}/rest/v1/checkpoints"
+    # on_conflict tells PostgREST to merge on the (job_id, record_id) unique
+    # constraint rather than the primary key. Without it, an upsert that
+    # collides on that constraint returns 409 Conflict instead of merging.
+    url = f"{supabase_url}/rest/v1/checkpoints?on_conflict=job_id,record_id"
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     def _safe(value: str) -> str:
