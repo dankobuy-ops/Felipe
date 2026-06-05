@@ -298,24 +298,26 @@ def extract_level3(page):
 # ── PDF download from Level 3 ─────────────────────────────────────────────────
 
 def download_pdfs(page, context, tramites, job_id, rol, supabase_url, supabase_key, bucket):
-    """Click each Abrir link in Sección C, download PDF, upload to Supabase."""
+    """Download PDFs from Sección C Abrir links using page.request (same session/cookies)."""
     pdf_urls = []
     for i, tramite in enumerate(tramites):
         local_pdf = DOWNLOAD_DIR / f"{rol}_doc{i}.pdf"
         href = tramite.get("href", "")
         try:
             if href and not href.startswith("javascript"):
-                with page.expect_download(timeout=25_000) as dl:
-                    page.goto(href, wait_until="commit", timeout=25_000)
-                dl.value.save_as(str(local_pdf))
+                # Use Playwright's request API — same cookies/session, no page navigation
+                response = page.request.get(href, timeout=30_000)
+                if response.ok:
+                    local_pdf.write_bytes(response.body())
+                else:
+                    log(f"[WARN] PDF {i+1} HTTP {response.status} for ROL {rol}")
+                    continue
             else:
+                # Postback link — click it and capture the download
                 with page.expect_download(timeout=25_000) as dl:
                     page.evaluate(f"""() => {{
                         const links = Array.from(document.querySelectorAll('a'))
-                            .filter(a => {{
-                                const t = a.innerText.trim().toLowerCase();
-                                return t === 'abrir' || t === 'ver' || t === 'abrir documento';
-                            }});
+                            .filter(a => a.innerText.trim().toLowerCase() === 'abrir');
                         if (links[{i}]) links[{i}].click();
                     }}""")
                 dl.value.save_as(str(local_pdf))
@@ -388,8 +390,16 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
                 log(f"[INFO] Done ROL {rol} — {len(pdf_urls)} PDFs saved")
 
                 # Back to Level 2
-                active.goto(results_url, wait_until="domcontentloaded", timeout=30_000)
-                active.wait_for_selector(SEL_RESULTS, timeout=15_000)
+                try:
+                    active.goto(results_url, wait_until="domcontentloaded", timeout=45_000)
+                    active.wait_for_selector(SEL_RESULTS, timeout=15_000)
+                except PlaywrightTimeout:
+                    # Site is slow — re-enter via parent to recover session
+                    log(f"[WARN] Return to results timed out — re-entering via parent")
+                    active = enter_via_parent(active, ctx, args.target_url)
+                    search_rut(active, args.search_code)
+                    active.wait_for_selector(SEL_RESULTS, timeout=20_000)
+                    results_url = active.url
 
             except PlaywrightTimeout as e:
                 log(f"[WARN] Timeout on ROL {rol}: {e}")
