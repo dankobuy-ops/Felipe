@@ -98,7 +98,11 @@ def search_rut(page, rut):
         page.click(SEL_SEARCH_BTN)
     except PlaywrightTimeout:
         page.keyboard.press("Enter")
-    log("[INFO] Search submitted — waiting for Level 2 results list")
+
+    # Wait for AJAX/UpdatePanel to complete after search
+    page.wait_for_load_state("networkidle", timeout=20_000)
+    log("[INFO] Search submitted and network idle — dumping page for inspection")
+    dump_page(page, "after-search")
 
 
 # ── Level 2: results list ──────────────────────────────────────────────────────
