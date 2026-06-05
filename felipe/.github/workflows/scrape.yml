@@ -20,6 +20,10 @@ on:
 env:
   MAX_RESUME_ATTEMPTS: "10"
   MAX_RUNTIME_SECONDS: "240"
+  # TESTING: hardcoded RUT + target, override whatever the SPA sends.
+  # Revert (use github.event.inputs.*) once selector/flow testing is done.
+  TEST_SEARCH_CODE: "96992030-1"
+  TEST_TARGET_URL: "https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/"
 
 jobs:
   scrape:
@@ -41,7 +45,7 @@ jobs:
           playwright install chromium --with-deps
 
       - name: Validate inputs
-        run: python felipe/scraper/validate_inputs.py "${{ github.event.inputs.target_url }}"
+        run: python felipe/scraper/validate_inputs.py "${{ env.TEST_TARGET_URL }}"
 
       - name: Check resume cap
         run: |
@@ -58,8 +62,8 @@ jobs:
       - name: Run scraper
         env:
           JOB_ID: ${{ github.event.inputs.job_id }}
-          SEARCH_CODE: ${{ github.event.inputs.search_code }}
-          TARGET_URL: ${{ github.event.inputs.target_url }}
+          SEARCH_CODE: ${{ env.TEST_SEARCH_CODE }}
+          TARGET_URL: ${{ env.TEST_TARGET_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
@@ -84,7 +88,7 @@ jobs:
             gh workflow run scrape.yml \
               --repo "${{ github.repository }}" \
               --field job_id="${{ github.event.inputs.job_id }}" \
-              --field search_code="${{ github.event.inputs.search_code }}" \
-              --field target_url="${{ github.event.inputs.target_url }}" \
+              --field search_code="${{ env.TEST_SEARCH_CODE }}" \
+              --field target_url="${{ env.TEST_TARGET_URL }}" \
               --field resume_attempt="$next_attempt"
           fi

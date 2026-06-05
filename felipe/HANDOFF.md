@@ -19,13 +19,13 @@ The git root is `C:\Claude` (one level up from `felipe\`). The Felipe remote is 
 
 If the `C:\Claude` repo already exists locally:
 ```bash
-git remote set-url origin https://dankobuy-ops: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@github.com/dankobuy-ops/Felipe.git
+git remote set-url origin https://dankobuy-ops:<GITHUB_PAT>@github.com/dankobuy-ops/Felipe.git
 git pull origin main --allow-unrelated-histories
 ```
 
 If starting fresh:
 ```bash
-git remote add origin https://dankobuy-ops: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@github.com/dankobuy-ops/Felipe.git
+git remote add origin https://dankobuy-ops:<GITHUB_PAT>@github.com/dankobuy-ops/Felipe.git
 git pull origin main --allow-unrelated-histories
 ```
 
@@ -184,7 +184,7 @@ All 7 critical gaps from the CEO plan are implemented (0-results discriminator, 
 2. Run backend locally to trigger real jobs:
 
 ```bash
-set DISPATCH_PAT=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
+set DISPATCH_PAT=<GITHUB_PAT>   # store the real token outside the repo (e.g. a local .env, gitignored)
 set GH_REPO=dankobuy-ops/Felipe
 set SUPABASE_URL=https://xjlpsgchgfxryvhhrklx.supabase.co
 set SUPABASE_SERVICE_KEY=sb_secret_HOehhXtQUca0Fb9cEuM3oQ_6B9M-DK3

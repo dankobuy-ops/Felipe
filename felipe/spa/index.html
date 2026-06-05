@@ -32,13 +32,14 @@
         <button id="settings-btn" class="icon-btn" title="Configuración">⚙</button>
       </div>
       <form id="trigger-form">
+        <!-- TESTING: prefilled RUT + URL so testing is one click. Clear values when done. -->
         <label>
           RUT
-          <input type="text" id="search-code" required placeholder="12.345.678-9" />
+          <input type="text" id="search-code" required placeholder="12.345.678-9" value="96992030-1" />
         </label>
         <label>
           URL Juzgado
-          <input type="url" id="target-url" required placeholder="https://municipio.cl/juzgado/..." />
+          <input type="url" id="target-url" required placeholder="https://municipio.cl/juzgado/..." value="https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/" />
         </label>
         <button type="submit" id="submit-btn">Consultar</button>
       </form>
