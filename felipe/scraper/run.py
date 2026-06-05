@@ -394,9 +394,11 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         records = get_results_list(active)
         results_url = active.url  # remember Level 2 URL to return after each detail
 
+        hit_limit = False
         for rec in records:
             if time.monotonic() >= deadline:
                 log("[INFO] Time limit — stopping for re-dispatch")
+                hit_limit = True
                 break
 
             rol = rec["rol"]
@@ -451,8 +453,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
                     "job_id": args.job_id, "record_id": rol,
                     "status": "failed", "text": json.dumps(rec), "pdf_url": "",
                 }])
-                write_status("crashed")
-                raise
+                write_status("incomplete")
             except Exception as e:
                 log(f"[WARN] Error on ROL {rol}: {e}")
                 write_checkpoints(supabase_url, supabase_key, [{
@@ -464,7 +465,8 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         browser.close()
 
     final    = read_checkpoint(supabase_url, supabase_key, args.job_id)
-    all_done = all(v == "done" for k, v in final.items() if k != "__job__")
+    done_count = sum(1 for k, v in final.items() if k != "__job__" and v == "done")
+    all_done = not hit_limit and done_count == len(records)
 
     if all_done and final:
         mark_job_status(supabase_url, supabase_key, args.job_id, "complete")
