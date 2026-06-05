@@ -304,37 +304,70 @@ def extract_level3(page):
                     if (val && !LABELS.includes(val.toUpperCase().replace(':','')))
                         out[t.toLowerCase().replace(/ /g,'_')] = val;
                 }
+                // PARTE Y/O BOLETA DE CITACIÓN row has N° and FECHA as sub-fields
+                if (t.includes('PARTE') && t.includes('BOLETA')) {
+                    const row = cells[i].closest('tr');
+                    const tds = row ? Array.from(row.querySelectorAll('td')) : [];
+                    for (let j = 0; j < tds.length - 1; j++) {
+                        const lbl = tds[j].innerText.trim().replace(':','').toUpperCase();
+                        const val = tds[j+1].innerText.trim();
+                        if (lbl === 'N°' || lbl === 'N') out['boleta_numero'] = val;
+                        else if (lbl === 'FECHA') out['boleta_fecha'] = val;
+                    }
+                }
             }
             return out;
         }
 
-        function extractSectionC() {
-            // "Abrir" links in Sección C — these open PDFs
+        function extractSectionsCD() {
+            // Walk ALL rows, detect section C / D headers, capture every data row
+            const allRows = Array.from(document.querySelectorAll('tr'));
             const tramites = [];
-            const links = Array.from(document.querySelectorAll('a')).filter(a => {
-                const t = a.innerText.trim().toLowerCase();
-                return t === 'abrir' || t === 'ver' || t === 'abrir documento' ||
-                       (a.href && (a.href.includes('.pdf') || a.href.includes('documento') ||
-                                   a.href.includes('Documento') || a.href.includes('GetDoc')));
-            });
-            links.forEach(link => {
-                const row   = link.closest('tr');
-                const cells = row ? Array.from(row.querySelectorAll('td')) : [];
-                tramites.push({
-                    fecha:       cells[0] ? cells[0].innerText.trim() : '',
-                    descripcion: cells[1] ? cells[1].innerText.trim() : '',
-                    href:        link.href || '',
-                    link_text:   link.innerText.trim(),
-                });
-            });
-            return tramites;
+            const adjuntos = [];
+            let section = null;
+
+            for (const row of allRows) {
+                const rowText = row.innerText.trim().toUpperCase();
+                const cells   = Array.from(row.querySelectorAll('td'));
+
+                // Section header detection (short rows only to avoid false matches)
+                if (rowText.length < 80) {
+                    if (rowText.includes('SECCION C') || rowText.includes('SECCIÓN C'))  { section = 'C'; continue; }
+                    if (rowText.includes('SECCION D') || rowText.includes('SECCIÓN D'))  { section = 'D'; continue; }
+                }
+                if (!section) continue;
+
+                // Skip column-header rows (th) and empty rows
+                if (row.querySelector('th') || cells.length === 0) continue;
+                // Skip the sub-header row "Fecha | Descripción"
+                const firstCell = cells[0].innerText.trim().toUpperCase();
+                if (firstCell === 'FECHA' || firstCell === 'DESCRIPCIÓN' || firstCell === 'DESCRIPCION') continue;
+
+                const link      = row.querySelector('a');
+                const href      = link ? link.href : '';
+                const linkText  = link ? link.innerText.trim() : '';
+
+                if (section === 'C') {
+                    const fecha      = cells[0] ? cells[0].innerText.trim() : '';
+                    const descripcion = cells[1] ? cells[1].innerText.trim() : '';
+                    if (!fecha && !descripcion) continue;
+                    tramites.push({ fecha, descripcion, href, link_text: linkText });
+                } else {
+                    const descripcion = cells[0] ? cells[0].innerText.trim() : '';
+                    if (!descripcion) continue;
+                    adjuntos.push({ descripcion, href, link_text: linkText });
+                }
+            }
+            return { tramites, adjuntos };
         }
 
+        const secCD = extractSectionsCD();
         return {
             demandados:  extractParties('SECCION A.1'),
             demandantes: extractParties('SECCION A.2'),
             causa:       extractSectionB(),
-            tramites:    extractSectionC(),
+            tramites:    secCD.tramites,
+            adjuntos:    secCD.adjuntos,
         };
     }""")
 
@@ -420,9 +453,10 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
                 case_data = {**rec, **detail}
 
-                # Download PDFs from Sección C
+                # Download PDFs from Sección C + D (only rows that have an href)
+                all_docs = [d for d in detail.get("tramites", []) + detail.get("adjuntos", []) if d.get("href")]
                 pdf_urls = download_pdfs(
-                    active, ctx, detail.get("tramites", []),
+                    active, ctx, all_docs,
                     args.job_id, rol, supabase_url, supabase_key, supabase_bucket,
                 )
 
