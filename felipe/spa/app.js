@@ -184,12 +184,13 @@ function renderResults(rows) {
     let data = {};
     try { data = JSON.parse(row.text || "{}"); } catch (_) {}
 
+    const causa = (typeof data.causa === "object" && data.causa) ? data.causa : {};
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${esc(data.causa || row.record_id)}</td>
-      <td>${esc(data.caratula || "—")}</td>
-      <td>${esc(data.fecha_ingreso || "—")}</td>
-      <td class="status-${esc(row.status)}">${esc(data.estado || row.status)}</td>
+      <td>${esc(data.rol || row.record_id)}</td>
+      <td>${esc(data.descripcion || causa.descripcion || "—")}</td>
+      <td>${esc(data.fecha_proceso || causa.fecha_causa || "—")}</td>
+      <td class="status-${esc(row.status)}">${esc(causa.estado || row.status)}</td>
       <td>${esc(data.juzgado || "—")}</td>
       <td>${row.pdf_url ? `<a class="pdf-link" href="${esc(row.pdf_url)}" target="_blank">PDF</a>` : "—"}</td>
     `;
