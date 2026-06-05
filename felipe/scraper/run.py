@@ -135,8 +135,19 @@ def get_results_list(page):
     }""")
 
     if not records:
+        dump_page(page, "level2-no-records")
         write_status("crashed")
         raise RuntimeError("No data rows found in results table.")
+
+    # Dump first 3 rows so we can verify column mapping
+    log("[DEBUG Level2 table sample]")
+    log(page.evaluate("""() => {
+        const rows = Array.from(document.querySelectorAll('table tbody tr')).slice(0, 5);
+        return rows.map(r => {
+            const cells = Array.from(r.querySelectorAll('td'));
+            return cells.map((c, i) => i + ':' + c.innerText.trim().substring(0,40)).join(' | ');
+        }).join('\\n');
+    }"""))
 
     log(f"[INFO] Level 2: found {len(records)} causas")
     return records
