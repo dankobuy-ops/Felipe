@@ -101,8 +101,37 @@ def search_rut(page, rut):
 
     # Wait for AJAX/UpdatePanel to complete after search
     page.wait_for_load_state("networkidle", timeout=20_000)
-    log("[INFO] Search submitted and network idle — dumping page for inspection")
-    dump_page(page, "after-search")
+    log("[INFO] Search submitted and network idle")
+
+    # ── DEBUG: dump all tables with id/class so we can pick the right selector ──
+    table_info = page.evaluate("""() => {
+        return Array.from(document.querySelectorAll('table')).map((t, i) => {
+            const rows = t.querySelectorAll('tbody tr');
+            const headers = Array.from(t.querySelectorAll('th')).map(h => h.innerText.trim());
+            const firstRow = rows[0] ? Array.from(rows[0].querySelectorAll('td')).map(c => c.innerText.trim().substring(0,40)) : [];
+            return {
+                index: i,
+                id: t.id || '',
+                className: t.className || '',
+                rowCount: rows.length,
+                headers: headers,
+                firstRow: firstRow,
+            };
+        });
+    }""")
+    log("[DEBUG TABLES]")
+    for t in table_info:
+        log(f"  table[{t['index']}] id={t['id']!r} class={t['className']!r} rows={t['rowCount']} headers={t['headers']} firstRow={t['firstRow']}")
+
+    # ── DEBUG: dump all inputs so we can verify RUT selector ──
+    input_info = page.evaluate("""() => {
+        return Array.from(document.querySelectorAll('input')).map(i => ({
+            id: i.id, name: i.name, type: i.type, value: i.value.substring(0,30)
+        }));
+    }""")
+    log("[DEBUG INPUTS]")
+    for inp in input_info:
+        log(f"  input id={inp['id']!r} name={inp['name']!r} type={inp['type']!r} value={inp['value']!r}")
 
 
 # ── Level 2: results list ──────────────────────────────────────────────────────
@@ -143,15 +172,30 @@ def get_results_list(page):
         write_status("crashed")
         raise RuntimeError("No data rows found in results table.")
 
-    # Dump first 3 rows so we can verify column mapping
-    log("[DEBUG Level2 table sample]")
-    log(page.evaluate("""() => {
+    # ── DEBUG: dump column mapping + Abrir link HTML so selectors can be fixed ──
+    debug_info = page.evaluate("""() => {
         const rows = Array.from(document.querySelectorAll('table tbody tr')).slice(0, 5);
-        return rows.map(r => {
+        const rowData = rows.map((r, ri) => {
             const cells = Array.from(r.querySelectorAll('td'));
-            return cells.map((c, i) => i + ':' + c.innerText.trim().substring(0,40)).join(' | ');
-        }).join('\\n');
-    }"""))
+            const links = Array.from(r.querySelectorAll('a'));
+            return {
+                rowIndex: ri,
+                cells: cells.map((c, i) => i + ':' + c.innerText.trim().substring(0, 40)),
+                links: links.map(a => ({
+                    text: a.innerText.trim(),
+                    href: a.href,
+                    onclick: a.getAttribute('onclick') || '',
+                    id: a.id || '',
+                })),
+            };
+        });
+        return rowData;
+    }""")
+    log("[DEBUG Level2 rows]")
+    for row in debug_info:
+        log(f"  row[{row['rowIndex']}] cells={row['cells']}")
+        for lnk in row['links']:
+            log(f"    link text={lnk['text']!r} href={lnk['href']!r} onclick={lnk['onclick']!r} id={lnk['id']!r}")
 
     log(f"[INFO] Level 2: found {len(records)} causas")
     return records
