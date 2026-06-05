@@ -70,6 +70,7 @@ jobs:
           fi
 
       - name: Run scraper
+        continue-on-error: true
         env:
           JOB_ID: ${{ steps.job.outputs.id }}
           SEARCH_CODE: ${{ github.event.inputs.search_code }}
