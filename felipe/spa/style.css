@@ -158,3 +158,22 @@ a.pdf-link:hover { text-decoration: underline; }
 
 a.doc-link { color: #4f46e5; text-decoration: none; font-size: .8rem; font-weight: 500; }
 a.doc-link:hover { text-decoration: underline; }
+
+/* Spinner */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid #e5e7eb;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Danger / stop button */
+button.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+button.danger:hover { background: #fecaca; }

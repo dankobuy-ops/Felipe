@@ -201,6 +201,17 @@ def get_results_list(page):
     return records
 
 
+def write_meta(supabase_url, supabase_key, job_id, total):
+    """Write __meta__ row with total causa count so the SPA knows upfront."""
+    write_checkpoints(supabase_url, supabase_key, [{
+        "job_id":    job_id,
+        "record_id": "__meta__",
+        "status":    "running",
+        "text":      json.dumps({"total": total}),
+        "pdf_url":   "",
+    }])
+
+
 # ── Level 2 → Level 3: click Abrir ────────────────────────────────────────────
 
 def open_causa(page, rec, results_url):
@@ -426,6 +437,9 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         search_rut(active, args.search_code)
         records = get_results_list(active)
         results_url = active.url  # remember Level 2 URL to return after each detail
+
+        # Tell the SPA the total count immediately so progress is accurate from the start
+        write_meta(supabase_url, supabase_key, args.job_id, len(records))
 
         hit_limit = False
         for rec in records:
