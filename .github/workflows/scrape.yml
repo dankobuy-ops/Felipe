@@ -17,6 +17,10 @@ on:
         description: "Uso interno — no modificar"
         required: false
         default: "0"
+      year:
+        description: "Filtrar por año (ej: 2025). Vacío = todos los años."
+        required: false
+        default: ""
 
 env:
   MAX_RESUME_ATTEMPTS: "10"
@@ -83,10 +87,11 @@ jobs:
             --job-id "$JOB_ID" \
             --search-code "$SEARCH_CODE" \
             --target-url "$TARGET_URL" \
-            --max-seconds "$MAX_RUNTIME_SECONDS"
+            --max-seconds "$MAX_RUNTIME_SECONDS" \
+            --year "${{ github.event.inputs.year }}"
 
       - name: Re-dispatch if not complete
-        if: always()
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_PAT }}
         run: |
@@ -101,5 +106,6 @@ jobs:
               --field job_id="${{ steps.job.outputs.id }}" \
               --field search_code="${{ github.event.inputs.search_code }}" \
               --field target_url="${{ github.event.inputs.target_url }}" \
-              --field resume_attempt="$next_attempt"
+              --field resume_attempt="$next_attempt" \
+              --field year="${{ github.event.inputs.year }}"
           fi
