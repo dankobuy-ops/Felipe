@@ -31,7 +31,6 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
   const err = document.getElementById("setup-error");
   err.classList.add("hidden");
 
-  // Quick validation — try listing workflows
   try {
     const r = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows`, {
       headers: { Authorization: `Bearer ${pat}`, Accept: "application/vnd.github+json" },
@@ -104,6 +103,7 @@ async function triggerWorkflow(jobId, rut, targetUrl) {
 
 // ── Results screen ────────────────────────────────────────────────────────────
 let pollTimer = null;
+let _allData  = [];  // holds parsed rows for CSV export
 
 function showResultsScreen(jobId, rut) {
   document.getElementById("job-id-display").textContent = jobId;
@@ -115,6 +115,7 @@ function showResultsScreen(jobId, rut) {
   document.getElementById("progress-label").textContent = "Iniciando…";
   document.getElementById("results-empty").classList.add("hidden");
   document.getElementById("results-error").classList.add("hidden");
+  _allData = [];
   showScreen("screen-results");
   pollResults(jobId);
 }
@@ -157,9 +158,9 @@ async function fetchCheckpoints(jobId) {
 }
 
 function renderResults(rows) {
-  const dataRows  = rows.filter((r) => r.record_id !== "__job__");
-  const jobRow    = rows.find((r) => r.record_id === "__job__");
-  const status    = jobRow ? jobRow.status : "running";
+  const dataRows = rows.filter((r) => r.record_id !== "__job__");
+  const jobRow   = rows.find((r) => r.record_id === "__job__");
+  const status   = jobRow ? jobRow.status : "running";
 
   // Badge
   const badge = document.getElementById("job-status-badge");
@@ -174,34 +175,203 @@ function renderResults(rows) {
   document.getElementById("progress-label").textContent =
     dataRows.length ? `${done} / ${dataRows.length} causas procesadas` : "Esperando primeros resultados…";
 
-  const empty = document.getElementById("results-empty");
-  empty.classList.toggle("hidden", dataRows.length > 0);
+  document.getElementById("results-empty").classList.toggle("hidden", dataRows.length > 0);
 
-  // Table
-  const tbody = document.getElementById("results-body");
-  tbody.innerHTML = "";
-  dataRows.forEach((row) => {
+  // Parse all rows and store for CSV
+  _allData = dataRows.map((row) => {
     let data = {};
     try { data = JSON.parse(row.text || "{}"); } catch (_) {}
+    return { ...row, _data: data };
+  });
 
+  const tbody = document.getElementById("results-body");
+  tbody.innerHTML = "";
+
+  _allData.forEach((row, i) => {
+    const data  = row._data;
     const causa = (typeof data.causa === "object" && data.causa) ? data.causa : {};
+
+    // Main summary row (clickable)
     const tr = document.createElement("tr");
+    tr.className = "row-main";
     tr.innerHTML = `
       <td>${esc(data.rol || row.record_id)}</td>
       <td>${esc(data.descripcion || causa.descripcion || "—")}</td>
       <td>${esc(data.fecha_proceso || causa.fecha_causa || "—")}</td>
       <td class="status-${esc(row.status)}">${esc(causa.estado || row.status)}</td>
-      <td>${esc(data.juzgado || "—")}</td>
-      <td>${row.pdf_url ? `<a class="pdf-link" href="${esc(row.pdf_url)}" target="_blank">PDF</a>` : "—"}</td>
+      <td class="expand-cell"><span class="expand-icon">▸</span></td>
     `;
     tbody.appendChild(tr);
+
+    // Detail row (hidden until clicked)
+    const trDetail = document.createElement("tr");
+    trDetail.className = "row-detail hidden";
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    td.innerHTML = buildDetail(data, causa);
+    trDetail.appendChild(td);
+    tbody.appendChild(trDetail);
+
+    tr.addEventListener("click", () => {
+      const open = trDetail.classList.toggle("hidden");
+      tr.querySelector(".expand-icon").textContent = open ? "▸" : "▾";
+    });
   });
 }
+
+// ── Detail panel builder ──────────────────────────────────────────────────────
+
+function buildDetail(data, causa) {
+  const sections = [];
+
+  // Sección B — datos de la causa
+  const causeFields = [
+    ["Fecha causa",      causa.fecha_causa],
+    ["Placa patente",    causa.placa_patente],
+    ["Actuario",         causa.actuario],
+    ["Remisor",          causa.remisor],
+    ["Fecha citación",   causa.fecha_citacion || causa["fecha_citación"]],
+    ["Fecha estado",     causa.fecha_estado],
+    ["Boleta N°",        causa.boleta_numero],
+    ["Fecha boleta",     causa.boleta_fecha],
+  ].filter(([, v]) => v);
+
+  if (causeFields.length) {
+    sections.push(`
+      <div class="detail-section">
+        <div class="detail-title">Datos de la causa</div>
+        <div class="detail-grid">
+          ${causeFields.map(([l, v]) => `<span class="dl">${esc(l)}</span><span>${esc(v)}</span>`).join("")}
+        </div>
+      </div>`);
+  }
+
+  // Parties
+  function renderParties(list, title) {
+    if (!list || !list.length) return "";
+    return `
+      <div class="detail-section">
+        <div class="detail-title">${title}</div>
+        ${list.map((p) => `
+          <div class="party-row">
+            <strong>${esc(p.nombre || "")}</strong>
+            ${p.rut       ? `<span class="pl">RUT: ${esc(p.rut)}</span>` : ""}
+            ${p.direccion ? `<span class="pl">${esc(p.direccion)}</span>` : ""}
+            ${p.comuna    ? `<span class="pl">${esc(p.comuna)}</span>` : ""}
+          </div>`).join("")}
+      </div>`;
+  }
+
+  sections.push(renderParties(data.demandados,  "Demandados"));
+  sections.push(renderParties(data.demandantes, "Demandantes"));
+
+  // Trámites (Sección C)
+  const tramites = data.tramites || [];
+  if (tramites.length) {
+    const trows = tramites.map((t) => {
+      const href = safeHref(t.href);
+      return `<tr>
+        <td>${esc(t.fecha || "")}</td>
+        <td>${esc(t.descripcion || "")}</td>
+        <td>${href ? `<a href="${href}" target="_blank" rel="noopener" class="doc-link">Abrir</a>` : "—"}</td>
+      </tr>`;
+    }).join("");
+    sections.push(`
+      <div class="detail-section">
+        <div class="detail-title">Trámites (${tramites.length})</div>
+        <table class="sub-table">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Doc</th></tr></thead>
+          <tbody>${trows}</tbody>
+        </table>
+      </div>`);
+  }
+
+  // Adjuntos (Sección D)
+  const adjuntos = data.adjuntos || [];
+  if (adjuntos.length) {
+    const arows = adjuntos.map((a) => {
+      const href = safeHref(a.href);
+      return `<tr>
+        <td>${esc(a.descripcion || "")}</td>
+        <td>${href ? `<a href="${href}" target="_blank" rel="noopener" class="doc-link">Abrir</a>` : "—"}</td>
+      </tr>`;
+    }).join("");
+    sections.push(`
+      <div class="detail-section">
+        <div class="detail-title">Adjuntos (${adjuntos.length})</div>
+        <table class="sub-table">
+          <thead><tr><th>Descripción</th><th>Doc</th></tr></thead>
+          <tbody>${arows}</tbody>
+        </table>
+      </div>`);
+  }
+
+  return `<div class="detail-panel">${sections.join("")}</div>`;
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────────
+
+document.getElementById("csv-btn").addEventListener("click", () => {
+  if (!_allData.length) return;
+
+  const headers = [
+    "rol", "carátula", "fecha_proceso", "juzgado", "estado", "fecha_estado",
+    "placa_patente", "actuario", "remisor", "fecha_citacion",
+    "boleta_numero", "boleta_fecha",
+    "demandados", "demandantes", "tramites", "pdf_url",
+  ];
+
+  const csvRows = [headers.join(",")];
+
+  _allData.forEach(({ _data: data, record_id, pdf_url }) => {
+    const causa     = (typeof data.causa === "object" && data.causa) ? data.causa : {};
+    const demandados  = (data.demandados  || []).map((p) => p.nombre).join("; ");
+    const demandantes = (data.demandantes || []).map((p) => p.nombre).join("; ");
+    const tramites    = (data.tramites    || []).map((t) => t.descripcion).join("; ");
+
+    const values = [
+      data.rol || record_id,
+      data.descripcion || causa.descripcion || "",
+      data.fecha_proceso || causa.fecha_causa || "",
+      data.juzgado || "",
+      causa.estado || "",
+      causa.fecha_estado || "",
+      causa.placa_patente || "",
+      causa.actuario || "",
+      causa.remisor || "",
+      causa.fecha_citacion || causa["fecha_citación"] || "",
+      causa.boleta_numero || "",
+      causa.boleta_fecha || "",
+      demandados,
+      demandantes,
+      tramites,
+      pdf_url || "",
+    ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`);
+
+    csvRows.push(values.join(","));
+  });
+
+  const blob = new Blob(["﻿" + csvRows.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `causas_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function esc(str) {
   return String(str ?? "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function safeHref(url) {
+  if (!url) return "";
+  const s = String(url).trim();
+  return /^https?:\/\//i.test(s) ? s.replace(/"/g, "%22") : "";
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
