@@ -35,7 +35,25 @@ def parse_args():
     p.add_argument("--search-code", required=True)
     p.add_argument("--target-url",  required=True)
     p.add_argument("--max-seconds", type=int, default=240)
+    p.add_argument("--year",        default="", help="Keep only entries whose fecha_proceso contains this year (e.g. 2024). Empty = all years.")
     return p.parse_args()
+
+
+def extract_year(fecha_str):
+    """Return 4-digit year string from dates like '01/01/2024', '2024-01-01', or None if unparseable."""
+    for part in fecha_str.strip().replace("-", "/").replace(".", "/").split("/"):
+        if len(part) == 4 and part.isdigit():
+            return part
+    return None
+
+
+def filter_by_year(records, year):
+    """Return only records whose fecha_proceso matches year. Unparseable dates are kept."""
+    if not year:
+        return records
+    kept = [r for r in records if extract_year(r.get("fecha_proceso", "")) in (year, None)]
+    log(f"[INFO] Year filter {year!r}: {len(kept)} / {len(records)} causas match")
+    return kept
 
 
 def write_status(s):
@@ -436,6 +454,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         active = enter_via_parent(page, ctx, args.target_url)
         search_rut(active, args.search_code)
         records = get_results_list(active)
+        records = filter_by_year(records, args.year)
         results_url = active.url  # remember Level 2 URL to return after each detail
 
         # Tell the SPA the total count immediately so progress is accurate from the start
