@@ -6,8 +6,8 @@ const WORKFLOW_FILE    = "scrape.yml";
 const POLL_INTERVAL_MS = 8000;
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
-const getPAT  = () => localStorage.getItem("gh_pat") || "";
-const setPAT  = (v) => localStorage.setItem("gh_pat", v);
+const getPAT = () => localStorage.getItem("gh_pat") || "";
+const setPAT = (v) => localStorage.setItem("gh_pat", v);
 
 // ── Screen router ─────────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -30,7 +30,6 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
   const pat = document.getElementById("pat-input").value.trim();
   const err = document.getElementById("setup-error");
   err.classList.add("hidden");
-
   try {
     const r = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows`, {
       headers: { Authorization: `Bearer ${pat}`, Accept: "application/vnd.github+json" },
@@ -52,19 +51,21 @@ document.getElementById("settings-btn").addEventListener("click", () => {
 // ── Trigger screen ────────────────────────────────────────────────────────────
 document.getElementById("trigger-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const btn    = document.getElementById("submit-btn");
-  const err    = document.getElementById("trigger-error");
-  const rut    = document.getElementById("search-code").value.trim();
-  const url    = document.getElementById("target-url").value.trim();
-  const jobId  = crypto.randomUUID();
+  const btn   = document.getElementById("submit-btn");
+  const err   = document.getElementById("trigger-error");
+  const rut   = document.getElementById("search-code").value.trim();
+  const url   = document.getElementById("target-url").value.trim();
+  const jobId = crypto.randomUUID();
 
   btn.disabled = true;
   btn.textContent = "Iniciando…";
   err.classList.add("hidden");
 
   try {
+    const dispatchTime = new Date();
     await triggerWorkflow(jobId, rut, url);
     showResultsScreen(jobId, rut);
+    trackRunId(dispatchTime);  // async — finds the GHA run_id in the background
   } catch (ex) {
     err.textContent = ex.message;
     err.classList.remove("hidden");
@@ -101,13 +102,69 @@ async function triggerWorkflow(jobId, rut, targetUrl) {
   }
 }
 
+// ── Run ID tracking (for stop button) ────────────────────────────────────────
+let currentRunId = null;
+
+async function trackRunId(since) {
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await delay(4000);
+    if (!currentRunId) {
+      try {
+        const r = await fetch(
+          `https://api.github.com/repos/${GH_REPO}/actions/runs?workflow_id=${WORKFLOW_FILE}&per_page=5`,
+          { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
+        );
+        if (r.ok) {
+          const data = await r.json();
+          const run  = (data.workflow_runs || []).find(
+            (w) =>
+              (w.status === "queued" || w.status === "in_progress") &&
+              new Date(w.created_at) >= since
+          );
+          if (run) {
+            currentRunId = run.id;
+            document.getElementById("stop-btn").classList.remove("hidden");
+          }
+        }
+      } catch (_) {}
+    }
+    if (currentRunId) break;
+  }
+}
+
+// ── Stop button ───────────────────────────────────────────────────────────────
+document.getElementById("stop-btn").addEventListener("click", async () => {
+  if (!currentRunId) return;
+  const btn = document.getElementById("stop-btn");
+  btn.disabled = true;
+  btn.textContent = "Deteniendo…";
+  try {
+    await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/runs/${currentRunId}/cancel`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" },
+      }
+    );
+    btn.textContent = "Detenido";
+    setSpinner(false);
+    clearTimeout(pollTimer);
+    document.getElementById("job-status-badge").textContent = "detenido";
+    document.getElementById("job-status-badge").className   = "badge stalled";
+  } catch (ex) {
+    btn.disabled = false;
+    btn.textContent = "Detener";
+  }
+});
+
 // ── Results screen ────────────────────────────────────────────────────────────
 let pollTimer = null;
-let _allData  = [];  // holds parsed rows for CSV export
+let _allData  = [];
 
 function showResultsScreen(jobId, rut) {
-  document.getElementById("job-id-display").textContent = jobId;
-  document.getElementById("rut-display").textContent    = rut;
+  currentRunId = null;
+  document.getElementById("job-id-display").textContent   = jobId;
+  document.getElementById("rut-display").textContent      = rut;
   document.getElementById("job-status-badge").textContent = "ejecutando";
   document.getElementById("job-status-badge").className   = "badge";
   document.getElementById("results-body").innerHTML = "";
@@ -115,13 +172,19 @@ function showResultsScreen(jobId, rut) {
   document.getElementById("progress-label").textContent = "Iniciando…";
   document.getElementById("results-empty").classList.add("hidden");
   document.getElementById("results-error").classList.add("hidden");
+  document.getElementById("stop-btn").classList.add("hidden");
+  document.getElementById("stop-btn").disabled = false;
+  document.getElementById("stop-btn").textContent = "Detener";
   _allData = [];
+  setSpinner(true);
   showScreen("screen-results");
   pollResults(jobId);
 }
 
 document.getElementById("back-btn").addEventListener("click", () => {
   clearTimeout(pollTimer);
+  setSpinner(false);
+  document.getElementById("stop-btn").classList.add("hidden");
   document.getElementById("submit-btn").disabled = false;
   document.getElementById("submit-btn").textContent = "Consultar";
   showScreen("screen-trigger");
@@ -135,6 +198,9 @@ async function pollResults(jobId) {
     const status = jobRow ? jobRow.status : "running";
     if (status !== "complete" && status !== "stalled") {
       pollTimer = setTimeout(() => pollResults(jobId), POLL_INTERVAL_MS);
+    } else {
+      setSpinner(false);
+      document.getElementById("stop-btn").classList.add("hidden");
     }
   } catch (ex) {
     document.getElementById("results-error").textContent = "Error al leer resultados: " + ex.message;
@@ -158,26 +224,40 @@ async function fetchCheckpoints(jobId) {
 }
 
 function renderResults(rows) {
-  const dataRows = rows.filter((r) => r.record_id !== "__job__");
+  const RESERVED = new Set(["__job__", "__meta__"]);
+  const metaRow  = rows.find((r) => r.record_id === "__meta__");
   const jobRow   = rows.find((r) => r.record_id === "__job__");
+  const dataRows = rows.filter((r) => !RESERVED.has(r.record_id));
   const status   = jobRow ? jobRow.status : "running";
 
   // Badge
-  const badge = document.getElementById("job-status-badge");
-  const labelMap = { complete: "completado", stalled: "detenido", running: "ejecutando" };
+  const badge     = document.getElementById("job-status-badge");
+  const labelMap  = { complete: "completado", stalled: "detenido", running: "ejecutando" };
   badge.textContent = labelMap[status] || status;
   badge.className   = "badge " + (status === "complete" ? "complete" : status === "stalled" ? "stalled" : "");
 
-  // Progress
+  // Spinner — visible while running
+  const isRunning = status !== "complete" && status !== "stalled";
+  setSpinner(isRunning);
+  if (!isRunning) document.getElementById("stop-btn").classList.add("hidden");
+
+  // Progress — use __meta__ total when available so count is accurate from the start
+  let total = 0;
+  if (metaRow) {
+    try { total = JSON.parse(metaRow.text || "{}")?.total || 0; } catch (_) {}
+  }
+  if (!total) total = dataRows.length;  // fallback for old jobs without __meta__
   const done = dataRows.filter((r) => r.status === "done").length;
-  const pct  = dataRows.length ? Math.round((done / dataRows.length) * 100) : 0;
+  const pct  = total ? Math.round((done / total) * 100) : 0;
   document.getElementById("progress-bar").style.width = pct + "%";
   document.getElementById("progress-label").textContent =
-    dataRows.length ? `${done} / ${dataRows.length} causas procesadas` : "Esperando primeros resultados…";
+    total
+      ? `${done} / ${total} causas procesadas`
+      : "Esperando primeros resultados…";
 
   document.getElementById("results-empty").classList.toggle("hidden", dataRows.length > 0);
 
-  // Parse all rows and store for CSV
+  // Parse and store for CSV
   _allData = dataRows.map((row) => {
     let data = {};
     try { data = JSON.parse(row.text || "{}"); } catch (_) {}
@@ -187,7 +267,7 @@ function renderResults(rows) {
   const tbody = document.getElementById("results-body");
   tbody.innerHTML = "";
 
-  _allData.forEach((row, i) => {
+  _allData.forEach((row) => {
     const data  = row._data;
     const causa = (typeof data.causa === "object" && data.causa) ? data.causa : {};
 
@@ -213,8 +293,8 @@ function renderResults(rows) {
     tbody.appendChild(trDetail);
 
     tr.addEventListener("click", () => {
-      const open = trDetail.classList.toggle("hidden");
-      tr.querySelector(".expand-icon").textContent = open ? "▸" : "▾";
+      const nowHidden = trDetail.classList.toggle("hidden");
+      tr.querySelector(".expand-icon").textContent = nowHidden ? "▸" : "▾";
     });
   });
 }
@@ -226,14 +306,14 @@ function buildDetail(data, causa) {
 
   // Sección B — datos de la causa
   const causeFields = [
-    ["Fecha causa",      causa.fecha_causa],
-    ["Placa patente",    causa.placa_patente],
-    ["Actuario",         causa.actuario],
-    ["Remisor",          causa.remisor],
-    ["Fecha citación",   causa.fecha_citacion || causa["fecha_citación"]],
-    ["Fecha estado",     causa.fecha_estado],
-    ["Boleta N°",        causa.boleta_numero],
-    ["Fecha boleta",     causa.boleta_fecha],
+    ["Fecha causa",    causa.fecha_causa],
+    ["Placa patente",  causa.placa_patente],
+    ["Actuario",       causa.actuario],
+    ["Remisor",        causa.remisor],
+    ["Fecha citación", causa.fecha_citacion || causa["fecha_citación"]],
+    ["Fecha estado",   causa.fecha_estado],
+    ["Boleta N°",      causa.boleta_numero],
+    ["Fecha boleta",   causa.boleta_fecha],
   ].filter(([, v]) => v);
 
   if (causeFields.length) {
@@ -246,7 +326,6 @@ function buildDetail(data, causa) {
       </div>`);
   }
 
-  // Parties
   function renderParties(list, title) {
     if (!list || !list.length) return "";
     return `
@@ -310,25 +389,19 @@ function buildDetail(data, causa) {
 }
 
 // ── CSV export ────────────────────────────────────────────────────────────────
-
 document.getElementById("csv-btn").addEventListener("click", () => {
   if (!_allData.length) return;
-
   const headers = [
     "rol", "carátula", "fecha_proceso", "juzgado", "estado", "fecha_estado",
     "placa_patente", "actuario", "remisor", "fecha_citacion",
-    "boleta_numero", "boleta_fecha",
-    "demandados", "demandantes", "tramites", "pdf_url",
+    "boleta_numero", "boleta_fecha", "demandados", "demandantes", "tramites", "pdf_url",
   ];
-
   const csvRows = [headers.join(",")];
-
   _allData.forEach(({ _data: data, record_id, pdf_url }) => {
     const causa     = (typeof data.causa === "object" && data.causa) ? data.causa : {};
     const demandados  = (data.demandados  || []).map((p) => p.nombre).join("; ");
     const demandantes = (data.demandantes || []).map((p) => p.nombre).join("; ");
     const tramites    = (data.tramites    || []).map((t) => t.descripcion).join("; ");
-
     const values = [
       data.rol || record_id,
       data.descripcion || causa.descripcion || "",
@@ -347,20 +420,21 @@ document.getElementById("csv-btn").addEventListener("click", () => {
       tramites,
       pdf_url || "",
     ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`);
-
     csvRows.push(values.join(","));
   });
-
   const blob = new Blob(["﻿" + csvRows.join("\r\n")], { type: "text/csv;charset=utf-8;" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
-  a.href     = url;
+  a.href = url;
   a.download = `causas_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function setSpinner(on) {
+  document.getElementById("spinner").classList.toggle("hidden", !on);
+}
 
 function esc(str) {
   return String(str ?? "")
@@ -373,6 +447,8 @@ function safeHref(url) {
   const s = String(url).trim();
   return /^https?:\/\//i.test(s) ? s.replace(/"/g, "%22") : "";
 }
+
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 init();
