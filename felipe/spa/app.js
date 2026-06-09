@@ -63,10 +63,8 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
   err.classList.add("hidden");
 
   try {
-    const dispatchTime = new Date();
     await triggerWorkflow(jobId, rut, url, year);
     showResultsScreen(jobId, rut, year);
-    trackRunId(dispatchTime);  // async — finds the GHA run_id in the background
   } catch (ex) {
     err.textContent = ex.message;
     err.classList.remove("hidden");
@@ -104,50 +102,32 @@ async function triggerWorkflow(jobId, rut, targetUrl, year = "") {
   }
 }
 
-// ── Run ID tracking (for stop button) ────────────────────────────────────────
-let currentRunId = null;
-
-async function trackRunId(since) {
-  for (let attempt = 0; attempt < 15; attempt++) {
-    await delay(4000);
-    if (!currentRunId) {
-      try {
-        const r = await fetch(
-          `https://api.github.com/repos/${GH_REPO}/actions/runs?workflow_id=${WORKFLOW_FILE}&per_page=5`,
-          { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
-        );
-        if (r.ok) {
-          const data = await r.json();
-          const run  = (data.workflow_runs || []).find(
-            (w) =>
-              (w.status === "queued" || w.status === "in_progress") &&
-              new Date(w.created_at) >= since
-          );
-          if (run) {
-            currentRunId = run.id;
-            document.getElementById("stop-btn").classList.remove("hidden");
-          }
-        }
-      } catch (_) {}
-    }
-    if (currentRunId) break;
-  }
+// ── Stop button — cancels ALL active runs for this workflow ───────────────────
+async function cancelAllRuns() {
+  const r = await fetch(
+    `https://api.github.com/repos/${GH_REPO}/actions/runs?per_page=50`,
+    { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
+  );
+  if (!r.ok) throw new Error(`GitHub ${r.status}`);
+  const { workflow_runs = [] } = await r.json();
+  const active = workflow_runs.filter(
+    (w) => w.status === "in_progress" || w.status === "queued"
+  );
+  await Promise.all(active.map((w) =>
+    fetch(`https://api.github.com/repos/${GH_REPO}/actions/runs/${w.id}/cancel`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" },
+    })
+  ));
+  return active.length;
 }
 
-// ── Stop button ───────────────────────────────────────────────────────────────
 document.getElementById("stop-btn").addEventListener("click", async () => {
-  if (!currentRunId) return;
   const btn = document.getElementById("stop-btn");
   btn.disabled = true;
   btn.textContent = "Deteniendo…";
   try {
-    await fetch(
-      `https://api.github.com/repos/${GH_REPO}/actions/runs/${currentRunId}/cancel`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" },
-      }
-    );
+    await cancelAllRuns();
     btn.textContent = "Detenido";
     setSpinner(false);
     clearTimeout(pollTimer);
@@ -164,7 +144,6 @@ let pollTimer = null;
 let _allData  = [];
 
 function showResultsScreen(jobId, rut, year = "") {
-  currentRunId = null;
   document.getElementById("job-id-display").textContent   = jobId;
   document.getElementById("rut-display").textContent      = rut;
   document.getElementById("year-display").textContent     = year || "todos";
@@ -175,7 +154,7 @@ function showResultsScreen(jobId, rut, year = "") {
   document.getElementById("progress-label").textContent = "Iniciando…";
   document.getElementById("results-empty").classList.add("hidden");
   document.getElementById("results-error").classList.add("hidden");
-  document.getElementById("stop-btn").classList.add("hidden");
+  document.getElementById("stop-btn").classList.remove("hidden");
   document.getElementById("stop-btn").disabled = false;
   document.getElementById("stop-btn").textContent = "Detener";
   _allData = [];
