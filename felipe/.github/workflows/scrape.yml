@@ -80,7 +80,7 @@ jobs:
             --year "${{ github.event.inputs.year }}"
 
       - name: Re-dispatch if not complete
-        if: always()
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_PAT }}
         run: |
