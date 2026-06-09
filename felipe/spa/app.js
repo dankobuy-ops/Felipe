@@ -55,6 +55,7 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
   const err   = document.getElementById("trigger-error");
   const rut   = document.getElementById("search-code").value.trim();
   const url   = document.getElementById("target-url").value.trim();
+  const year  = document.getElementById("year-filter").value.trim();
   const jobId = crypto.randomUUID();
 
   btn.disabled = true;
@@ -63,8 +64,8 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
 
   try {
     const dispatchTime = new Date();
-    await triggerWorkflow(jobId, rut, url);
-    showResultsScreen(jobId, rut);
+    await triggerWorkflow(jobId, rut, url, year);
+    showResultsScreen(jobId, rut, year);
     trackRunId(dispatchTime);  // async — finds the GHA run_id in the background
   } catch (ex) {
     err.textContent = ex.message;
@@ -74,7 +75,7 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
   }
 });
 
-async function triggerWorkflow(jobId, rut, targetUrl) {
+async function triggerWorkflow(jobId, rut, targetUrl, year = "") {
   const r = await fetch(
     `https://api.github.com/repos/${GH_REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
     {
@@ -92,6 +93,7 @@ async function triggerWorkflow(jobId, rut, targetUrl) {
           search_code:    rut,
           target_url:     targetUrl,
           resume_attempt: "0",
+          year:           year,
         },
       }),
     }
@@ -161,10 +163,11 @@ document.getElementById("stop-btn").addEventListener("click", async () => {
 let pollTimer = null;
 let _allData  = [];
 
-function showResultsScreen(jobId, rut) {
+function showResultsScreen(jobId, rut, year = "") {
   currentRunId = null;
   document.getElementById("job-id-display").textContent   = jobId;
   document.getElementById("rut-display").textContent      = rut;
+  document.getElementById("year-display").textContent     = year || "todos";
   document.getElementById("job-status-badge").textContent = "ejecutando";
   document.getElementById("job-status-badge").className   = "badge";
   document.getElementById("results-body").innerHTML = "";

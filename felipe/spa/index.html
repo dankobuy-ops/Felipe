@@ -41,6 +41,10 @@
           URL Juzgado
           <input type="url" id="target-url" required placeholder="https://municipio.cl/juzgado/..." value="https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/" />
         </label>
+        <label>
+          Año (opcional — deja vacío para todos)
+          <input type="number" id="year-filter" placeholder="Ej: 2024" min="2000" max="2099" />
+        </label>
         <button type="submit" id="submit-btn">Consultar</button>
       </form>
       <p id="trigger-error" class="error hidden"></p>
@@ -58,7 +62,7 @@
         <button id="csv-btn" class="secondary">Descargar CSV</button>
         <button id="back-btn" class="secondary">Nueva consulta</button>
       </div>
-      <p class="job-meta">RUT: <strong id="rut-display"></strong> &nbsp;·&nbsp; Job: <code id="job-id-display"></code></p>
+      <p class="job-meta">RUT: <strong id="rut-display"></strong> &nbsp;·&nbsp; Año: <strong id="year-display">todos</strong> &nbsp;·&nbsp; Job: <code id="job-id-display"></code></p>
       <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
       <p id="progress-label">Iniciando…</p>
       <table id="results-table">
