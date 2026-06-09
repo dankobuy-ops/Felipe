@@ -96,9 +96,8 @@ jobs:
           GH_TOKEN: ${{ secrets.DISPATCH_PAT }}
         run: |
           status=$(cat /tmp/scrape_status 2>/dev/null || echo "unknown")
-          if [ "$status" = "complete" ] || [ "$status" = "stalled" ]; then
-            echo "Trabajo $status — sin re-despacho."
-          else
+          echo "Scraper status: $status"
+          if [ "$status" = "incomplete" ] || [ "$status" = "crashed" ]; then
             next_attempt=$(( ${{ github.event.inputs.resume_attempt }} + 1 ))
             echo "Re-despachando como intento $next_attempt (estado=$status)..."
             gh workflow run scrape.yml \
@@ -108,4 +107,6 @@ jobs:
               --field target_url="${{ github.event.inputs.target_url }}" \
               --field resume_attempt="$next_attempt" \
               --field year="${{ github.event.inputs.year }}"
+          else
+            echo "Trabajo $status — sin re-despacho."
           fi
