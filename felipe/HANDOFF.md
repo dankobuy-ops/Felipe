@@ -1,8 +1,49 @@
 # Handoff — Felipe Project
 
-**Last updated:** 2026-06-03  
+**Last updated:** 2026-06-10  
 **Branch:** main  
 **Repo:** https://github.com/dankobuy-ops/Felipe.git
+
+---
+
+## ⚠️ ACTIVE NOTES — read before touching deployment/scraper (2026-06-10)
+
+Recent session work (other Claude session, please read):
+
+1. **GitHub Pages — DO NOT re-add `.github/workflows/apps.yml`.**
+   - A repo has exactly ONE Pages site. `apps.yml` deploys the `Apps/` folder
+     on *every* push; `pages.yml` deploys `felipe/spa/` only on `felipe/spa/**`
+     changes. They target the same `github-pages` environment, so `apps.yml`
+     kept overwriting the scraper SPA with the Apps launcher page.
+   - **Symptom:** `https://dankobuy-ops.github.io/Felipe/` shows the "Apps —
+     dankobuy" page instead of the "Consulta JPL" scraper.
+   - **Fix:** `apps.yml` was deleted (again). The Apps launcher has its own
+     repo/site at `dankobuy-ops.github.io/Apps`; it should NOT deploy from here.
+   - It reappeared once via a pull on 2026-06-10 — if you need Apps served too,
+     give it a `paths: ['Apps/**']` filter or its own repo, never an unfiltered
+     push trigger here.
+
+2. **Scraper 409 bug — FIXED** (`scraper/checkpoint.py`).
+   - `write_checkpoints` did an upsert (`Prefer: resolution=merge-duplicates`)
+     but never named the conflict target, so PostgREST resolved against the
+     primary key `id` and 409'd on re-dispatch when `(job_id, record_id)` rows
+     already existed. Added `?on_conflict=job_id,record_id` to the POST URL.
+     This had been killing every run via `mark_stalled`/`mark_job_status`.
+
+3. **TESTING hardcodes — REVERT before production.**
+   - `.github/workflows/scrape.yml`: `TEST_SEARCH_CODE=96992030-1` and
+     `TEST_TARGET_URL=https://vitacura.cl/.../juzgado-policia-local/` override
+     the SPA inputs in the validate/run/re-dispatch steps. Revert to
+     `github.event.inputs.*` when done.
+   - `felipe/spa/index.html`: the RUT + URL fields are prefilled with those same
+     test values (`value="..."`). Clear the `value=` attrs for production.
+
+4. **Security — tokens still need rotation.**
+   - Two `ghp_` tokens (old `DISPATCH_PAT` `ghp_L21Y…` and a push token
+     `ghp_N3Op…`) were exposed. Git history was rewritten with `git filter-repo`
+     to purge them (force-pushed `a7b2751`), and the plaintext token was removed
+     from this file. **They are still live until revoked** —
+     rotate at https://github.com/settings/tokens.
 
 ---
 
