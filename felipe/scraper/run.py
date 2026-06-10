@@ -118,16 +118,20 @@ def search_rut(page, rut):
         write_status("crashed")
         raise RuntimeError("RUT input not found.")
 
-    # 1. Select the RUT search-type radio (may trigger an AutoPostBack).
+    # 1. Ensure the RUT search-type radio is selected. It is selected by default,
+    #    so only click it if needed — avoids a spurious AutoPostBack that could
+    #    reset the form.
     try:
-        page.check(SEL_RADIO_RUT, timeout=5_000)
-        log("[INFO] Selected RUT search-type radio")
-        # If the radio autoposts back, the field is re-rendered — let it settle.
-        try:
-            page.wait_for_load_state("networkidle", timeout=8_000)
-        except PlaywrightTimeout:
-            pass
-        page.wait_for_selector(SEL_RUT_INPUT, timeout=10_000)
+        if not page.is_checked(SEL_RADIO_RUT):
+            page.check(SEL_RADIO_RUT, timeout=5_000)
+            log("[INFO] Selected RUT search-type radio")
+            try:
+                page.wait_for_load_state("networkidle", timeout=8_000)
+            except PlaywrightTimeout:
+                pass
+            page.wait_for_selector(SEL_RUT_INPUT, timeout=10_000)
+        else:
+            log("[INFO] RUT radio already selected")
     except PlaywrightTimeout:
         log("[WARN] RUT radio not found — proceeding without it")
 
@@ -135,39 +139,54 @@ def search_rut(page, rut):
     page.fill(SEL_RUT_INPUT, rut)
     log(f"[INFO] Filled RUT: {rut}")
 
-    # 3. Submit via the Aceptar button. Results may open in a NEW window (this
-    #    site is window.open-heavy) or via same-page redirect — handle both.
-    context = page.context
-    pages_before = len(context.pages)
-    popup = None
+    # 3. Submit. A valid RUT triggers a full postback that redirects to
+    #    frmBusqueda.aspx (with a loading overlay). Wait for that navigation;
+    #    if the click doesn't fire it, trigger the ASP.NET postback directly.
+    def _on_results():
+        return "frmbusqueda" in page.url.lower()
+
     try:
         page.wait_for_selector(SEL_SEARCH_BTN, timeout=5_000)
-        try:
-            with context.expect_page(timeout=8_000) as info:
-                page.click(SEL_SEARCH_BTN)
-            popup = info.value
-            log("[INFO] Search opened a NEW window")
-        except PlaywrightTimeout:
-            popup = None  # no popup — same-page postback/redirect
-    except PlaywrightTimeout:
-        page.keyboard.press("Enter")
-
-    active = popup or page
-    try:
-        active.wait_for_load_state("networkidle", timeout=20_000)
     except PlaywrightTimeout:
         pass
 
-    # Diagnostic: list every open page so we can see where results landed.
-    log(f"[INFO] Search submitted. pages_before={pages_before}, now={len(context.pages)}")
-    for idx, p in enumerate(context.pages):
+    log(f"[INFO] Submitting search. URL before click: {page.url}")
+    try:
+        with page.expect_navigation(url="**frmBusqueda*", timeout=20_000):
+            page.click(SEL_SEARCH_BTN)
+        log("[INFO] Click navigated to results page")
+    except PlaywrightTimeout:
+        log(f"[WARN] Click did not navigate (url={page.url}). Trying __doPostBack fallback")
         try:
-            log(f"  page[{idx}] url={p.url} title={p.title()!r}")
-        except Exception:
-            log(f"  page[{idx}] url={p.url}")
+            with page.expect_navigation(url="**frmBusqueda*", timeout=20_000):
+                page.evaluate(
+                    "() => { if (window.__doPostBack) __doPostBack('ctl00$ContentPlaceHolder1$btnAceptar',''); }"
+                )
+            log("[INFO] __doPostBack navigated to results page")
+        except PlaywrightTimeout:
+            log(f"[WARN] Still not on results after fallback (url={page.url})")
 
-    log(f"[INFO] Active results page: {active.url}")
-    return active
+    try:
+        page.wait_for_load_state("networkidle", timeout=15_000)
+    except PlaywrightTimeout:
+        pass
+
+    # Diagnostic: capture any validation / status message the server returned.
+    try:
+        msgs = page.evaluate("""() => {
+            const re = /no existe|inv[aá]lid|incorrect|debe ingresar|sin resultado|error/i;
+            return Array.from(document.querySelectorAll('span,div,td,p,label'))
+                .map(e => (e.innerText || '').trim())
+                .filter(t => t && t.length < 120 && re.test(t))
+                .slice(0, 8);
+        }""")
+        if msgs:
+            log(f"[INFO] Page messages after submit: {msgs}")
+    except Exception:
+        pass
+
+    log(f"[INFO] After submit: on_results={_on_results()} url={page.url}")
+    return page
 
     # ── DEBUG: dump all tables with id/class so we can pick the right selector ──
     table_info = page.evaluate("""() => {
