@@ -24,9 +24,15 @@ STATUS_FILE  = Path("/tmp/scrape_status")
 DOWNLOAD_DIR = Path("/tmp/pdfs")
 
 SEL_ENTRY_LINK = "a:has-text('CONSULTA DE CAUSAS'), a:has-text('Consulta de Causas')"
-SEL_RUT_INPUT  = "input[type='text'][id*='Rut'], input[type='text'][id*='rut'], input[type='text'][id*='txt']"
-SEL_SEARCH_BTN = "input[id*='Buscar'], input[id*='buscar'], input[type='submit']"
+# ASP.NET form (vitacura): radio selects search type, then txtRut + btnAceptar.
+SEL_RADIO_RUT  = "#ctl00_ContentPlaceHolder1_RdBoRut, input[type='radio'][value='RdBoRut']"
+SEL_RUT_INPUT  = "#ctl00_ContentPlaceHolder1_txtRut, input[type='text'][id*='txtRut'], input[type='text'][id*='Rut']"
+SEL_SEARCH_BTN = "#ctl00_ContentPlaceHolder1_btnAceptar, input[type='submit'][value='Aceptar'], input[type='submit']"
 SEL_RESULTS    = "table tbody tr"
+
+# Text that only appears on the SEARCH FORM — if we still see it after submitting,
+# the search did not execute (no search-type selected / postback re-rendered form).
+FORM_MARKERS = ("seleccione la opción", "ej: 12345678", "ej: aa1111", "placa:")
 
 
 def parse_args():
@@ -100,7 +106,11 @@ def enter_via_parent(page, context, parent_url):
 
 
 def search_rut(page, rut):
-    """Fill RUT and submit — arrives at Level 2 (results list)."""
+    """Select RUT search type, fill RUT, submit — arrives at Level 2 (results list).
+
+    The form REQUIRES selecting the RdBoRut radio first; submitting without a
+    search type just re-renders the form (no results).
+    """
     try:
         page.wait_for_selector(SEL_RUT_INPUT, timeout=20_000)
     except PlaywrightTimeout:
@@ -108,16 +118,31 @@ def search_rut(page, rut):
         write_status("crashed")
         raise RuntimeError("RUT input not found.")
 
+    # 1. Select the RUT search-type radio (may trigger an AutoPostBack).
+    try:
+        page.check(SEL_RADIO_RUT, timeout=5_000)
+        log("[INFO] Selected RUT search-type radio")
+        # If the radio autoposts back, the field is re-rendered — let it settle.
+        try:
+            page.wait_for_load_state("networkidle", timeout=8_000)
+        except PlaywrightTimeout:
+            pass
+        page.wait_for_selector(SEL_RUT_INPUT, timeout=10_000)
+    except PlaywrightTimeout:
+        log("[WARN] RUT radio not found — proceeding without it")
+
+    # 2. Fill the RUT (after any radio postback, so the value survives).
     page.fill(SEL_RUT_INPUT, rut)
     log(f"[INFO] Filled RUT: {rut}")
 
+    # 3. Submit via the Aceptar button (ASP.NET postback).
     try:
         page.wait_for_selector(SEL_SEARCH_BTN, timeout=5_000)
         page.click(SEL_SEARCH_BTN)
     except PlaywrightTimeout:
         page.keyboard.press("Enter")
 
-    # Wait for AJAX/UpdatePanel to complete after search
+    # Wait for AJAX/UpdatePanel / full postback to complete after search.
     page.wait_for_load_state("networkidle", timeout=20_000)
     log("[INFO] Search submitted and network idle")
 
@@ -162,6 +187,14 @@ def get_results_list(page):
         dump_page(page, "no-results")
         write_status("crashed")
         raise RuntimeError("Results table never appeared — target crashed or RUT returned nothing.")
+
+    # Guard: if the search form is still visible, the search did NOT execute.
+    # Don't scrape the form's layout tables as fake causas.
+    page_text = page.evaluate("() => document.body.innerText.toLowerCase()")
+    if any(m in page_text for m in FORM_MARKERS):
+        dump_page(page, "still-on-form")
+        write_status("crashed")
+        raise RuntimeError("Still on search form after submit — search did not execute.")
 
     records = page.evaluate("""() => {
         const rows = Array.from(document.querySelectorAll('table tbody tr'));

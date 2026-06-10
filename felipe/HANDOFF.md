@@ -10,6 +10,27 @@
 
 Recent session work (other Claude session, please read):
 
+0. **Level 2 search was scraping the FORM, not results — FIXED** (`run.py`).
+   - The vitacura form is ASP.NET: search-type radios `RdBoRut/RdBoRol/RdBoPPU`,
+     field `txtRut`, submit `btnAceptar`. The old code filled `txtRut` and
+     submitted WITHOUT selecting the `RdBoRut` radio, so the postback just
+     re-rendered the form. `get_results_list` then parsed the nested layout
+     tables and produced fake causas (ROL = "Consulta de Juzgado", "PPU", ...),
+     all of which failed at "Abrir". `search_rut` now checks `RdBoRut` first
+     (handles AutoPostBack), then fills + submits. Added a FORM_MARKERS guard
+     that raises "still on search form" instead of inventing causas.
+   - NOTE: the real results-table column mapping in `get_results_list`
+     (cells[0]=fecha, [2]=rol, [3]=descripcion) is still UNVERIFIED against a
+     real results page — confirm via the [DEBUG TABLES]/[DEBUG Level2] dump on
+     the next successful run and adjust if needed.
+   - **Runaway re-dispatch — FIXED** in `.github/workflows/scrape.yml` (the
+     ROOT one is the ACTIVE workflow; `felipe/.github/workflows/scrape.yml` is
+     dormant — GitHub only reads root `.github/workflows`). The cap step's
+     `exit 0` only ended that step, so the job kept scraping + re-dispatching
+     past the cap (saw attempt 14 / max 10). Now it sets `capped=true` output
+     and the Run/Re-dispatch steps skip on it.
+
+
 1. **GitHub Pages — DO NOT re-add `.github/workflows/apps.yml`.**
    - A repo has exactly ONE Pages site. `apps.yml` deploys the `Apps/` folder
      on *every* push; `pages.yml` deploys `felipe/spa/` only on `felipe/spa/**`
