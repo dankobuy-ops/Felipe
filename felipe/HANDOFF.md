@@ -10,6 +10,12 @@
 
 Recent session work (other Claude session, please read):
 
+**STATUS 2026-06-10: scraper works END-TO-END.** Verified run (year=2019,
+RUT 96992030-1): search→login→74 causas→Level 3 extraction→PDFs. Job marked
+`complete`, 11/11 causas done, 74 PDFs in Supabase Storage with real sizes.
+Key fixes below. The site is `appl.smc.cl/JuzgadoDoc` (forms-auth), reached
+via the vitacura.cl parent link.
+
 0. **Level 2 search was scraping the FORM, not results — FIXED** (`run.py`).
    - The vitacura form is ASP.NET: search-type radios `RdBoRut/RdBoRol/RdBoPPU`,
      field `txtRut`, submit `btnAceptar`. The old code filled `txtRut` and
@@ -44,15 +50,18 @@ Recent session work (other Claude session, please read):
      give it a `paths: ['Apps/**']` filter or its own repo, never an unfiltered
      push trigger here.
 
-2. **PDF downloads — FIXED** (`scraper/run.py` `download_pdfs`).
-   - On Level 3, clicking "Abrir" opens a NEW viewer window; the real PDF URL is
-     only available *after* that window loads (it redirects to / embeds the file).
-     The old code did `page.request.get(href)` on the Abrir href directly, which
-     returned the empty viewer shell → corrupt/empty PDFs.
-   - New flow: click Abrir → `context.expect_page()` captures the viewer →
-     wait for networkidle → resolve real URL (viewer URL if it's a .pdf, else
-     `<embed>/<iframe>/<object>` src or a 'Descargar' link) → download via
-     `viewer.request.get()` → `%PDF-` magic-byte check before saving/uploading.
+2. **PDF downloads — FIXED** (`scraper/run.py` `download_pdfs`/`_fetch_pdf`).
+   - The "empty page" PDFs were a SYMPTOM of the broken search: Abrir links are
+     `MostrarPDF.aspx?...IdDoc=N` viewer URLs that **302→Login.aspx unless the
+     session is authenticated**. With search broken there was no forms-auth
+     cookie, so `request.get(href)` returned the Login shell.
+   - Now search establishes the auth cookie, so `_fetch_pdf` fetches each
+     captured href via `context.request.get` (shares cookies), checks `%PDF-`,
+     and falls back one level to an embedded `<embed>/<iframe>/<object>`/href if
+     the viewer returns HTML. Verified: real multi-KB/MB PDFs upload to Storage.
+   - (An earlier popup-click approach was tried and reverted — the Abrir clicks
+     never opened a window in headless; the authenticated href fetch is simpler
+     and works.)
 
 3. **Scraper 409 bug — FIXED** (`scraper/checkpoint.py`).
    - `write_checkpoints` did an upsert (`Prefer: resolution=merge-duplicates`)
