@@ -135,16 +135,39 @@ def search_rut(page, rut):
     page.fill(SEL_RUT_INPUT, rut)
     log(f"[INFO] Filled RUT: {rut}")
 
-    # 3. Submit via the Aceptar button (ASP.NET postback).
+    # 3. Submit via the Aceptar button. Results may open in a NEW window (this
+    #    site is window.open-heavy) or via same-page redirect — handle both.
+    context = page.context
+    pages_before = len(context.pages)
+    popup = None
     try:
         page.wait_for_selector(SEL_SEARCH_BTN, timeout=5_000)
-        page.click(SEL_SEARCH_BTN)
+        try:
+            with context.expect_page(timeout=8_000) as info:
+                page.click(SEL_SEARCH_BTN)
+            popup = info.value
+            log("[INFO] Search opened a NEW window")
+        except PlaywrightTimeout:
+            popup = None  # no popup — same-page postback/redirect
     except PlaywrightTimeout:
         page.keyboard.press("Enter")
 
-    # Wait for AJAX/UpdatePanel / full postback to complete after search.
-    page.wait_for_load_state("networkidle", timeout=20_000)
-    log("[INFO] Search submitted and network idle")
+    active = popup or page
+    try:
+        active.wait_for_load_state("networkidle", timeout=20_000)
+    except PlaywrightTimeout:
+        pass
+
+    # Diagnostic: list every open page so we can see where results landed.
+    log(f"[INFO] Search submitted. pages_before={pages_before}, now={len(context.pages)}")
+    for idx, p in enumerate(context.pages):
+        try:
+            log(f"  page[{idx}] url={p.url} title={p.title()!r}")
+        except Exception:
+            log(f"  page[{idx}] url={p.url}")
+
+    log(f"[INFO] Active results page: {active.url}")
+    return active
 
     # ── DEBUG: dump all tables with id/class so we can pick the right selector ──
     table_info = page.evaluate("""() => {
@@ -553,7 +576,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
         # Level 1 → Level 2
         active = enter_via_parent(page, ctx, args.target_url)
-        search_rut(active, args.search_code)
+        active = search_rut(active, args.search_code)
         records = get_results_list(active)
         records = filter_by_year(records, args.year)
         results_url = active.url  # remember Level 2 URL to return after each detail
@@ -611,7 +634,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
                     # Site is slow — re-enter via parent to recover session
                     log(f"[WARN] Return to results timed out — re-entering via parent")
                     active = enter_via_parent(active, ctx, args.target_url)
-                    search_rut(active, args.search_code)
+                    active = search_rut(active, args.search_code)
                     active.wait_for_selector(SEL_RESULTS, timeout=20_000)
                     results_url = active.url
 

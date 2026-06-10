@@ -23,7 +23,7 @@ on:
         default: ""
 
 env:
-  MAX_RESUME_ATTEMPTS: "10"
+  MAX_RESUME_ATTEMPTS: "3"   # TESTING: lowered from 10 so a broken build can't spawn many runs
   MAX_RUNTIME_SECONDS: "240"
 
 jobs:
