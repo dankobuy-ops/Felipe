@@ -23,14 +23,24 @@ Recent session work (other Claude session, please read):
      give it a `paths: ['Apps/**']` filter or its own repo, never an unfiltered
      push trigger here.
 
-2. **Scraper 409 bug — FIXED** (`scraper/checkpoint.py`).
+2. **PDF downloads — FIXED** (`scraper/run.py` `download_pdfs`).
+   - On Level 3, clicking "Abrir" opens a NEW viewer window; the real PDF URL is
+     only available *after* that window loads (it redirects to / embeds the file).
+     The old code did `page.request.get(href)` on the Abrir href directly, which
+     returned the empty viewer shell → corrupt/empty PDFs.
+   - New flow: click Abrir → `context.expect_page()` captures the viewer →
+     wait for networkidle → resolve real URL (viewer URL if it's a .pdf, else
+     `<embed>/<iframe>/<object>` src or a 'Descargar' link) → download via
+     `viewer.request.get()` → `%PDF-` magic-byte check before saving/uploading.
+
+3. **Scraper 409 bug — FIXED** (`scraper/checkpoint.py`).
    - `write_checkpoints` did an upsert (`Prefer: resolution=merge-duplicates`)
      but never named the conflict target, so PostgREST resolved against the
      primary key `id` and 409'd on re-dispatch when `(job_id, record_id)` rows
      already existed. Added `?on_conflict=job_id,record_id` to the POST URL.
      This had been killing every run via `mark_stalled`/`mark_job_status`.
 
-3. **TESTING hardcodes — REVERT before production.**
+4. **TESTING hardcodes — REVERT before production.**
    - `.github/workflows/scrape.yml`: `TEST_SEARCH_CODE=96992030-1` and
      `TEST_TARGET_URL=https://vitacura.cl/.../juzgado-policia-local/` override
      the SPA inputs in the validate/run/re-dispatch steps. Revert to
@@ -38,7 +48,7 @@ Recent session work (other Claude session, please read):
    - `felipe/spa/index.html`: the RUT + URL fields are prefilled with those same
      test values (`value="..."`). Clear the `value=` attrs for production.
 
-4. **Security — tokens still need rotation.**
+5. **Security — tokens still need rotation.**
    - Two `ghp_` tokens (old `DISPATCH_PAT` `ghp_L21Y…` and a push token
      `ghp_N3Op…`) were exposed. Git history was rewritten with `git filter-repo`
      to purge them (force-pushed `a7b2751`), and the plaintext token was removed

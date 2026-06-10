@@ -403,36 +403,104 @@ def extract_level3(page):
 
 # ── PDF download from Level 3 ─────────────────────────────────────────────────
 
-def download_pdfs(page, context, tramites, job_id, rol, supabase_url, supabase_key, bucket):
-    """Download PDFs from Sección C Abrir links using page.request (same session/cookies)."""
-    pdf_urls = []
-    for i, tramite in enumerate(tramites):
-        local_pdf = DOWNLOAD_DIR / f"{rol}_doc{i}.pdf"
-        href = tramite.get("href", "")
-        try:
-            if href and not href.startswith("javascript"):
-                # Use Playwright's request API — same cookies/session, no page navigation
-                response = page.request.get(href, timeout=30_000)
-                if response.ok:
-                    local_pdf.write_bytes(response.body())
-                else:
-                    log(f"[WARN] PDF {i+1} HTTP {response.status} for ROL {rol}")
-                    continue
-            else:
-                # Postback link — click it and capture the download
-                with page.expect_download(timeout=25_000) as dl:
-                    page.evaluate(f"""() => {{
-                        const links = Array.from(document.querySelectorAll('a'))
-                            .filter(a => a.innerText.trim().toLowerCase() === 'abrir');
-                        if (links[{i}]) links[{i}].click();
-                    }}""")
-                dl.value.save_as(str(local_pdf))
+# Links on Level 3 that open a document. Clicking opens a NEW viewer window;
+# the real PDF URL only becomes available after that viewer finishes loading.
+DOC_LINK_FILTER = """a => {
+    const t = a.innerText.trim().toLowerCase();
+    const h = (a.href || '').toLowerCase();
+    return t === 'abrir' || t === 'descargar' ||
+           h.includes('.pdf') || h.includes('documento') ||
+           h.includes('visor') || h.includes('verarchivo') || h.includes('getfile');
+}"""
 
+
+def _looks_like_pdf_url(url):
+    return url and url.lower().split("?")[0].rstrip("/").endswith(".pdf")
+
+
+def _resolve_pdf_url(viewer):
+    """Given a loaded viewer window, return the real PDF URL.
+
+    The viewer either (a) IS the PDF rendered inline — its own URL is the file —
+    or (b) is an HTML shell embedding the PDF in an <embed>/<iframe>/<object> or
+    exposing a 'Descargar' link. Fall back to the viewer URL itself.
+    """
+    if _looks_like_pdf_url(viewer.url):
+        return viewer.url
+    embedded = viewer.evaluate("""() => {
+        const el = document.querySelector('embed[src], iframe[src], object[data]');
+        if (el) return el.src || el.getAttribute('data');
+        const a = Array.from(document.querySelectorAll('a')).find(a => {
+            const h = (a.href || '').toLowerCase();
+            const t = a.innerText.trim().toLowerCase();
+            return h.includes('.pdf') || h.includes('getfile') || t.includes('descargar');
+        });
+        return a ? a.href : null;
+    }""")
+    return embedded or viewer.url
+
+
+def download_pdfs(page, context, job_id, rol, supabase_url, supabase_key, bucket):
+    """Click each Sección C/D 'Abrir' link → new viewer window → resolve real PDF URL → download.
+
+    Re-queries the live Level 3 page for document links rather than trusting the
+    extracted hrefs, because those hrefs point at the viewer shell, not the file.
+    """
+    pdf_urls = []
+
+    link_count = page.evaluate(
+        f"() => Array.from(document.querySelectorAll('a')).filter({DOC_LINK_FILTER}).length"
+    )
+    log(f"[INFO] ROL {rol}: {link_count} document link(s) on Level 3")
+
+    for i in range(link_count):
+        local_pdf = DOWNLOAD_DIR / f"{rol}_doc{i}.pdf"
+        viewer = None
+        try:
+            # Click the i-th document link — it opens a new viewer window.
+            try:
+                with context.expect_page(timeout=15_000) as info:
+                    page.evaluate(
+                        f"(idx) => {{ const ls = Array.from(document.querySelectorAll('a')).filter({DOC_LINK_FILTER}); if (ls[idx]) ls[idx].click(); }}",
+                        i,
+                    )
+                viewer = info.value
+            except PlaywrightTimeout:
+                log(f"[WARN] ROL {rol} doc {i+1}: no viewer window opened")
+                continue
+
+            # Let the viewer settle so it redirects to / embeds the real PDF.
+            try:
+                viewer.wait_for_load_state("networkidle", timeout=20_000)
+            except PlaywrightTimeout:
+                pass
+
+            real_url = _resolve_pdf_url(viewer)
+            log(f"[INFO] ROL {rol} doc {i+1}: resolved PDF URL {real_url}")
+
+            # Download with the viewer's session (cookies preserved).
+            resp = viewer.request.get(real_url, timeout=30_000)
+            if not resp.ok:
+                log(f"[WARN] ROL {rol} doc {i+1}: HTTP {resp.status}")
+                continue
+
+            body = resp.body()
+            if b"%PDF-" not in body[:1024]:
+                log(f"[WARN] ROL {rol} doc {i+1}: response is not a PDF (got {body[:20]!r}) — skipping")
+                continue
+
+            local_pdf.write_bytes(body)
             url = upload_pdf(supabase_url, supabase_key, bucket, job_id, f"{rol}_doc{i}", local_pdf)
             pdf_urls.append(url)
             log(f"[INFO] PDF {i+1} uploaded for ROL {rol}")
         except Exception as e:
             log(f"[WARN] PDF {i+1} failed for ROL {rol}: {e}")
+        finally:
+            if viewer:
+                try:
+                    viewer.close()
+                except Exception:
+                    pass
 
     return pdf_urls
 
@@ -486,10 +554,10 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
                 case_data = {**rec, **detail}
 
-                # Download PDFs from Sección C + D (only rows that have an href)
-                all_docs = [d for d in detail.get("tramites", []) + detail.get("adjuntos", []) if d.get("href")]
+                # Download PDFs from Sección C + D — clicks each Abrir link, follows
+                # the viewer window it opens, and downloads the real file behind it.
                 pdf_urls = download_pdfs(
-                    active, ctx, all_docs,
+                    active, ctx,
                     args.job_id, rol, supabase_url, supabase_key, supabase_bucket,
                 )
 
