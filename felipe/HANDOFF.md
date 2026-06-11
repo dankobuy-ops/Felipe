@@ -1,6 +1,6 @@
 # Handoff — Felipe Project
 
-**Last updated:** 2026-06-10  
+**Last updated:** 2026-06-10 (repo cleanup + sheets export + SPA history)  
 **Branch:** main  
 **Repo:** https://github.com/dankobuy-ops/Felipe.git
 
@@ -9,6 +9,42 @@
 ## ⚠️ ACTIVE NOTES — read before touching deployment/scraper (2026-06-10)
 
 Recent session work (other Claude session, please read):
+
+### REPO CLEANUP (2026-06-10) — history was rewritten
+- **Purged `sga/`, `Apps/`, `Recursos/`, `Otros/` from the Felipe repo** (history
+  + working tree) via `git filter-repo`. They were unused duplicates bloating the
+  repo (~580 MB / ~5,373 files). `.git` went ~400 MB → 124 MB. Force-pushed
+  (`f4ec43b`). The ORIGINAL `C:\Claude\sga` is a SEPARATE repo and was untouched.
+- **Consequence:** history is rewritten — any old clone must re-clone or hard-reset.
+- **Safety backup** (full repo, pre-cleanup): `C:\Claude\Felipe\..\Felipe-backup-precleanup-333796f.bundle`
+  (and an earlier `Felipe-backup-fd5ab89.bundle`). Restore with `git clone <bundle>`.
+- The Felipe repo root is `C:\Claude\Felipe` (NOT `C:\Claude` — the old note was
+  wrong). It now contains only: `.claude .github .gitignore README.md docs felipe`.
+
+### PDF LINKS IN SPA — FIXED (the "broken page")
+- The SPA "Abrir" links pointed at the SOURCE `MostrarPDF.aspx` href, which 302s
+  to Login.aspx in a normal browser (forms-auth) → broken page. The downloaded
+  PDFs live in public Supabase Storage. `run.py download_pdfs` now tags each
+  trámite/adjunto with its Supabase public `pdf_url`; `app.js` links to that
+  (`safeHref(t.pdf_url)`). Old jobs scraped before this have no `pdf_url` → re-run.
+
+### PREVIOUS-JOBS HISTORY (SPA)
+- "Consultas anteriores" list on the trigger screen (`renderJobHistory` in app.js).
+  Tracks jobs in localStorage (rut/year/date) + cross-references Supabase
+  `__job__`/`__meta__` rows for live status. Click an entry to reopen its results.
+  Scraper writes `rut`/`year`/`ts` into `__meta__` (`write_meta`) for labels.
+
+### GOOGLE SHEETS EXPORT (standalone)
+- `felipe/scraper/export_sheets.py` — reads Supabase checkpoints (`--job-id` or
+  `--all`), builds two linked tables and POSTs to a Google Apps Script web app:
+    - **Causas** tab (Level 2 + summary), **Documentos** tab (Level 3 PDFs).
+    - Linked by `Caso ID` = `<job-prefix>/<ROL>` (first column, tells dup ROLs apart).
+- `felipe/scraper/sheets_webapp.gs` — the Apps Script the user pastes into the
+  target sheet (Extensions→Apps Script→deploy as Web app, Execute as Me, Anyone).
+  Returns the `/exec` URL; pass via `--webhook` or `SHEETS_WEBHOOK_URL`. Each run
+  is a full refresh (clears+writes both tabs). No GCP/service account needed.
+  My (Claude) Google MCP can only CREATE sheets, not write to existing ones — hence
+  the Apps Script approach.
 
 **STATUS 2026-06-10: scraper works END-TO-END.** Verified run (year=2019,
 RUT 96992030-1): search→login→74 causas→Level 3 extraction→PDFs. Job marked
