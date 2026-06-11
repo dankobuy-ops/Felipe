@@ -1,12 +1,10 @@
 """Export scraped JPL data from Supabase to a Google Sheet (standalone command).
 
-Produces two linked tables and POSTs them to a Google Apps Script web app bound
+Produces two linked tabs and POSTs them to a Google Apps Script web app bound
 to the target sheet (see sheets_webapp.gs for the script + setup):
 
-  Causas      — one row per causa  (Level 2 + summary detail)
-  Documentos  — one row per trámite/adjunto PDF (Level 3)
-
-The two tables are linked by the ROL column.
+  Causas      — one row per causa with demandado details, case info, vehicle + PDF links
+  Documentos  — one row per PDF (trámite / adjunto)
 
 Usage:
   python export_sheets.py --webhook <APPS_SCRIPT_EXEC_URL> --all
@@ -22,16 +20,21 @@ import sys
 import requests
 
 CAUSAS_HEADER = [
-    "Caso ID", "ROL", "Job ID", "Descripción", "Fecha proceso", "Juzgado", "Estado",
-    "Demandados", "Demandantes", "Rol inicio", "Actuario", "Placa patente",
-    "Status", "N° docs", "N° PDFs",
+    "Caso ID", "ROL", "Fecha proceso", "Juzgado",
+    # Case
+    "Materia", "Monto demandado",
+    # Demandado (primary)
+    "Nombres", "Apellidos", "RUT", "Domicilio", "Email", "Teléfono",
+    # Vehicle
+    "Marca", "Modelo", "Año", "Patente",
+    # PDFs
+    "N° PDFs", "Links PDFs",
 ]
-DOCS_HEADER = ["Caso ID", "ROL", "Job ID", "Sección", "Fecha", "Descripción", "PDF URL"]
+
+DOCS_HEADER = ["Caso ID", "ROL", "Sección", "Fecha", "Descripción", "PDF URL"]
 
 
 def _caso_id(job, rol):
-    """Unique per-case key: short job prefix + ROL. Distinguishes the same ROL
-    scraped across different jobs, and links the Causas/Documentos tabs."""
     return f"{(job or '')[:8]}/{rol}"
 
 
@@ -48,14 +51,33 @@ def fetch_rows(sb_url, sb_key, job_id=None):
     return r.json()
 
 
-def _join_parties(parties):
-    out = []
-    for p in parties or []:
-        nombre = (p.get("nombre") or "").strip()
-        rut = (p.get("rut") or "").strip()
-        if nombre:
-            out.append(f"{nombre} ({rut})" if rut else nombre)
-    return "; ".join(out)
+def _split_name(nombre):
+    """Split a full-name string into (nombres, apellidos).
+
+    Chilean official systems often use "APELLIDO1 APELLIDO2, NOMBRE1 NOMBRE2".
+    If a comma is present: before comma = apellidos, after = nombres.
+    Otherwise return the whole string as nombres with empty apellidos.
+    """
+    if not nombre:
+        return "", ""
+    if "," in nombre:
+        apellidos, nombres = nombre.split(",", 1)
+        return nombres.strip().title(), apellidos.strip().title()
+    return nombre.strip().title(), ""
+
+
+def _domicilio(party):
+    parts = [party.get("direccion", ""), party.get("comuna", "")]
+    return ", ".join(p for p in parts if p)
+
+
+def _first_match(causa, *keys):
+    """Return the first non-empty value from causa dict for the given keys."""
+    for k in keys:
+        v = causa.get(k, "")
+        if v:
+            return v
+    return ""
 
 
 def build_tables(rows):
@@ -68,29 +90,65 @@ def build_tables(rows):
             d = json.loads(row.get("text") or "{}")
         except Exception:
             d = {}
-        rol = d.get("rol") or rid
-        job = row.get("job_id", "")
+        rol  = d.get("rol") or rid
+        job  = row.get("job_id", "")
+        cid  = _caso_id(job, rol)
         causa = d.get("causa") or {}
+
+        # Primary demandado
+        demandados = d.get("demandados") or []
+        dem = demandados[0] if demandados else {}
+        nombres, apellidos = _split_name(dem.get("nombre", ""))
+
+        # Vehicle fields — may live in causa section or demandado section
+        marca   = _first_match(causa, "marca", "marca_vehiculo", "marca_vehículo")
+        modelo  = _first_match(causa, "modelo", "modelo_vehiculo", "modelo_vehículo")
+        año     = _first_match(causa, "año", "ano", "año_vehiculo", "año_vehículo")
+        patente = _first_match(causa, "placa_patente")
+
+        # Monto demandado — try several possible key names
+        monto = _first_match(causa, "monto", "monto_demandado", "cuantia", "cuantía", "monto_multa")
+
+        # PDF links
         tramites = d.get("tramites") or []
         adjuntos = d.get("adjuntos") or []
-        docs = tramites + adjuntos
-        n_pdf = sum(1 for x in docs if x.get("pdf_url"))
-        cid = _caso_id(job, rol)
+        all_docs = tramites + adjuntos
+        pdf_links = [x["pdf_url"] for x in all_docs if x.get("pdf_url")]
 
         causas.append([
-            cid, rol, job, d.get("descripcion", ""), d.get("fecha_proceso", ""),
-            d.get("juzgado", ""), causa.get("estado", ""),
-            _join_parties(d.get("demandados")), _join_parties(d.get("demandantes")),
-            causa.get("rol_inicio", ""), causa.get("actuario", ""),
-            causa.get("placa_patente", ""), row.get("status", ""),
-            len(docs), n_pdf,
+            cid,
+            rol,
+            d.get("fecha_proceso", ""),
+            d.get("juzgado", ""),
+            # Case
+            d.get("descripcion", "") or causa.get("descripcion", "") or causa.get("descripción", ""),
+            monto,
+            # Demandado
+            nombres,
+            apellidos,
+            dem.get("rut", ""),
+            _domicilio(dem),
+            dem.get("email", ""),
+            dem.get("telefono", ""),
+            # Vehicle
+            marca,
+            modelo,
+            año,
+            patente,
+            # PDFs
+            len(pdf_links),
+            "\n".join(pdf_links),
         ])
+
         for t in tramites:
-            documentos.append([cid, rol, job, "Trámite", t.get("fecha", ""),
-                               t.get("descripcion", ""), t.get("pdf_url", "")])
+            if t.get("pdf_url"):
+                documentos.append([cid, rol, "Trámite", t.get("fecha", ""),
+                                   t.get("descripcion", ""), t["pdf_url"]])
         for a in adjuntos:
-            documentos.append([cid, rol, job, "Adjunto", a.get("fecha", ""),
-                               a.get("descripcion", ""), a.get("pdf_url", "")])
+            if a.get("pdf_url"):
+                documentos.append([cid, rol, "Adjunto", "",
+                                   a.get("descripcion", ""), a["pdf_url"]])
+
     return causas, documentos
 
 
@@ -116,7 +174,7 @@ def main():
 
     payload = {
         "causas":     {"header": CAUSAS_HEADER, "rows": causas},
-        "documentos": {"header": DOCS_HEADER, "rows": documentos},
+        "documentos": {"header": DOCS_HEADER,   "rows": documentos},
     }
     r = requests.post(args.webhook, json=payload, timeout=120)
     r.raise_for_status()

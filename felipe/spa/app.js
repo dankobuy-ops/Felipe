@@ -6,8 +6,10 @@ const WORKFLOW_FILE    = "scrape.yml";
 const POLL_INTERVAL_MS = 8000;
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
-const getPAT = () => localStorage.getItem("gh_pat") || "";
-const setPAT = (v) => localStorage.setItem("gh_pat", v);
+const getPAT            = ()  => localStorage.getItem("gh_pat") || "";
+const setPAT            = (v) => localStorage.setItem("gh_pat", v);
+const getSheetsWebhook  = ()  => localStorage.getItem("sheets_webhook") || "";
+const setSheetsWebhook  = (v) => localStorage.setItem("sheets_webhook", v);
 
 // Local job history (rut/year/date per job triggered from this browser).
 const HISTORY_KEY = "job_history";
@@ -39,8 +41,9 @@ function init() {
 // ── Setup screen ──────────────────────────────────────────────────────────────
 document.getElementById("setup-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const pat = document.getElementById("pat-input").value.trim();
-  const err = document.getElementById("setup-error");
+  const pat     = document.getElementById("pat-input").value.trim();
+  const webhook = document.getElementById("webhook-input").value.trim();
+  const err     = document.getElementById("setup-error");
   err.classList.add("hidden");
   try {
     const r = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows`, {
@@ -48,6 +51,7 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
     });
     if (!r.ok) throw new Error(`GitHub rechazó el token (${r.status})`);
     setPAT(pat);
+    if (webhook) setSheetsWebhook(webhook);
     showScreen("screen-trigger");
   } catch (ex) {
     err.textContent = ex.message;
@@ -56,7 +60,8 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
 });
 
 document.getElementById("settings-btn").addEventListener("click", () => {
-  document.getElementById("pat-input").value = getPAT();
+  document.getElementById("pat-input").value      = getPAT();
+  document.getElementById("webhook-input").value  = getSheetsWebhook();
   showScreen("screen-setup");
 });
 
@@ -441,6 +446,124 @@ function buildDetail(data, causa) {
 
   return `<div class="detail-panel">${sections.join("")}</div>`;
 }
+
+// ── Google Sheets export ──────────────────────────────────────────────────────
+
+const CAUSAS_HEADER = [
+  "Caso ID", "ROL", "Fecha proceso", "Juzgado",
+  "Materia", "Monto demandado",
+  "Nombres", "Apellidos", "RUT", "Domicilio", "Email", "Teléfono",
+  "Marca", "Modelo", "Año", "Patente",
+  "N° PDFs", "Links PDFs",
+];
+const DOCS_HEADER = ["Caso ID", "ROL", "Sección", "Fecha", "Descripción", "PDF URL"];
+
+function buildSheetsPayload(jobId, allData) {
+  function casoId(job, rol) { return `${(job || "").slice(0, 8)}/${rol}`; }
+
+  function splitName(nombre) {
+    if (!nombre) return ["", ""];
+    const s = String(nombre);
+    if (s.includes(",")) {
+      const idx = s.indexOf(",");
+      return [toTitle(s.slice(idx + 1)), toTitle(s.slice(0, idx))];
+    }
+    return [toTitle(s), ""];
+  }
+
+  function toTitle(s) {
+    return s.trim().replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+  }
+
+  function domicilio(party) {
+    return [party.direccion, party.comuna].filter(Boolean).join(", ");
+  }
+
+  function firstOf(obj, ...keys) {
+    for (const k of keys) { const v = obj[k]; if (v) return v; }
+    return "";
+  }
+
+  const causas = [];
+  const docs   = [];
+
+  for (const row of allData) {
+    const data    = row._data;
+    const rol     = data.rol || row.record_id;
+    const cid     = casoId(jobId, rol);
+    const causa   = (typeof data.causa === "object" && data.causa) ? data.causa : {};
+    const dem     = (data.demandados || [])[0] || {};
+    const [nombres, apellidos] = splitName(dem.nombre);
+
+    const tramites  = data.tramites || [];
+    const adjuntos  = data.adjuntos || [];
+    const pdfLinks  = [...tramites, ...adjuntos].filter((x) => x.pdf_url).map((x) => x.pdf_url);
+
+    causas.push([
+      cid, rol,
+      data.fecha_proceso || "",
+      data.juzgado || "",
+      data.descripcion || causa.descripcion || causa["descripción"] || "",
+      firstOf(causa, "monto", "monto_demandado", "cuantia", "cuantía", "monto_multa"),
+      nombres, apellidos,
+      dem.rut || "",
+      domicilio(dem),
+      dem.email || "",
+      dem.telefono || "",
+      firstOf(causa, "marca", "marca_vehiculo", "marca_vehículo"),
+      firstOf(causa, "modelo", "modelo_vehiculo", "modelo_vehículo"),
+      firstOf(causa, "año", "ano", "año_vehiculo", "año_vehículo"),
+      firstOf(causa, "placa_patente"),
+      pdfLinks.length,
+      pdfLinks.join("\n"),
+    ]);
+
+    for (const t of tramites) {
+      if (t.pdf_url) docs.push([cid, rol, "Trámite", t.fecha || "", t.descripcion || "", t.pdf_url]);
+    }
+    for (const a of adjuntos) {
+      if (a.pdf_url) docs.push([cid, rol, "Adjunto", "", a.descripcion || "", a.pdf_url]);
+    }
+  }
+
+  return {
+    causas:     { header: CAUSAS_HEADER, rows: causas },
+    documentos: { header: DOCS_HEADER,   rows: docs   },
+  };
+}
+
+document.getElementById("sheets-btn").addEventListener("click", async () => {
+  const webhook = getSheetsWebhook();
+  if (!webhook) {
+    alert("Ingresa el URL del webhook de Google Sheets en Configuración (⚙).");
+    return;
+  }
+  if (!_allData.length) return;
+
+  const btn   = document.getElementById("sheets-btn");
+  btn.disabled = true;
+  btn.textContent = "Enviando…";
+
+  const jobId   = document.getElementById("job-id-display").textContent;
+  const payload = buildSheetsPayload(jobId, _allData);
+
+  try {
+    // no-cors: skips CORS preflight; Apps Script receives the body as plain text.
+    // Response is opaque (can't be read), but the script executes and writes the sheet.
+    await fetch(webhook, {
+      method:  "POST",
+      mode:    "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body:    JSON.stringify(payload),
+    });
+    btn.textContent = "¡Exportado!";
+    setTimeout(() => { btn.textContent = "Exportar a Sheets"; btn.disabled = false; }, 3000);
+  } catch (ex) {
+    console.error("Sheets export error:", ex);
+    btn.textContent = "Error — revisar consola";
+    setTimeout(() => { btn.textContent = "Exportar a Sheets"; btn.disabled = false; }, 4000);
+  }
+});
 
 // ── CSV export ────────────────────────────────────────────────────────────────
 document.getElementById("csv-btn").addEventListener("click", () => {

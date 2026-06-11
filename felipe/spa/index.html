@@ -18,6 +18,11 @@
           GitHub Personal Access Token
           <input type="password" id="pat-input" required placeholder="ghp_..." autocomplete="off" />
         </label>
+        <label>
+          Webhook Google Sheets
+          <input type="url" id="webhook-input" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" />
+          <span class="hint-small">Apps Script /exec URL — necesario para exportar a Sheets.</span>
+        </label>
         <button type="submit">Guardar y continuar</button>
       </form>
       <p id="setup-error" class="error hidden"></p>
@@ -67,6 +72,7 @@
         <span id="job-status-badge" class="badge">ejecutando</span>
         <div id="spinner" class="spinner hidden"></div>
         <button id="stop-btn" class="danger hidden">Detener</button>
+        <button id="sheets-btn" class="secondary">Exportar a Sheets</button>
         <button id="csv-btn" class="secondary">Descargar CSV</button>
         <button id="back-btn" class="secondary">Nueva consulta</button>
       </div>
@@ -90,6 +96,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

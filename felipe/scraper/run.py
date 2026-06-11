@@ -392,6 +392,8 @@ def extract_level3(page):
                         const val = tds[j+1].innerText.trim();
                         if (lbl === 'DIRECCION' || lbl === 'DIRECCIÓN') party.direccion = val;
                         else if (lbl === 'COMUNA') party.comuna = val;
+                        else if (lbl === 'TELEFONO' || lbl === 'TELÉFONO' || lbl === 'FONO' || lbl === 'CELULAR') party.telefono = val;
+                        else if (lbl === 'CORREO' || lbl === 'EMAIL' || lbl === 'CORREO ELECTRONICO' || lbl === 'CORREO ELECTRÓNICO') party.email = val;
                     }
                 }
             }
@@ -402,7 +404,11 @@ def extract_level3(page):
         function extractSectionB() {
             const LABELS = ['ROL INICIO','DESCRIPCION','DESCRIPCIÓN','FECHA CAUSA',
                             'ACTUARIO','PLACA PATENTE','REMISOR','FECHA CITACION',
-                            'FECHA CITACIÓN','ESTADO','FECHA ESTADO'];
+                            'FECHA CITACIÓN','ESTADO','FECHA ESTADO',
+                            'MONTO','MONTO DEMANDADO','CUANTIA','CUANTÍA','MONTO MULTA',
+                            'MARCA','MARCA VEHICULO','MARCA VEHÍCULO',
+                            'MODELO','MODELO VEHICULO','MODELO VEHÍCULO',
+                            'AÑO','ANO','AÑO VEHICULO','AÑO VEHÍCULO'];
             const cells = allCells();
             const out   = {};
             for (let i = 0; i < cells.length - 1; i++) {
