@@ -296,13 +296,15 @@ def get_results_list(page):
     return records
 
 
-def write_meta(supabase_url, supabase_key, job_id, total):
-    """Write __meta__ row with total causa count so the SPA knows upfront."""
+def write_meta(supabase_url, supabase_key, job_id, total, rut="", year=""):
+    """Write __meta__ row with total count + query params so the SPA can list
+    and label previous jobs (the 'Jobs anteriores' history)."""
     write_checkpoints(supabase_url, supabase_key, [{
         "job_id":    job_id,
         "record_id": "__meta__",
         "status":    "running",
-        "text":      json.dumps({"total": total}),
+        "text":      json.dumps({"total": total, "rut": rut, "year": year,
+                                 "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}),
         "pdf_url":   "",
     }])
 
@@ -581,7 +583,8 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         results_url = active.url  # remember Level 2 URL to return after each detail
 
         # Tell the SPA the total count immediately so progress is accurate from the start
-        write_meta(supabase_url, supabase_key, args.job_id, len(records))
+        write_meta(supabase_url, supabase_key, args.job_id, len(records),
+                   rut=args.search_code, year=args.year)
 
         hit_limit = False
         for rec in records:

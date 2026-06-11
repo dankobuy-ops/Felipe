@@ -9,6 +9,17 @@ const POLL_INTERVAL_MS = 8000;
 const getPAT = () => localStorage.getItem("gh_pat") || "";
 const setPAT = (v) => localStorage.setItem("gh_pat", v);
 
+// Local job history (rut/year/date per job triggered from this browser).
+const HISTORY_KEY = "job_history";
+function getLocalJobs() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch (_) { return []; }
+}
+function saveLocalJob(jobId, rut, year) {
+  const jobs = getLocalJobs().filter((j) => j.jobId !== jobId);
+  jobs.unshift({ jobId, rut, year, startedAt: new Date().toISOString() });
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(jobs.slice(0, 50)));
+}
+
 // ── Screen router ─────────────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => {
@@ -21,6 +32,7 @@ function init() {
     showScreen("screen-setup");
   } else {
     showScreen("screen-trigger");
+    renderJobHistory();
   }
 }
 
@@ -64,6 +76,7 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
 
   try {
     await triggerWorkflow(jobId, rut, url, year);
+    saveLocalJob(jobId, rut, year);
     showResultsScreen(jobId, rut, year);
   } catch (ex) {
     err.textContent = ex.message;
@@ -170,7 +183,64 @@ document.getElementById("back-btn").addEventListener("click", () => {
   document.getElementById("submit-btn").disabled = false;
   document.getElementById("submit-btn").textContent = "Consultar";
   showScreen("screen-trigger");
+  renderJobHistory();
 });
+
+// ── Job history (previous jobs) ───────────────────────────────────────────────
+document.getElementById("history-refresh").addEventListener("click", renderJobHistory);
+
+async function renderJobHistory() {
+  const block = document.getElementById("history-block");
+  const list  = document.getElementById("history-list");
+  const local = getLocalJobs();
+
+  // Pull every job's status + meta from Supabase (cross-device, includes jobs
+  // not started from this browser). Merge with local rut/year/date.
+  const byId = {};
+  for (const j of local) {
+    byId[j.jobId] = { jobId: j.jobId, rut: j.rut, year: j.year, ts: j.startedAt, status: "" };
+  }
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/checkpoints?record_id=in.(__job__,__meta__)&select=job_id,record_id,status,text`,
+      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
+    );
+    if (r.ok) {
+      for (const row of await r.json()) {
+        const e = byId[row.job_id] || (byId[row.job_id] = { jobId: row.job_id, rut: "", year: "", ts: "", status: "" });
+        if (row.record_id === "__job__") e.status = row.status;
+        else if (row.record_id === "__meta__") {
+          let m = {}; try { m = JSON.parse(row.text || "{}"); } catch (_) {}
+          e.rut  = e.rut  || m.rut  || "";
+          e.year = e.year || m.year || "";
+          e.ts   = e.ts   || m.ts   || "";
+        }
+      }
+    }
+  } catch (_) { /* offline / RLS — fall back to local-only list */ }
+
+  const jobs = Object.values(byId).sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
+  if (!jobs.length) { block.classList.add("hidden"); return; }
+  block.classList.remove("hidden");
+
+  const labelMap = { complete: "completado", stalled: "detenido", running: "ejecutando", "": "—" };
+  list.innerHTML = "";
+  for (const j of jobs) {
+    const li = document.createElement("li");
+    li.className = "history-item";
+    const when = j.ts ? new Date(j.ts).toLocaleString() : "";
+    const st   = j.status || "running";
+    li.innerHTML = `
+      <div class="hi-main">
+        <span class="hi-rut">${esc(j.rut || j.jobId.slice(0, 8))}</span>
+        ${j.year ? `<span class="hi-year">año ${esc(j.year)}</span>` : ""}
+        <span class="badge ${st === "complete" ? "complete" : st === "stalled" ? "stalled" : ""}">${esc(labelMap[j.status] || st)}</span>
+      </div>
+      <div class="hi-sub">${esc(when)}</div>`;
+    li.addEventListener("click", () => showResultsScreen(j.jobId, j.rut || "", j.year || ""));
+    list.appendChild(li);
+  }
+}
 
 async function pollResults(jobId) {
   try {

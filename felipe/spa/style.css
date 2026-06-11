@@ -177,3 +177,18 @@ button.danger {
   color: #991b1b;
 }
 button.danger:hover { background: #fecaca; }
+
+/* Job history (previous jobs) */
+.history-block { margin-top: 1.5rem; border-top: 1px solid #e5e7eb; padding-top: 1rem; }
+.history-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }
+.history-head h2 { font-size: .9rem; font-weight: 600; color: #374151; margin: 0; }
+.link-btn { background: none; border: none; color: #6b7280; font-size: 1rem; cursor: pointer; padding: .2rem .4rem; border-radius: 6px; }
+.link-btn:hover { background: #f3f4f6; color: #374151; }
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
+.history-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: .55rem .7rem; cursor: pointer; transition: background .12s, border-color .12s; }
+.history-item:hover { background: #f9fafb; border-color: #c7d2fe; }
+.hi-main { display: flex; align-items: center; gap: .5rem; }
+.hi-rut { font-weight: 600; color: #111827; font-size: .9rem; }
+.hi-year { font-size: .78rem; color: #6b7280; }
+.hi-main .badge { margin-left: auto; }
+.hi-sub { font-size: .74rem; color: #9ca3af; margin-top: .15rem; }
