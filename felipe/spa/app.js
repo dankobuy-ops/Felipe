@@ -330,7 +330,8 @@ function buildDetail(data, causa) {
   const tramites = data.tramites || [];
   if (tramites.length) {
     const trows = tramites.map((t) => {
-      const href = safeHref(t.href);
+      // Link to the downloaded Supabase PDF, not the login-gated source viewer.
+      const href = safeHref(t.pdf_url);
       return `<tr>
         <td>${esc(t.fecha || "")}</td>
         <td>${esc(t.descripcion || "")}</td>
@@ -351,7 +352,8 @@ function buildDetail(data, causa) {
   const adjuntos = data.adjuntos || [];
   if (adjuntos.length) {
     const arows = adjuntos.map((a) => {
-      const href = safeHref(a.href);
+      // Link to the downloaded Supabase PDF, not the login-gated source viewer.
+      const href = safeHref(a.pdf_url);
       return `<tr>
         <td>${esc(a.descripcion || "")}</td>
         <td>${href ? `<a href="${href}" target="_blank" rel="noopener" class="doc-link">Abrir</a>` : "—"}</td>

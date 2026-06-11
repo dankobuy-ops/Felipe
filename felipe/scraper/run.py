@@ -522,19 +522,22 @@ def download_pdfs(page, context, docs, job_id, rol, supabase_url, supabase_key, 
     href, using the authenticated browser session. (The viewer requires login —
     only works because search_rut established the forms-auth cookie.)"""
     pdf_urls = []
-    hrefs = [d["href"] for d in docs
-             if d.get("href") and not d["href"].startswith("javascript")]
-    log(f"[INFO] ROL {rol}: {len(hrefs)} document href(s)")
+    doc_list = [d for d in docs
+                if d.get("href") and not d["href"].startswith("javascript")]
+    log(f"[INFO] ROL {rol}: {len(doc_list)} document href(s)")
 
-    for i, href in enumerate(hrefs):
+    for i, doc in enumerate(doc_list):
         local_pdf = DOWNLOAD_DIR / f"{rol}_doc{i}.pdf"
         try:
-            body = _fetch_pdf(context, href)
+            body = _fetch_pdf(context, doc["href"])
             if not body:
-                log(f"[WARN] ROL {rol} doc {i+1}: no PDF resolved from {href}")
+                log(f"[WARN] ROL {rol} doc {i+1}: no PDF resolved from {doc['href']}")
                 continue
             local_pdf.write_bytes(body)
             url = upload_pdf(supabase_url, supabase_key, bucket, job_id, f"{rol}_doc{i}", local_pdf)
+            # Tag the trámite/adjunto with its Supabase public URL so the SPA
+            # links to the downloaded PDF, not the login-gated source viewer.
+            doc["pdf_url"] = url
             pdf_urls.append(url)
             log(f"[INFO] PDF {i+1} uploaded for ROL {rol} ({len(body)} bytes)")
         except Exception as e:
