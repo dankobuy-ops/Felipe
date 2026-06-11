@@ -22,11 +22,17 @@ import sys
 import requests
 
 CAUSAS_HEADER = [
-    "ROL", "Job ID", "Descripción", "Fecha proceso", "Juzgado", "Estado",
+    "Caso ID", "ROL", "Job ID", "Descripción", "Fecha proceso", "Juzgado", "Estado",
     "Demandados", "Demandantes", "Rol inicio", "Actuario", "Placa patente",
     "Status", "N° docs", "N° PDFs",
 ]
-DOCS_HEADER = ["ROL", "Job ID", "Sección", "Fecha", "Descripción", "PDF URL"]
+DOCS_HEADER = ["Caso ID", "ROL", "Job ID", "Sección", "Fecha", "Descripción", "PDF URL"]
+
+
+def _caso_id(job, rol):
+    """Unique per-case key: short job prefix + ROL. Distinguishes the same ROL
+    scraped across different jobs, and links the Causas/Documentos tabs."""
+    return f"{(job or '')[:8]}/{rol}"
 
 
 def fetch_rows(sb_url, sb_key, job_id=None):
@@ -69,9 +75,10 @@ def build_tables(rows):
         adjuntos = d.get("adjuntos") or []
         docs = tramites + adjuntos
         n_pdf = sum(1 for x in docs if x.get("pdf_url"))
+        cid = _caso_id(job, rol)
 
         causas.append([
-            rol, job, d.get("descripcion", ""), d.get("fecha_proceso", ""),
+            cid, rol, job, d.get("descripcion", ""), d.get("fecha_proceso", ""),
             d.get("juzgado", ""), causa.get("estado", ""),
             _join_parties(d.get("demandados")), _join_parties(d.get("demandantes")),
             causa.get("rol_inicio", ""), causa.get("actuario", ""),
@@ -79,10 +86,10 @@ def build_tables(rows):
             len(docs), n_pdf,
         ])
         for t in tramites:
-            documentos.append([rol, job, "Trámite", t.get("fecha", ""),
+            documentos.append([cid, rol, job, "Trámite", t.get("fecha", ""),
                                t.get("descripcion", ""), t.get("pdf_url", "")])
         for a in adjuntos:
-            documentos.append([rol, job, "Adjunto", a.get("fecha", ""),
+            documentos.append([cid, rol, job, "Adjunto", a.get("fecha", ""),
                                a.get("descripcion", ""), a.get("pdf_url", "")])
     return causas, documentos
 
