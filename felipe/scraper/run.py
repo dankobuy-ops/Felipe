@@ -561,6 +561,20 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         active = search_rut(active, args.search_code)
         records = get_results_list(active)
         records = filter_by_year(records, args.year)
+
+        # Dedupe by ROL: the results list can repeat a ROL, and checkpoints are
+        # keyed by (job_id, record_id), so a duplicate would collapse to one row
+        # and make the "all done" check unsatisfiable (job never completes).
+        seen_rol, unique = set(), []
+        for r in records:
+            rid = r.get("rol")
+            if rid and rid not in seen_rol:
+                seen_rol.add(rid)
+                unique.append(r)
+        if len(unique) != len(records):
+            log(f"[INFO] Deduped {len(records)} -> {len(unique)} unique ROLs")
+        records = unique
+
         results_url = active.url  # remember Level 2 URL to return after each detail
 
         # Tell the SPA the total count immediately so progress is accurate from the start
@@ -638,9 +652,13 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         ctx.close()
         browser.close()
 
-    final    = read_checkpoint(supabase_url, supabase_key, args.job_id)
-    done_count = sum(1 for k, v in final.items() if k != "__job__" and v == "done")
-    all_done = not hit_limit and done_count == len(records)
+    final = read_checkpoint(supabase_url, supabase_key, args.job_id)
+    # Completion = every target ROL has a 'done' checkpoint. Set-based so a
+    # duplicate ROL or a skipped empty row can't make this unsatisfiable.
+    target_rols = {r["rol"] for r in records if r.get("rol")}
+    done_rols   = {k for k, v in final.items()
+                   if k not in ("__job__", "__meta__") and v == "done"}
+    all_done = not hit_limit and target_rols.issubset(done_rols)
 
     if all_done and final:
         mark_job_status(supabase_url, supabase_key, args.job_id, "complete")
