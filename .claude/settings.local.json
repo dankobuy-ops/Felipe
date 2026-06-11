@@ -86,7 +86,20 @@
       "Bash(git ls-remote *)",
       "Bash(cmdkey /list)",
       "Bash(git restore *)",
-      "Bash(sed 's/^.. //')"
+      "Bash(sed 's/^.. //')",
+      "Bash(git rev-list *)",
+      "Bash(grep -rhA 200 \"DEBUG still-on-form\" t1/)",
+      "Bash(grep -rhA 400 \"DEBUG still-on-form\" t1/)",
+      "Bash(xxd)",
+      "mcp__claude_ai_Google_Drive__get_file_metadata",
+      "Bash(pip install *)",
+      "Bash(SUPABASE_URL=https://xjlpsgchgfxryvhhrklx.supabase.co SUPABASE_SERVICE_KEY=sb_secret_HOehhXtQUca0Fb9cEuM3oQ_6B9M-DK3 python felipe/scraper/export_sheets.py --webhook https://script.google.com/macros/s/AKfycbxHr6GUvqlO_3Yeo_1bxIQgDkcdIAUnuGFkkvD7iUU03fO4Zs7ChOiC-890bCcDbkY2zA/exec --all)",
+      "Bash(echo \"=== parent dir C:\\\\\\\\Claude contents ===\")",
+      "Bash(git -C /c/Claude/sga rev-parse --show-toplevel)",
+      "Bash(git -C /c/Claude/sga remote -v)",
+      "Bash(git -C /c/Claude/sga log --oneline -1)",
+      "Bash(rm -f felipe/scraper/_cleanup_fresh.py)",
+      "Bash(git filter-repo *)"
     ]
   }
 }
