@@ -26,6 +26,7 @@ def get_db():
 
 SCHEMAS = [
     "agenda",
+    "audiencia",
     "comunicacion",
     "configuracion",
     "contabilidad",

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"  # tolerate LOCAL_DATABASE_URL / CLOUD_DATABASE_URL used by sync_db.py
 
 
 settings = Settings()

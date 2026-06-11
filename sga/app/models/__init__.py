@@ -26,11 +26,17 @@ from app.models.comunicacion import (
     ComMateria, ComOtros,
 )
 
+# ── Esquema: audiencia ────────────────────────────────────────────────────────
+from app.models.audiencia import (
+    Lead, Campana, HitoFidelizacion,
+    OrigenLead, EstadoLead, EstadoCampana, TipoHito,
+)
+
 # ── Esquema: gestion ──────────────────────────────────────────────────────────
 from app.models.gestion import (
     # Enums (exportados para uso en routers/schemas)
     TipoRegistro, EstadoProspecto, EstadoNegocio, TipoMateria, Moneda,
-    EstadoSeguro, TipoDocumento, EstadoCuota, FormaPago,
+    EstadoSeguro, TipoDocumento, FormaPago,
     EstadoPoliza,
     # Modelos
     Registro, Cotizacion, Poliza,
@@ -73,9 +79,12 @@ __all__ = [
     "ComCliente", "ComCobranza", "ComComision", "ComDocumento",
     "ComLiquidacion", "ComPlanPago", "ComPoliza", "ComRegistro",
     "ComMateria", "ComOtros",
+    # audiencia
+    "Lead", "Campana", "HitoFidelizacion",
+    "OrigenLead", "EstadoLead", "EstadoCampana", "TipoHito",
     # gestion
     "TipoRegistro", "EstadoProspecto", "EstadoNegocio", "TipoMateria", "Moneda",
-    "EstadoSeguro", "TipoDocumento", "EstadoCuota", "FormaPago", "EstadoPoliza",
+    "EstadoSeguro", "TipoDocumento", "FormaPago", "EstadoPoliza",
     "Registro", "Cotizacion", "Poliza",
     "Documento", "Materia", "PlanPago", "Cuota",
     "Cobranza", "Solicitud", "Siniestro", "Comision",

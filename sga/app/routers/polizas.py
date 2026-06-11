@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models.gestion import (
     Poliza, Documento, PlanPago, Cuota,
-    EstadoPoliza, EstadoSeguro, TipoDocumento, EstadoCuota,
+    EstadoPoliza, EstadoSeguro, TipoDocumento,
 )
 from app.models.comunicacion import ComDocumento as ComunicacionDocumento
 from app.schemas.poliza import PolizaCreate, PolizaUpdate, PolizaOut
@@ -212,7 +212,7 @@ def emitir_poliza(poliza_id: int, data: EmitirInput, db: Session = Depends(get_d
             poliza_id=poliza.id,
             plan_pago_id=plan.id,
             numero_cuota=i + 1,
-            estado=EstadoCuota.pendiente,
+
             monto_clp=data.valor_cuota_clp,
             monto_uf=data.valor_cuota_uf,
             fecha_vencimiento=vcto,

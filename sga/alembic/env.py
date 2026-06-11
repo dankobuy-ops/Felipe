@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 config = context.config
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+# Escape '%' so configparser doesn't treat it as interpolation syntax
+# (DATABASE_URLs with URL-encoded chars like %25/%23 are common with cloud Postgres).
+config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"].replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -22,6 +24,7 @@ from app.models.operaciones import (
     CruceSegurosCia, CruceCoberturasProductos, CruceValoresXCotizacion,
 )
 from app.models.grupos import GrupoCliente, GrupoMateria, GrupoEntidad, CruceMateriasXRegistro
+from app.models.audiencia import Lead, Campana, HitoFidelizacion
 from app.models.comunicacion import (
     ComCliente, ComCobranza, ComComision, ComDocumento,
     ComLiquidacion, ComPlanPago, ComPoliza, ComRegistro, ComMateria, ComOtros,

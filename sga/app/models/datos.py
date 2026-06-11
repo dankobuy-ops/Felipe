@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from app.models.grupos import GrupoCliente, GrupoMateria
     from app.models.operaciones import Partner
     from app.models.cruce_tablas import RelacionRut
+    from app.models.audiencia import Lead, HitoFidelizacion
 
 
 class Personeria(str, enum.Enum):
@@ -157,6 +158,10 @@ class Rut(AppSheetMixin, Base):
         back_populates="rut_destino",
     )
 
+    # Audiencia (CRM): leads convertidos + hitos de fidelización
+    leads:              Mapped[list["Lead"]]             = relationship("Lead", back_populates="rut", foreign_keys="[Lead.rut_id]")
+    hitos_fidelizacion: Mapped[list["HitoFidelizacion"]] = relationship("HitoFidelizacion", back_populates="rut", foreign_keys="[HitoFidelizacion.rut_id]")
+
     @property
     def nombre_completo(self) -> str:
         if self.personeria == Personeria.juridica:
@@ -198,13 +203,14 @@ class Vehiculo(AppSheetMixin, Base):
     factura:     Mapped[Optional[str]] = mapped_column(String(200))
     guia_despacho: Mapped[Optional[str]] = mapped_column(String(200))
     papeles:     Mapped[Optional[str]] = mapped_column(String(500))
-    comentarios: Mapped[Optional[str]] = mapped_column(Text)
+    monto_asegurado: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     grupos_materia: Mapped[list["GrupoMateria"]] = relationship("GrupoMateria", back_populates="vehiculo", foreign_keys="[GrupoMateria.vehiculo_id]")
     otras: Mapped[list["Otra"]] = relationship("Otra", back_populates="vehiculo")
+    flotas_link: Mapped[list["FlotaXVehiculos"]] = relationship("FlotaXVehiculos", back_populates="vehiculo")
 
 
 # ─── Inmueble ─────────────────────────────────────────────────────────────────
@@ -246,7 +252,6 @@ class Inmueble(AppSheetMixin, Base):
     monto_unidades: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     monto_mercaderia: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     ficha:         Mapped[Optional[str]] = mapped_column(String(500))
-    comentarios:   Mapped[Optional[str]] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -269,7 +274,6 @@ class VidaSalud(AppSheetMixin, Base):
     peso:            Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     dps:             Mapped[Optional[str]]   = mapped_column(String(500))
     otros_documentos: Mapped[Optional[str]]  = mapped_column(String(500))
-    comentarios:     Mapped[Optional[str]]   = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -326,14 +330,76 @@ class Otra(AppSheetMixin, Base):
     tipo_otra:   Mapped[Optional[str]] = mapped_column(String(100))
     materia_asegurada: Mapped[Optional[str]] = mapped_column(String(300))
     informacion_adicional: Mapped[Optional[str]] = mapped_column(Text)
+    monto_asegurado: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     ficha:       Mapped[Optional[str]] = mapped_column(String(500))
-    comentarios: Mapped[Optional[str]] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     vehiculo: Mapped[Optional["Vehiculo"]] = relationship("Vehiculo", back_populates="otras")
     inmueble: Mapped[Optional["Inmueble"]] = relationship("Inmueble", back_populates="otras")
     grupos_materia: Mapped[list["GrupoMateria"]] = relationship("GrupoMateria", back_populates="otra", foreign_keys="[GrupoMateria.otra_id]")
+
+
+# ─── FlotaTransporte ──────────────────────────────────────────────────────────
+
+class FlotaTransporte(AppSheetMixin, Base):
+    """
+    Flota de transporte: grupo nombrado de vehículos + ficha técnica operacional.
+    Registro maestro reutilizable entre pólizas (sin FK a datos.rut).
+    La vinculación asegurado↔vehículos de la flota vive en grupos.grupo_materia
+    y cruce_tablas.flota_x_vehiculos.
+    """
+    __tablename__ = "flota_transporte"
+    __table_args__ = {"schema": "datos"}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+
+    # Identidad
+    nombre:      Mapped[str]           = mapped_column(String(200), nullable=False)
+    tipo_carga:  Mapped[Optional[str]] = mapped_column(String(100))
+    descripcion: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Ficha técnica operacional
+    zona_operacion:      Mapped[Optional[str]]   = mapped_column(String(300))
+    ruta_habitual:       Mapped[Optional[str]]   = mapped_column(String(500))
+    tipo_mercaderia:     Mapped[Optional[str]]   = mapped_column(String(200))
+    embalaje:            Mapped[Optional[str]]   = mapped_column(String(200))
+    almacenamiento:      Mapped[Optional[str]]   = mapped_column(String(200))
+    medidas_seguridad:   Mapped[Optional[str]]   = mapped_column(Text)
+    frecuencia_viajes:   Mapped[Optional[str]]   = mapped_column(String(100))
+    valor_max_por_viaje: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    historial_siniestros: Mapped[Optional[str]]  = mapped_column(Text)
+    notas_operacion:     Mapped[Optional[str]]   = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relaciones
+    vehiculos_link: Mapped[list["FlotaXVehiculos"]] = relationship("FlotaXVehiculos", back_populates="flota")
+    grupos_materia: Mapped[list["GrupoMateria"]] = relationship(
+        "GrupoMateria", back_populates="flota_transporte",
+        foreign_keys="[GrupoMateria.flota_transporte_id]",
+    )
+
+
+# ─── FlotaXVehiculos (cruce_tablas.flota_x_vehiculos) ─────────────────────────
+
+class FlotaXVehiculos(AppSheetMixin, Base):
+    """Puente M:N entre una flota y sus vehículos permanentes."""
+    __tablename__ = "flota_x_vehiculos"
+    __table_args__ = {"schema": "cruce_tablas"}
+
+    id:           Mapped[int]           = mapped_column(Integer, primary_key=True, index=True)
+    flota_id:     Mapped[int]           = mapped_column(Integer, ForeignKey("datos.flota_transporte.id"), nullable=False, index=True)
+    vehiculo_id:  Mapped[int]           = mapped_column(Integer, ForeignKey("datos.vehiculo.id"),        nullable=False, index=True)
+    asegurado_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("datos.rut.id"),            index=True)
+    rol:          Mapped[Optional[str]] = mapped_column(String(50))
+    activo:       Mapped[bool]          = mapped_column(Boolean, default=True, nullable=False)
+    created_at:   Mapped[datetime]      = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    flota:     Mapped["FlotaTransporte"] = relationship("FlotaTransporte", back_populates="vehiculos_link")
+    vehiculo:  Mapped["Vehiculo"]        = relationship("Vehiculo",        back_populates="flotas_link")
+    asegurado: Mapped[Optional["Rut"]]   = relationship("Rut",            foreign_keys=[asegurado_id])
 
 
 # Alias backward-compat

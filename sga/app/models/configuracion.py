@@ -4,7 +4,7 @@ Usuarios, parámetros globales, valores UF/USD.
 """
 from datetime import date, datetime
 from typing import Optional
-from sqlalchemy import String, Integer, Date, DateTime, Boolean, Numeric, Text, Enum
+from sqlalchemy import String, Integer, Date, DateTime, Boolean, Numeric, Text, Enum, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 import enum
@@ -65,3 +65,23 @@ class Parametro(Base):
 
     def __repr__(self) -> str:
         return f"<Parametro {self.clave}>"
+
+
+class VistaDinamica(Base):
+    """Configuración persistida de vistas por entidad y contexto."""
+    __tablename__ = "vista_dinamica"
+    __table_args__ = (
+        UniqueConstraint("entidad", "contexto", name="uq_vista_entidad_contexto"),
+        {"schema": "configuracion"},
+    )
+
+    id:              Mapped[int]            = mapped_column(Integer, primary_key=True, index=True)
+    entidad:         Mapped[str]            = mapped_column(String(100), nullable=False)
+    contexto:        Mapped[str]            = mapped_column(String(50),  nullable=False, default="dashboard")
+    tipo_vista:      Mapped[str]            = mapped_column(String(20),  nullable=False, default="table")
+    campos_visibles: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    created_at:      Mapped[datetime]       = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at:      Mapped[datetime]       = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self) -> str:
+        return f"<VistaDinamica {self.entidad}/{self.contexto} → {self.tipo_vista}>"

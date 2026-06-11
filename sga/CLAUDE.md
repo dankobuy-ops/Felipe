@@ -9,6 +9,21 @@ The **Precio/Cobertura** (Price/Coverage) ratio is absolute. NEVER write algorit
 filter, or rank results by broker commission amounts or commission percentages. The client's
 interest (best coverage for best price) is the only valid optimization criterion.
 
+**Scope of the rule:** it governs **client-facing recommendation, comparison, and ranking logic**
+— anything that decides or orders which coverage/option to surface to a client. That logic must
+never optimize for broker commission. It does **NOT** forbid commission as a plain **sortable column
+in internal accounting / reconciliation views**, where ordering by commission is legitimate back-office
+work (e.g., cross-checking a broker statement against the insurer's). The prohibition is about the
+optimization criterion for recommendations, not about whether commission data can ever be sorted.
+
+### LANGUAGE
+Always respond and write code in **English**, even when the user writes in Spanish. This applies
+to: console/chat replies, code comments, docstrings, and identifiers in new code.
+
+This does **NOT** apply to the database — schema names, table names, column names, enum values,
+and stored data stay in **Spanish** exactly as they are (`datos`, `gestion`, `numero_poliza`,
+`estado_seguro`, etc.). Commit messages also stay in Spanish per the convention below.
+
 ### ARCHITECTURE
 Strict adherence to the 9 semantic schemas: `datos`, `operaciones`, `gestion`, `contabilidad`,
 `grupos`, `comunicacion`, `agenda`, `cruce_tablas`, `configuracion`. Extend existing schemas.
@@ -20,6 +35,30 @@ NEVER create independent data silos or tables outside this taxonomy.
 - All endpoints MUST use server-side pagination (`limit` + `offset`). Fetching unbounded result
   sets is forbidden in new code.
 - Use the custom skills (`.claude/skills/`) as enforcement gates before submitting code.
+
+### DATABASE WORKFLOW (cloud + local, both kept in sync)
+Two databases exist for this project:
+- **LOCAL** (`LOCAL_DATABASE_URL` in `.env`) — what the app actually points at during dev. Fast,
+  no network latency, used for everything while coding.
+- **CLOUD** (`CLOUD_DATABASE_URL` in `.env`, Supabase São Paulo) — the multi-PC source of truth.
+  Holds the canonical state shared between machines.
+
+**Rule for every commit:**
+1. `git add` + `git commit` as usual.
+2. **Immediately run `python scripts/sync_db.py to-cloud`** before `git push`. This mirrors the
+   local DB state (schema + data) up to Supabase so the other PC will see it.
+3. `git push`.
+
+**Rule when starting a session on any PC (or after pulling on the other PC):**
+- Run `python scripts/sync_db.py from-cloud` to refresh local with the latest cloud state.
+  This is the "git pull for the database."
+
+Skip the sync only for commits that demonstrably don't touch the DB (pure docs, pure frontend
+styling). When in doubt, sync — it's idempotent and cheap (~30–60s for ~11k rows).
+
+`sync_db.py` is bidirectional, uses `session_replication_role = 'replica'` to defer FK checks
+during copy, and stamps `alembic_version` on the destination to match the source. Source replaces
+destination — any rows that only exist on dest are lost. That is intentional.
 
 ## Template: Datos Materias
 
@@ -268,3 +307,21 @@ venv/Scripts/python scripts/seed_from_csv.py
 # Reset DB
 venv/Scripts/python scripts/reset_db.py
 ```
+
+## Comando personalizado: "full sga update"
+
+Cuando el usuario escriba **"full sga update"** (o variantes cercanas como "full update",
+"sga update", "ponme al día"), ejecutar estos pasos en orden y sin preguntar:
+
+1. `git pull origin main` — traer últimos cambios del repo
+2. `venv/Scripts/alembic upgrade head` — aplicar migraciones pendientes (si las hay)
+3. Leer `CLAUDE_HANDOFF.md` completo
+4. Responder con un resumen estructurado:
+   - **Git HEAD actual** (hash + mensaje del commit)
+   - **Alembic head** (revision ID)
+   - **Últimos 5 commits** (oneline)
+   - **Estado general** (qué está funcionando)
+   - **Próximo paso recomendado** (el primero de la lista de prioridades en CLAUDE_HANDOFF.md)
+   - Preguntar al usuario por dónde quiere empezar
+
+No hacer nada más hasta que el usuario indique qué tarea abordar.

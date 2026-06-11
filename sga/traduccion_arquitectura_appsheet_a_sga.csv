@@ -1,0 +1,610 @@
+﻿Tabla_AppSheet_Origen,Campo_AppSheet_Origen,Tabla_PostgreSQL_Destino,Campo_PostgreSQL_Destino,Tipo_de_Dato_o_Relacion,Explicacion_Arquitectonica
+Agenda Categorías,ID,agenda.categoria,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Agenda Categorías,Categoría,agenda.categoria,categoria,VARCHAR(150),
+Agenda Obligaciones,ID,agenda.obligacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Agenda Obligaciones,Categoria,agenda.obligacion,categoria_id,FK → agenda.categoria,FK resuelta vía maps[...] (appsheet_id → id)
+Agenda Obligaciones,Entidad,agenda.obligacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Agenda Obligaciones,Compañía,agenda.obligacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Agenda Obligaciones,Póliza,agenda.obligacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Agenda Obligaciones,Partner,agenda.obligacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Agenda Obligaciones,Gestor,agenda.obligacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Agenda Obligaciones,Nombre,agenda.obligacion,nombre,VARCHAR(200),
+Agenda Obligaciones,Descripcion,agenda.obligacion,descripcion,TEXT,
+Agenda Obligaciones,Frecuencia,agenda.obligacion,frecuencia,VARCHAR(7),
+Agenda Obligaciones,Intervalo,agenda.obligacion,intervalo,INTEGER,
+Agenda Obligaciones,DiaDelMes,agenda.obligacion,dia_del_mes,INTEGER,
+Agenda Obligaciones,MesDelAño,agenda.obligacion,mes_del_anio,INTEGER,
+Agenda Obligaciones,DiaSemana,agenda.obligacion,dia_semana,VARCHAR(15),
+Agenda Obligaciones,FechaInicio,agenda.obligacion,fecha_inicio,DATE,
+Agenda Obligaciones,FechaFin,agenda.obligacion,fecha_fin,DATE,
+Agenda Obligaciones,Activa,agenda.obligacion,activa,BOOLEAN,
+Agenda Obligaciones,Prioridad,agenda.obligacion,prioridad,VARCHAR(5),
+Agenda Obligaciones,DiasAnticipacionAviso,agenda.obligacion,dias_anticipacion,INTEGER,
+Agenda Obligaciones,UltimaGeneracion,agenda.obligacion,ultima_generacion,DATE,
+Agenda Obligaciones,FechaCreacion,agenda.obligacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Agenda Obligaciones,FechaActualizacion,agenda.obligacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Comunicación Clientes,ID,comunicacion.com_cliente,appsheet_id,VARCHAR(50),Tabla espejo 1:1
+Comunicación Clientes,Fecha,comunicacion.com_cliente,fecha,DATE,Tabla espejo 1:1
+Comunicación Clientes,Estado,comunicacion.com_cliente,estado,VARCHAR(50),Tabla espejo 1:1
+Comunicación Clientes,Cliente,comunicacion.com_cliente,grupo_cliente_id,FK → grupos.grupo_cliente,Tabla espejo 1:1 · FK resuelta vía maps[...] (appsheet_id → id)
+Comunicación Clientes,Correo Cliente,comunicacion.com_cliente,correo_cliente,VARCHAR(150),Tabla espejo 1:1
+Comunicación Clientes,CC Envío,comunicacion.com_cliente,cc_envio,VARCHAR(300),Tabla espejo 1:1
+Comunicación Clientes,CC Correos,comunicacion.com_cliente,cc_correos,VARCHAR(300),Tabla espejo 1:1
+Comunicación Clientes,Tipo de Envío,comunicacion.com_cliente,tipo_envio,VARCHAR(60),Tabla espejo 1:1
+Comunicación Clientes,Asunto,comunicacion.com_cliente,asunto,VARCHAR(300),Tabla espejo 1:1
+Comunicación Clientes,Cuerpo Inicial,comunicacion.com_cliente,cuerpo_inicial,TEXT,Tabla espejo 1:1
+Comunicación Clientes,Cuerpo Final,comunicacion.com_cliente,cuerpo_final,TEXT,Tabla espejo 1:1
+Comunicación Clientes,Comentarios,comunicacion.com_cliente,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Comunicación Clientes,Respuesta,comunicacion.com_cliente,respuesta,TEXT,Tabla espejo 1:1
+Comunicación Clientes,Envío,comunicacion.com_cliente,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Comunicación Clientes,HTML,comunicacion.com_cliente,html,TEXT,Tabla espejo 1:1
+Comunicación Clientes,Impresión,comunicacion.com_cliente,impresion,VARCHAR(500),Tabla espejo 1:1
+Comunicación Clientes,PDF,comunicacion.com_cliente,pdf_url,VARCHAR(500),Tabla espejo 1:1
+Comunicación Clientes,Envíos,comunicacion.com_cliente,n_envios,INTEGER,Tabla espejo 1:1
+Contabilidad Cartolas,ID,contabilidad.cartola,appsheet_id,VARCHAR(50),
+Contabilidad Cartolas,Banco,contabilidad.cartola,banco_id,FK → operaciones.banco,FK resuelta vía maps[...] (appsheet_id → id)
+Contabilidad Cartolas,Cta,contabilidad.cartola,numero_cuenta,VARCHAR(50),
+Contabilidad Cartolas,N°,contabilidad.cartola,numero,VARCHAR(50),
+Contabilidad Cartolas,Desde,contabilidad.cartola,desde,DATE,
+Contabilidad Cartolas,Hasta,contabilidad.cartola,hasta,DATE,
+Contabilidad Cartolas,PDF,contabilidad.cartola,pdf_url,VARCHAR(500),
+Contabilidad Contables,ID,contabilidad.contable,appsheet_id,VARCHAR(50),
+Contabilidad Contables,Tipo Movimiento,contabilidad.contable,tipo_movimiento,VARCHAR(50),
+Contabilidad Contables,Tipo Compra,contabilidad.contable,tipo_compra,VARCHAR(50),
+Contabilidad Contables,Tipo Documento,contabilidad.contable,tipo_documento,VARCHAR(60),
+Contabilidad Contables,Tipo Factura,contabilidad.contable,tipo_factura,VARCHAR(60),
+Contabilidad Contables,Estado Documento,contabilidad.contable,estado_documento,VARCHAR(50),
+Contabilidad Contables,Fecha,contabilidad.contable,fecha,DATE,
+Contabilidad Contables,N°,contabilidad.contable,numero,VARCHAR(50),
+Contabilidad Contables,Glosa,contabilidad.contable,glosa,VARCHAR(300),
+Contabilidad Contables,Entidad,contabilidad.contable,entidad_rut_id,FK → datos.rut,Colapsado: Entidad (Grupos Entidades) → rut_id
+Contabilidad Contables,Afecta,contabilidad.contable,afecta,"NUMERIC(14, 0)",
+Contabilidad Contables,Exenta,contabilidad.contable,exenta,"NUMERIC(14, 0)",
+Contabilidad Contables,Iva,contabilidad.contable,iva,"NUMERIC(14, 0)",
+Contabilidad Contables,Total,contabilidad.contable,total,"NUMERIC(14, 0)",
+Contabilidad Contables,Sueldo,contabilidad.contable,sueldo,"NUMERIC(14, 0)",
+Contabilidad Contables,Previred,contabilidad.contable,previred,"NUMERIC(14, 0)",
+Contabilidad Contables,Bruto,contabilidad.contable,bruto,"NUMERIC(14, 0)",
+Contabilidad Contables,Retención,contabilidad.contable,retencion,"NUMERIC(14, 0)",
+Contabilidad Contables,Líquido,contabilidad.contable,liquido,"NUMERIC(14, 0)",
+Contabilidad Contables,Cta Cte,contabilidad.contable,cta_cte_id,FK → contabilidad.cta_cte,FK resuelta vía maps[...] (appsheet_id → id)
+Contabilidad Contables,Archivo,contabilidad.contable,archivo,VARCHAR(500),
+Contabilidad Contables,Doc Ingresado?,contabilidad.contable,doc_ingresado,BOOLEAN,
+Contabilidad Contables,N° Ingreso,contabilidad.contable,n_ingreso,VARCHAR(50),
+Contabilidad Contables,Origen Dinero,contabilidad.contable,origen_dinero,VARCHAR(100),
+Contabilidad Contables,Datos Declaración,contabilidad.contable,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Contabilidad Contables,Certificado Declaración,contabilidad.contable,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Contabilidad Contables,Formulario Compacto,contabilidad.contable,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Contabilidad Contables,Comprobante Pago,contabilidad.contable,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Contabilidad Contables,Comentarios,contabilidad.contable,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Contabilidad Cta Cte,ID,contabilidad.cta_cte,appsheet_id,VARCHAR(50),
+Contabilidad Cta Cte,Banco,contabilidad.cta_cte,banco_id,FK → operaciones.banco,FK resuelta vía maps[...] (appsheet_id → id)
+Contabilidad Cta Cte,Fecha,contabilidad.cta_cte,fecha,DATE,
+Contabilidad Cta Cte,Categoría,contabilidad.cta_cte,categoria,VARCHAR(100),
+Contabilidad Cta Cte,Tipo Movimiento,contabilidad.cta_cte,tipo_movimiento,VARCHAR(60),
+Contabilidad Cta Cte,Tipo Transacción,contabilidad.cta_cte,tipo_transaccion,VARCHAR(60),
+Contabilidad Cta Cte,N° Identificador,contabilidad.cta_cte,n_identificador,VARCHAR(60),
+Contabilidad Cta Cte,Rut,contabilidad.cta_cte,rut_id,FK → datos.rut,FK resuelta vía maps[...] (appsheet_id → id)
+Contabilidad Cta Cte,Detalle,contabilidad.cta_cte,detalle,VARCHAR(300),
+Contabilidad Cta Cte,Monto,contabilidad.cta_cte,monto,"NUMERIC(14, 0)",
+Contabilidad Cta Cte,Tipo de Ingreso,contabilidad.cta_cte,tipo_ingreso,VARCHAR(60),
+Contabilidad Cta Cte,Descripción,contabilidad.cta_cte,descripcion,TEXT,
+Contabilidad Cta Cte,N° Doc,contabilidad.cta_cte,n_doc,VARCHAR(50),
+Contabilidad Cta Cte,Cargos,contabilidad.cta_cte,cargos,"NUMERIC(14, 0)",
+Contabilidad Cta Cte,Abonos,contabilidad.cta_cte,abonos,"NUMERIC(14, 0)",
+Contabilidad Cta Cte,Saldo Diario,contabilidad.cta_cte,saldo_diario,"NUMERIC(14, 0)",
+Contabilidad Cta Cte,Cartola,contabilidad.cta_cte,cartola_id,FK → contabilidad.cartola,FK resuelta vía maps[...] (appsheet_id → id)
+Contabilidad FECU,ID,contabilidad.fecu,appsheet_id,VARCHAR(50),
+Contabilidad FECU,Periodo,contabilidad.fecu,periodo,VARCHAR(20),
+Contabilidad FECU,Compañía,contabilidad.fecu,compania_id,FK → operaciones.compania,FK resuelta vía maps[...] (appsheet_id → id)
+Contabilidad FECU,PDF,contabilidad.fecu,pdf_url,VARCHAR(500),
+Contabilidad FECU,Carga CMF,contabilidad.fecu,carga_cmf,BOOLEAN,
+Contabilidad FECU,Comprobante,contabilidad.fecu,comprobante,VARCHAR(50),
+Contabilidad Liquidaciones,ID,contabilidad.liquidacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Contabilidad Liquidaciones,N° Liquidación,contabilidad.liquidacion,n_liquidacion,VARCHAR(50),
+Contabilidad Liquidaciones,Fecha,contabilidad.liquidacion,fecha,DATE,
+Contabilidad Liquidaciones,Partner,contabilidad.liquidacion,partner_id,FK → operaciones.partner,FK resuelta vía maps[...] (appsheet_id → id)
+Contabilidad Liquidaciones,Glosa,contabilidad.liquidacion,glosa,VARCHAR(300),
+Contabilidad Liquidaciones,Monto Neto,contabilidad.liquidacion,monto_neto,"NUMERIC(14, 2)",
+Contabilidad Liquidaciones,Fecha Pago,contabilidad.liquidacion,fecha_pago,DATE,
+Contabilidad Liquidaciones,PDF,contabilidad.liquidacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Contabilidad PPM,ID,contabilidad.ppm,appsheet_id,VARCHAR(50),
+Contabilidad PPM,Fecha,contabilidad.ppm,fecha,DATE,
+Contabilidad PPM,PPM,contabilidad.ppm,tasa_ppm,"NUMERIC(5, 2)",
+Contabilidad PPM,Remanente Crédito Mes Anterior,contabilidad.ppm,remanente_credito,"NUMERIC(14, 0)",
+Cruce CuotasXCobranza,ID,cruce_tablas.cuotas_x_cobranza,appsheet_id,Puente N:M,Tabla puente N:M
+Cruce CuotasXCobranza,Cobranza,cruce_tablas.cuotas_x_cobranza,cobranza_id,Puente N:M · FK → gestion.cobranza,Tabla puente N:M
+Cruce CuotasXCobranza,Cuota,cruce_tablas.cuotas_x_cobranza,cuota_id,Puente N:M · FK → gestion.cuota,Tabla puente N:M
+Cruce DocumentosXComisión,ID,cruce_tablas.documentos_x_comision,appsheet_id,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Comisión Emitida,cruce_tablas.documentos_x_comision,comision_id,Puente N:M · FK → gestion.comision,Tabla puente N:M
+Cruce DocumentosXComisión,Documento,cruce_tablas.documentos_x_comision,documento_id,Puente N:M · FK → gestion.documento,Tabla puente N:M
+Cruce DocumentosXComisión,Tipo,cruce_tablas.documentos_x_comision,tipo,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Afecto UF,cruce_tablas.documentos_x_comision,afecto_uf,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Exento UF,cruce_tablas.documentos_x_comision,exento_uf,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Cambio UF,cruce_tablas.documentos_x_comision,cambio_uf,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Afecto $,cruce_tablas.documentos_x_comision,afecto_clp,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Exento $,cruce_tablas.documentos_x_comision,exento_clp,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Afecto USD,cruce_tablas.documentos_x_comision,afecto_usd,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Exento USD,cruce_tablas.documentos_x_comision,exento_usd,Puente N:M,Tabla puente N:M
+Cruce DocumentosXComisión,Cambio USD,cruce_tablas.documentos_x_comision,cambio_usd,Puente N:M,Tabla puente N:M
+Cruce DocumentosXLiquidación,ID,cruce_tablas.documentos_x_liquidacion,appsheet_id,Puente N:M,Tabla puente N:M
+Cruce DocumentosXLiquidación,Liquidación Base,cruce_tablas.documentos_x_liquidacion,liquidacion_id,Puente N:M · FK → contabilidad.liquidacion,Tabla puente N:M
+Cruce DocumentosXLiquidación,Documento,cruce_tablas.documentos_x_liquidacion,documento_id,Puente N:M · FK → gestion.documento,Tabla puente N:M
+Cruce FacturasXComisión,ID,cruce_tablas.facturas_x_comision,appsheet_id,Puente N:M,Tabla puente N:M
+Cruce FacturasXComisión,Comisión Base,cruce_tablas.facturas_x_comision,comision_id,Puente N:M · FK → gestion.comision,Tabla puente N:M
+Cruce FacturasXComisión,Factura,cruce_tablas.facturas_x_comision,contable_id,Puente N:M · FK → contabilidad.contable,Tabla puente N:M
+Cruce ItemsXEnvíoCliente,ID,cruce_tablas.items_x_envio_cliente,appsheet_id,Puente N:M,Tabla puente N:M
+Cruce ItemsXEnvíoCliente,Envío,cruce_tablas.items_x_envio_cliente,com_cliente_id,Puente N:M · FK → comunicacion.com_cliente,Tabla puente N:M
+Cruce ItemsXEnvíoCliente,Registros,cruce_tablas.items_x_envio_cliente,registro_id,Puente N:M · FK → gestion.registro,Tabla puente N:M · FK resuelta vía maps[...] (appsheet_id → id)
+Cruce ItemsXEnvíoCliente,Pólizas,cruce_tablas.items_x_envio_cliente,poliza_id,Puente N:M · FK → gestion.poliza,Tabla puente N:M · FK resuelta vía maps[...] (appsheet_id → id)
+Cruce ItemsXEnvíoCliente,Materias,cruce_tablas.items_x_envio_cliente,materia_id,Puente N:M · FK → gestion.materia,Tabla puente N:M · FK resuelta vía maps[...] (appsheet_id → id)
+Cruce MateriasXRegistro,ID,cruce_tablas.materias_x_registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Cruce MateriasXRegistro,Registro,cruce_tablas.materias_x_registro,registro_id,Puente N:M · FK → gestion.registro,Tabla puente N:M
+Cruce MateriasXRegistro,Grupo Materia,cruce_tablas.materias_x_registro,grupo_materia_id,Puente N:M · FK → grupos.grupo_materia,Tabla puente N:M
+Cruce RegistrosXPólizas,ID,cruce_tablas.registros_x_polizas,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Cruce RegistrosXPólizas,Registro,cruce_tablas.registros_x_polizas,registro_id,Puente N:M · FK → gestion.registro,Tabla puente N:M
+Cruce RegistrosXPólizas,Póliza,cruce_tablas.registros_x_polizas,poliza_id,Puente N:M · FK → gestion.poliza,Tabla puente N:M
+Cruce SegurosXCía,ID,cruce_tablas.seguros_x_cia,appsheet_id,Puente N:M,Tabla puente N:M
+Cruce SegurosXCía,Seguro,cruce_tablas.seguros_x_cia,seguro_id,Puente N:M · FK → operaciones.seguro,Tabla puente N:M
+Cruce SegurosXCía,Compañía,cruce_tablas.seguros_x_cia,compania_id,Puente N:M · FK → operaciones.compania,Tabla puente N:M
+Cruce ValoresXCotización,ID,cruce_tablas.valores_x_cotizacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Cruce ValoresXCotización,Cotización,cruce_tablas.valores_x_cotizacion,cotizacion_id,Puente N:M · FK → gestion.cotizacion,Tabla puente N:M
+Cruce ValoresXCotización,Plan,cruce_tablas.valores_x_cotizacion,plan_id,Puente N:M · FK → operaciones.plan,Tabla puente N:M
+Cruce ValoresXCotización,UF Prima Afecta,cruce_tablas.valores_x_cotizacion,uf_prima_afecta,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,UF Prima Exenta,cruce_tablas.valores_x_cotizacion,uf_prima_exenta,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,UF Cuota,cruce_tablas.valores_x_cotizacion,uf_cuota,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,CLP Prima Afecta,cruce_tablas.valores_x_cotizacion,clp_prima_afecta,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,CLP Prima Exenta,cruce_tablas.valores_x_cotizacion,clp_prima_exenta,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,CLP Cuota,cruce_tablas.valores_x_cotizacion,clp_cuota,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,USD Prima Afecta,cruce_tablas.valores_x_cotizacion,usd_prima_afecta,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,USD Prima Exenta,cruce_tablas.valores_x_cotizacion,usd_prima_exenta,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,USD Cuota,cruce_tablas.valores_x_cotizacion,usd_cuota,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,Tasa Afecta,cruce_tablas.valores_x_cotizacion,tasa_afecta,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,Tasa Exenta,cruce_tablas.valores_x_cotizacion,tasa_exenta,Puente N:M,Tabla puente N:M
+Cruce ValoresXCotización,Cambio Moneda,cruce_tablas.valores_x_cotizacion,cambio_moneda,Puente N:M,Tabla puente N:M
+Datos Inmuebles,ID,datos.inmueble,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Inmuebles,Comentarios,datos.inmueble,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Datos Inmuebles,Tipo Inmueble,datos.inmueble,tipo_inmueble,VARCHAR(12),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Calle,datos.inmueble,calle,VARCHAR(200),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Número,datos.inmueble,numero,VARCHAR(20),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Detalles Dirección,datos.inmueble,detalles_dir,VARCHAR(200),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Comuna,datos.inmueble,comuna_id,FK → operaciones.comuna,Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Uso,datos.inmueble,uso,VARCHAR(12),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Ocupación,datos.inmueble,ocupacion,VARCHAR(10),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Zona,datos.inmueble,zona,VARCHAR(60),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Distancia Agua,datos.inmueble,distancia_agua,VARCHAR(60),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Tipo Construcción,datos.inmueble,tipo_construccion,VARCHAR(60),Template Datos Materias (sin propietario_id)
+Datos Inmuebles,N° Torres,datos.inmueble,n_torres,INTEGER,Template Datos Materias (sin propietario_id)
+Datos Inmuebles,N° Pisos,datos.inmueble,n_pisos,INTEGER,Template Datos Materias (sin propietario_id)
+Datos Inmuebles,N° Subterráneos,datos.inmueble,n_subterraneos,INTEGER,Template Datos Materias (sin propietario_id)
+Datos Inmuebles,N° Unidades,datos.inmueble,n_unidades,INTEGER,Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Año Construcción,datos.inmueble,anio_construccion,INTEGER,Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Mt2 Construido,datos.inmueble,mt2_construido,"NUMERIC(10, 2)",Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Adicional Inmueble,datos.inmueble,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Inmuebles,Espacios Comunes,datos.inmueble,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Inmuebles,Seguridad Incendio,datos.inmueble,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Inmuebles,Seguridad Robo,datos.inmueble,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Inmuebles,N° Trabajadores,datos.inmueble,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Inmuebles,Monto Edificio,datos.inmueble,monto_edificio,"NUMERIC(14, 2)",Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Monto Contenidos,datos.inmueble,monto_contenidos,"NUMERIC(14, 2)",Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Monto Unidades,datos.inmueble,monto_unidades,"NUMERIC(14, 2)",Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Monto Mercadería,datos.inmueble,monto_mercaderia,"NUMERIC(14, 2)",Template Datos Materias (sin propietario_id)
+Datos Inmuebles,Ficha,datos.inmueble,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Ruts,ID,datos.rut,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Ruts,Comentarios,datos.rut,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Datos Ruts,Tipo Cliente,datos.rut,tipo_cliente,VARCHAR(10),
+Datos Ruts,Cliente,datos.rut,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Ruts,Partner,datos.rut,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Ruts,Personería,datos.rut,personeria,VARCHAR(8),
+Datos Ruts,Rut,datos.rut,rut,VARCHAR(15),
+Datos Ruts,Razón Social,datos.rut,razon_social,VARCHAR(200),
+Datos Ruts,Razón Social,datos.rut,razon_social,VARCHAR(200),
+Datos Ruts,Nombre,datos.rut,nombre,VARCHAR(100),
+Datos Ruts,2do Nombre,datos.rut,nombre2,VARCHAR(100),
+Datos Ruts,Paterno,datos.rut,apellido_paterno,VARCHAR(100),
+Datos Ruts,Materno,datos.rut,apellido_materno,VARCHAR(100),
+Datos Ruts,Corto,datos.rut,corto,VARCHAR(80),
+Datos Ruts,Correo,datos.rut,email,VARCHAR(150),
+Datos Ruts,Correo 2,datos.rut,email2,VARCHAR(150),
+Datos Ruts,Celular,datos.rut,telefono,VARCHAR(25),
+Datos Ruts,Fijo,datos.rut,telefono_secundario,VARCHAR(25),
+Datos Ruts,Ayuda Domicilio,datos.rut,direccion,VARCHAR(500),
+Datos Ruts,Domicilio,datos.rut,direccion,VARCHAR(500),
+Datos Ruts,Detalles Domicilio,datos.rut,depto,VARCHAR(200),
+Datos Ruts,Sexo,datos.rut,sexo,VARCHAR(9),
+Datos Ruts,Relación Cliente,datos.rut,relacion_cliente,VARCHAR(100),
+Datos Ruts,Rubro/Giro,datos.rut,giro,VARCHAR(200),
+Datos Ruts,Tarjeta Crédito,datos.rut,tarjeta_credito,VARCHAR(50),
+Datos Ruts,Cuenta Corriente,datos.rut,cuenta_corriente,VARCHAR(100),
+Datos Ruts,Fecha Nacimiento,datos.rut,fecha_nacimiento,DATE,
+Datos Ruts,Contacto,datos.rut,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Ruts,(derivado),datos.rut,activo,BOOLEAN,Derivado: True
+Datos Vehículos,ID,datos.vehiculo,patente,VARCHAR(15),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Comentarios,datos.vehiculo,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Datos Vehículos,Categoría,datos.vehiculo,categoria,VARCHAR(12),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Tipo Vehículo,datos.vehiculo,tipo_vehiculo,VARCHAR(23),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Patente,datos.vehiculo,patente,VARCHAR(15),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Marca,datos.vehiculo,marca,VARCHAR(80),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Modelo,datos.vehiculo,modelo,VARCHAR(100),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Año,datos.vehiculo,anio,INTEGER,Template Datos Materias (sin propietario_id)
+Datos Vehículos,Color,datos.vehiculo,color,VARCHAR(50),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Motor,datos.vehiculo,motor,VARCHAR(60),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Chasis,datos.vehiculo,chasis,VARCHAR(60),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Versión,datos.vehiculo,version,VARCHAR(100),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Combustible,datos.vehiculo,combustible,VARCHAR(17),Template Datos Materias (sin propietario_id)
+Datos Vehículos,N° Serie,datos.vehiculo,n_serie,VARCHAR(60),Template Datos Materias (sin propietario_id)
+Datos Vehículos,Factura,datos.vehiculo,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Vehículos,Guía Despacho,datos.vehiculo,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Datos Vehículos,Papeles,datos.vehiculo,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cobranza,ID,gestion.cobranza,appsheet_id,VARCHAR(50),
+Gestión Cobranza,Fecha Registro,gestion.cobranza,fecha_registro,DATE,
+Gestión Cobranza,Destinatario,gestion.cobranza,destinatario_id,FK → grupos.grupo_cliente,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Cobranza,Monto Nominal,gestion.cobranza,monto_nominal,"NUMERIC(14, 2)",
+Gestión Cobranza,Cobrado,gestion.cobranza,cobrado,"NUMERIC(14, 2)",
+Gestión Cobranza,Pagado,gestion.cobranza,pagado,"NUMERIC(14, 2)",
+Gestión Cobranza,Diferencia Pagado/Nominal,gestion.cobranza,diferencia,"NUMERIC(14, 2)",
+Gestión Cobranza,C/UF Cobro,gestion.cobranza,c_uf_cobro,"NUMERIC(10, 4)",
+Gestión Cobranza,C/UF Pago,gestion.cobranza,c_uf_pago,"NUMERIC(10, 4)",
+Gestión Cobranza,C/USD Cobro,gestion.cobranza,c_usd_cobro,"NUMERIC(10, 2)",
+Gestión Cobranza,C/USD Pago,gestion.cobranza,c_usd_pago,"NUMERIC(10, 2)",
+Gestión Cobranza,Comentarios,gestion.cobranza,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Cobranza,Verificador Acción,gestion.cobranza,verificador_accion,VARCHAR(200),
+Gestión Comisiones,ID,gestion.comision,appsheet_id,VARCHAR(50),
+Gestión Comisiones,Compañía,gestion.comision,compania_id,FK → operaciones.compania,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Comisiones,Tipo,gestion.comision,tipo,VARCHAR(50),
+Gestión Comisiones,Movimiento,gestion.comision,movimiento,VARCHAR(50),
+Gestión Comisiones,Cantidad Documentos,gestion.comision,cantidad_documentos,INTEGER,
+Gestión Comisiones,Fecha Liquidación,gestion.comision,fecha_liquidacion,DATE,
+Gestión Comisiones,N° Liquidación,gestion.comision,n_liquidacion,VARCHAR(50),
+Gestión Comisiones,Facturación,gestion.comision,facturacion,VARCHAR(200),
+Gestión Comisiones,Monto Afecto,gestion.comision,monto_afecto,"NUMERIC(14, 2)",
+Gestión Comisiones,Monto Exento,gestion.comision,monto_exento,"NUMERIC(14, 2)",
+Gestión Comisiones,Liquidación,gestion.comision,liquidacion_pdf,VARCHAR(500),
+Gestión Comisiones,Detalle,gestion.comision,detalle,TEXT,
+Gestión Comisiones,Comentarios,gestion.comision,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Cotizaciones,ID,gestion.cotizacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cotizaciones,Registro,gestion.cotizacion,registro_id,FK → gestion.registro,
+Gestión Cotizaciones,Fecha Cot,gestion.cotizacion,fecha_cot,DATE,
+Gestión Cotizaciones,Vigencia,gestion.cotizacion,vigencia_dias,INTEGER,
+Gestión Cotizaciones,N° Cot,gestion.cotizacion,numero_cot,VARCHAR(50),
+Gestión Cotizaciones,Producto,gestion.cotizacion,producto_id,FK → operaciones.producto,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Cotizaciones,Monto Asegurado,gestion.cotizacion,monto_asegurado,"NUMERIC(14, 2)",
+Gestión Cotizaciones,Forma de Pago,gestion.cotizacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cotizaciones,Cuotas,gestion.cotizacion,n_cuotas,INTEGER,
+Gestión Cotizaciones,Descuento Adicional,gestion.cotizacion,descuento_adicional,"NUMERIC(5, 2)",
+Gestión Cotizaciones,Promoción,gestion.cotizacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cotizaciones,PDF,gestion.cotizacion,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cotizaciones,Aceptada?,gestion.cotizacion,aceptada,BOOLEAN,
+Gestión Cotizaciones,Plan Aceptado,gestion.cotizacion,plan_aceptado,VARCHAR(200),
+Gestión Cotizaciones,Recomendada?,gestion.cotizacion,recomendada,BOOLEAN,
+Gestión Cotizaciones,Deducible Recomendado,gestion.cotizacion,deducible_recomendado,VARCHAR(200),
+Gestión Cotizaciones,Comentarios,gestion.cotizacion,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Cuotas,ID,gestion.cuota,appsheet_id,VARCHAR(50),
+Gestión Cuotas,Control Pago,gestion.cuota,control_pago,VARCHAR(30),
+Gestión Cuotas,Plan de Pago,gestion.cuota,poliza_id,FK → gestion.poliza,
+Gestión Cuotas,Plan de Pago,gestion.cuota,plan_pago_id,FK → gestion.plan_pago,
+Gestión Cuotas,N° Cuota,gestion.cuota,numero_cuota,INTEGER,
+Gestión Cuotas,Vencimiento,gestion.cuota,vencimiento,DATE,
+Gestión Cuotas,Vencimiento,gestion.cuota,fecha_vencimiento,DATE,
+Gestión Cuotas,Valor UF,gestion.cuota,valor_uf,"NUMERIC(10, 4)",
+Gestión Cuotas,Valor CLP,gestion.cuota,valor_clp,"NUMERIC(14, 2)",
+Gestión Cuotas,Valor USD,gestion.cuota,valor_usd,"NUMERIC(10, 2)",
+Gestión Cuotas,Fecha Pago,gestion.cuota,fecha_pago,DATE,
+Gestión Cuotas,Monto $,gestion.cuota,monto_clp,"NUMERIC(14, 2)",
+Gestión Cuotas,N° Ingreso,gestion.cuota,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cuotas,Pago,gestion.cuota,estado,VARCHAR(9),
+Gestión Cuotas,Recibo,gestion.cuota,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cuotas,Factura,gestion.cuota,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cuotas,Cursado,gestion.cuota,cursado,BOOLEAN,
+Gestión Cuotas,FA Enviada,gestion.cuota,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cuotas,Cobrada,gestion.cuota,cobrada,BOOLEAN,
+Gestión Cuotas,Cobro Automático,gestion.cuota,cobro_automatico,BOOLEAN,
+Gestión Cuotas,Cobrar?,gestion.cuota,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Cuotas,Comentarios,gestion.cuota,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Documentos,ID,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Documentos,Póliza,gestion.documento,poliza_id,FK → gestion.poliza,
+Gestión Documentos,Fecha Emisión,gestion.documento,fecha_emision,DATE,
+Gestión Documentos,Tipo Documento,gestion.documento,tipo_documento,VARCHAR(14),
+Gestión Documentos,I Vigencia,gestion.documento,fecha_inicio,DATE,
+Gestión Documentos,F Vigencia,gestion.documento,fecha_termino,DATE,
+Gestión Documentos,N° Documento,gestion.documento,numero_documento,VARCHAR(50),
+Gestión Documentos,N° Cuotas,gestion.documento,n_cuotas,INTEGER,
+Gestión Documentos,% Comisión Afecta,gestion.documento,pct_comision_afecta,"NUMERIC(5, 2)",
+Gestión Documentos,% Comisión Exenta,gestion.documento,pct_comision_exenta,"NUMERIC(5, 2)",
+Gestión Documentos,Cotización,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Documentos,PDF,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Documentos,Otros Archivos,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Documentos,Tipo Inspección,gestion.documento,tipo_inspeccion,VARCHAR(50),
+Gestión Documentos,N° Inspección,gestion.documento,n_inspeccion,VARCHAR(50),
+Gestión Documentos,Comisión?,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Documentos,Requiere Doc?,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Documentos,Invalidar Diferencia?,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Documentos,Enviado?,gestion.documento,enviado,BOOLEAN,
+Gestión Documentos,Comentarios,gestion.documento,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Documentos,Traspaso Info 1,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Documentos,Traspaso Info 2,gestion.documento,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Materias,ID,gestion.materia,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Materias,Documento,gestion.materia,documento_id,FK → gestion.documento,
+Gestión Materias,Base Materia,gestion.materia,base_materia_id,FK → grupos.grupo_materia,
+Gestión Materias,Uso,gestion.materia,uso,VARCHAR(60),
+Gestión Materias,Deducible,gestion.materia,deducible,VARCHAR(200),Legacy: appsheet_id crudo del plan (ver plan_id)
+Gestión Materias,Deducible,gestion.materia,plan_id,FK → operaciones.plan,FK resuelta desde 'Deducible' (appsheet_id de plan)
+Gestión Materias,Item,gestion.materia,item,INTEGER,
+Gestión Materias,Afecta UF,gestion.materia,afecta_uf,"NUMERIC(10, 4)",
+Gestión Materias,Exenta UF,gestion.materia,exenta_uf,"NUMERIC(10, 4)",
+Gestión Materias,Afecta CLP,gestion.materia,afecta_clp,"NUMERIC(14, 2)",
+Gestión Materias,Exenta CLP,gestion.materia,exenta_clp,"NUMERIC(14, 2)",
+Gestión Materias,Afecta USD,gestion.materia,afecta_usd,"NUMERIC(10, 2)",
+Gestión Materias,Exenta USD,gestion.materia,exenta_usd,"NUMERIC(10, 2)",
+Gestión Materias,Monto Asegurado,gestion.materia,monto_asegurado,"NUMERIC(14, 2)",
+Gestión Materias,Tasa Afecta,gestion.materia,tasa_afecta,"NUMERIC(6, 4)",
+Gestión Materias,Tasa Exenta,gestion.materia,tasa_exenta,"NUMERIC(6, 4)",
+Gestión Materias,Fecha Exclusión,gestion.materia,fecha_exclusion,DATE,
+Gestión Materias,Comentarios,gestion.materia,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Materias,(derivado),gestion.materia,poliza_id,FK → gestion.poliza,Derivado: pol_id
+Gestión Materias,(derivado),gestion.materia,grupo_cliente_id,FK → grupos.grupo_cliente,Derivado: grupo_cli_id
+Gestión Materias,(derivado),gestion.materia,contratante_id,FK → datos.rut,Derivado: contratante_id
+Gestión Materias,(derivado),gestion.materia,seguro_id,FK → operaciones.seguro,Derivado: seguro_id
+Gestión Materias,(derivado),gestion.materia,asegurado_id,FK → datos.rut,Derivado: asegurado_id
+Gestión Planes de Pago,ID,gestion.plan_pago,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Planes de Pago,Activo?,gestion.plan_pago,activo,BOOLEAN,
+Gestión Planes de Pago,Documento,gestion.plan_pago,documento_id,FK → gestion.documento,
+Gestión Planes de Pago,Documento,gestion.plan_pago,poliza_id,FK → gestion.poliza,
+Gestión Planes de Pago,N° Plan Pago,gestion.plan_pago,n_plan_pago,VARCHAR(50),
+Gestión Planes de Pago,Fecha Documento,gestion.plan_pago,fecha_documento,DATE,
+Gestión Planes de Pago,N° Cuotas,gestion.plan_pago,n_cuotas,INTEGER,
+Gestión Planes de Pago,Afecta UF,gestion.plan_pago,afecta_uf,"NUMERIC(10, 4)",
+Gestión Planes de Pago,Exenta UF,gestion.plan_pago,exenta_uf,"NUMERIC(10, 4)",
+Gestión Planes de Pago,Afecta CLP,gestion.plan_pago,afecta_clp,"NUMERIC(14, 2)",
+Gestión Planes de Pago,Exenta CLP,gestion.plan_pago,exenta_clp,"NUMERIC(14, 2)",
+Gestión Planes de Pago,Afecta USD,gestion.plan_pago,afecta_usd,"NUMERIC(10, 2)",
+Gestión Planes de Pago,Exenta USD,gestion.plan_pago,exenta_usd,"NUMERIC(10, 2)",
+Gestión Planes de Pago,Valor Cuota,gestion.plan_pago,valor_cuota,"NUMERIC(14, 2)",
+Gestión Planes de Pago,N° Cuota Distinta,gestion.plan_pago,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Planes de Pago,Valor Cutoa Distinta,gestion.plan_pago,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Planes de Pago,Vcto Cuota 0,gestion.plan_pago,vcto_cuota_0,DATE,
+Gestión Planes de Pago,Vcto Cuota 1,gestion.plan_pago,vcto_cuota_1,DATE,
+Gestión Planes de Pago,PDF,gestion.plan_pago,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Planes de Pago,Firmado?,gestion.plan_pago,firmado,BOOLEAN,
+Gestión Planes de Pago,Enviado?,gestion.plan_pago,enviado,BOOLEAN,
+Gestión Planes de Pago,Recibo Envío,gestion.plan_pago,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Planes de Pago,Comentarios,gestion.plan_pago,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Planes de Pago,Cargado Cuota?,gestion.plan_pago,cargado_cuota,BOOLEAN,
+Gestión Pólizas,ID,gestion.poliza,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Pólizas,Producto,gestion.poliza,producto_id,FK → operaciones.producto,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Pólizas,% Comisión Afecta,gestion.poliza,pct_comision_afecta,"NUMERIC(5, 2)",
+Gestión Pólizas,% Comisión Exenta,gestion.poliza,pct_comision_exenta,"NUMERIC(5, 2)",
+Gestión Pólizas,Ejecutivo,gestion.poliza,ejecutivo_id,FK → operaciones.ejecutivo,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Pólizas,Estado Seguro,gestion.poliza,estado_seguro,VARCHAR(11),
+Gestión Pólizas,Fecha Emisión,gestion.poliza,fecha_emision,DATE,
+Gestión Pólizas,I Vigencia,gestion.poliza,fecha_inicio,DATE,
+Gestión Pólizas,F Vigencia,gestion.poliza,fecha_termino,DATE,
+Gestión Pólizas,N° Póliza,gestion.poliza,numero_poliza,VARCHAR(50),
+Gestión Pólizas,Cliente,gestion.poliza,grupo_cliente_id,FK → grupos.grupo_cliente,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Pólizas,Contratante,gestion.poliza,contratante_id,FK → datos.rut,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Pólizas,Pagador,gestion.poliza,pagador_id,FK → datos.rut,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Pólizas,Moneda,gestion.poliza,moneda,VARCHAR(3),
+Gestión Pólizas,Forma de Pago,gestion.poliza,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Pólizas,N° Cuotas,gestion.poliza,n_cuotas,INTEGER,
+Gestión Pólizas,Mandato,gestion.poliza,mandato,BOOLEAN,
+Gestión Pólizas,Otros Archivos,gestion.poliza,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Pólizas,Comisión?,gestion.poliza,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Pólizas,Renovar?,gestion.poliza,renovar,BOOLEAN,
+Gestión Pólizas,Pago Activo?,gestion.poliza,pago_activo,BOOLEAN,
+Gestión Pólizas,Recotizar?,gestion.poliza,recotizar,BOOLEAN,
+Gestión Pólizas,Fecha Cancelación,gestion.poliza,fecha_cancelacion,DATE,
+Gestión Pólizas,Comentarios,gestion.poliza,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Pólizas,Verificador Traspaso,gestion.poliza,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,ID,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Fecha Registro,gestion.registro,fecha_registro,DATE,
+Gestión Registros,Tipo Registro,gestion.registro,tipo_registro,VARCHAR(10),
+Gestión Registros,Tipo Registro,gestion.registro,estado_renovacion,VARCHAR(50),
+Gestión Registros,Tipo Registro,gestion.registro,estado_traspaso,VARCHAR(50),
+Gestión Registros,Estado Negocio,gestion.registro,estado_negocio,VARCHAR(9),
+Gestión Registros,Estado Renovación,gestion.registro,estado_negocio,VARCHAR(9),
+Gestión Registros,Estado Renovación,gestion.registro,estado_renovacion,VARCHAR(50),
+Gestión Registros,Estado Prospecto,gestion.registro,estado_prospecto,VARCHAR(14),
+Gestión Registros,Estado Traspaso,gestion.registro,estado_negocio,VARCHAR(9),
+Gestión Registros,Estado Traspaso,gestion.registro,estado_traspaso,VARCHAR(50),
+Gestión Registros,Estado Inclusión,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Tipo Materia,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Seguro,gestion.registro,seguro_id,FK → operaciones.seguro,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Registros,Cot Aceptada,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Póliza,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Modifica Materia?,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Comisión?,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Contratante,gestion.registro,contratante_id,FK → datos.rut,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Registros,Pagador,gestion.registro,pagador_id,FK → datos.rut,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Registros,Cliente,gestion.registro,grupo_cliente_id,FK → grupos.grupo_cliente,
+Gestión Registros,Producto,gestion.registro,producto_id,FK → operaciones.producto,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Registros,Ejecutivo,gestion.registro,ejecutivo_id,FK → operaciones.ejecutivo,FK resuelta vía maps[...] (appsheet_id → id)
+Gestión Registros,Moneda,gestion.registro,moneda,VARCHAR(3),
+Gestión Registros,UF Prima Afecta,gestion.registro,uf_prima_afecta,"NUMERIC(10, 4)",
+Gestión Registros,UF Prima Exenta,gestion.registro,uf_prima_exenta,"NUMERIC(10, 4)",
+Gestión Registros,CLP Prima Afecta,gestion.registro,clp_prima_afecta,"NUMERIC(14, 2)",
+Gestión Registros,CLP Prima Exenta,gestion.registro,clp_prima_exenta,"NUMERIC(14, 2)",
+Gestión Registros,USD Prima Afecta,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,USD Prima Exenta,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,% Comisión Afecta,gestion.registro,pct_comision_afecta,"NUMERIC(5, 2)",
+Gestión Registros,% Comisión Exenta,gestion.registro,pct_comision_exenta,"NUMERIC(5, 2)",
+Gestión Registros,Forma de Pago,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,N° Cuotas,gestion.registro,n_cuotas,INTEGER,
+Gestión Registros,Valor Cuota,gestion.registro,valor_cuota,"NUMERIC(14, 2)",
+Gestión Registros,Tipo Inspección,gestion.registro,tipo_inspeccion,VARCHAR(50),
+Gestión Registros,N° Inspección,gestion.registro,n_inspeccion,VARCHAR(50),
+Gestión Registros,I Vigencia,gestion.registro,fecha_inicio_vigencia,DATE,
+Gestión Registros,Condiciones,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Archivos,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Comentarios,gestion.registro,(ninguno),—,DROPPED — notas centralizadas (gestion.nota)
+Gestión Registros,Fin Gestión,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Traspaso Info 1,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Gestión Registros,Traspaso Info 2,gestion.registro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Grupos Clientes,ID,grupos.grupo_cliente,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Grupos Clientes,Cliente,grupos.grupo_cliente,rut_id,FK → datos.rut,
+Grupos Clientes,Carpeta,grupos.grupo_cliente,carpeta,VARCHAR(500),
+ Grupos Entidades,ID,grupos.grupo_entidad,(ninguno),—,DROPPED — sin destino en el schema nuevo
+ Grupos Entidades,Tipo Entidad,grupos.grupo_entidad,tipo_entidad,VARCHAR(9),
+ Grupos Entidades,Asegurado,grupos.grupo_entidad,asegurado_id,FK → datos.rut,FK resuelta vía maps[...] (appsheet_id → id)
+ Grupos Entidades,Gestor,grupos.grupo_entidad,gestor_id,FK → operaciones.gestor,FK resuelta vía maps[...] (appsheet_id → id)
+ Grupos Entidades,Partner,grupos.grupo_entidad,partner_id,FK → operaciones.partner,FK resuelta vía maps[...] (appsheet_id → id)
+ Grupos Entidades,Banco,grupos.grupo_entidad,banco_id,FK → operaciones.banco,FK resuelta vía maps[...] (appsheet_id → id)
+ Grupos Entidades,Proveedor,grupos.grupo_entidad,proveedor_id,FK → operaciones.proveedor,FK resuelta vía maps[...] (appsheet_id → id)
+ Grupos Entidades,Compañía,grupos.grupo_entidad,compania_id,FK → operaciones.compania,FK resuelta vía maps[...] (appsheet_id → id)
+ Grupos Entidades,Carpeta,grupos.grupo_entidad,carpeta,VARCHAR(500),
+Grupos Materias,ID,grupos.grupo_materia,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Grupos Materias,Activa?,grupos.grupo_materia,activa,BOOLEAN,
+Grupos Materias,Seguro,grupos.grupo_materia,seguro_id,FK → operaciones.seguro,FK resuelta vía maps[...] (appsheet_id → id)
+Grupos Materias,Asegurado,grupos.grupo_materia,asegurado_id,FK → datos.rut,FK resuelta vía maps[...] (appsheet_id → id)
+Grupos Materias,Tipo,grupos.grupo_materia,tipo,VARCHAR(10),
+Grupos Materias,Uso,grupos.grupo_materia,uso,VARCHAR(60),
+Grupos Materias,Vehículo,grupos.grupo_materia,vehiculo_id,FK → datos.vehiculo,FK resuelta vía maps[...] (appsheet_id → id)
+Grupos Materias,Inmueble,grupos.grupo_materia,inmueble_id,FK → datos.inmueble,FK resuelta vía maps[...] (appsheet_id → id)
+Grupos Materias,Otra,grupos.grupo_materia,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Grupos Materias,Vida y Salud,grupos.grupo_materia,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Grupos Materias,Comentarios,grupos.grupo_materia,comentarios,TEXT,
+Operaciones Bancos,ID,operaciones.banco,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Bancos,Rut,operaciones.banco,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Bancos,Razón Social,operaciones.banco,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Bancos,Corto,operaciones.banco,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Bancos,Corto,operaciones.banco,corto,VARCHAR(50),
+Operaciones Bancos,Casa Matriz,operaciones.banco,casa_matriz,VARCHAR(200),
+Operaciones Bancos,Sucursal Asignada,operaciones.banco,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Bancos,Fono Matriz,operaciones.banco,fono_matriz,VARCHAR(25),
+Operaciones Bancos,Fono Sucursal,operaciones.banco,fono_sucursal,VARCHAR(25),
+Operaciones Bancos,Página Web,operaciones.banco,web,VARCHAR(200),
+Operaciones Bancos,Portal,operaciones.banco,portal,VARCHAR(200),
+Operaciones Coberturas,ID,operaciones.cobertura,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Coberturas,Cobertura,operaciones.cobertura,cobertura,VARCHAR(200),
+Operaciones Coberturas,Detalles,operaciones.cobertura,detalles,TEXT,
+Operaciones Compañías,ID,operaciones.compania,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Compañías,Código Corredor,operaciones.compania,codigo_corredor,VARCHAR(30),
+Operaciones Compañías,Rut,operaciones.compania,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Compañías,Razón Social,operaciones.compania,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Compañías,Corto,operaciones.compania,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Compañías,Corto,operaciones.compania,nombre_comercial,VARCHAR(150),
+Operaciones Compañías,Cuenta Corriente,operaciones.compania,cuenta_corriente,VARCHAR(100),
+Operaciones Compañías,Fono Asistencia,operaciones.compania,fono_asistencia,VARCHAR(25),
+Operaciones Compañías,Casa Matriz,operaciones.compania,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Compañías,Sucursal Asignada,operaciones.compania,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Compañías,Fono Matriz,operaciones.compania,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Compañías,Fono Sucursal,operaciones.compania,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Compañías,Página Web,operaciones.compania,web,VARCHAR(200),
+Operaciones Compañías,Portal,operaciones.compania,portal,VARCHAR(200),
+Operaciones Compañías,Ejecutivo Principal,operaciones.compania,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Compañías,(derivado),operaciones.compania,activa,BOOLEAN,Derivado: True
+Operaciones Comunas,ID,operaciones.comuna,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Comunas,Comuna,operaciones.comuna,nombre,VARCHAR(100),
+Operaciones Comunas,Ciudad,operaciones.comuna,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Comunas,Región,operaciones.comuna,region,VARCHAR(100),
+Operaciones Comunas,Código Comuna 2010,operaciones.comuna,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Comunas,Código Provincia,operaciones.comuna,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Comunas,Código Región,operaciones.comuna,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Ejecutivos,ID,operaciones.ejecutivo,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Ejecutivos,Tipo,operaciones.ejecutivo,tipo,VARCHAR(9),
+Operaciones Ejecutivos,Banco,operaciones.ejecutivo,banco_id,FK → operaciones.banco,FK resuelta vía maps[...] (appsheet_id → id)
+Operaciones Ejecutivos,Compañía,operaciones.ejecutivo,compania_id,FK → operaciones.compania,FK resuelta vía maps[...] (appsheet_id → id)
+Operaciones Ejecutivos,Proveedor,operaciones.ejecutivo,proveedor_id,FK → operaciones.proveedor,FK resuelta vía maps[...] (appsheet_id → id)
+Operaciones Ejecutivos,Nombre,operaciones.ejecutivo,nombre,VARCHAR(100),
+Operaciones Ejecutivos,2do Nombre,operaciones.ejecutivo,nombre2,VARCHAR(100),
+Operaciones Ejecutivos,Paterno,operaciones.ejecutivo,paterno,VARCHAR(100),
+Operaciones Ejecutivos,Materno,operaciones.ejecutivo,materno,VARCHAR(100),
+Operaciones Ejecutivos,Corto,operaciones.ejecutivo,corto,VARCHAR(50),
+Operaciones Ejecutivos,Correo,operaciones.ejecutivo,correo,VARCHAR(150),
+Operaciones Ejecutivos,Correo 2,operaciones.ejecutivo,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Ejecutivos,Celular,operaciones.ejecutivo,celular,VARCHAR(25),
+Operaciones Ejecutivos,Fijo,operaciones.ejecutivo,fijo,VARCHAR(25),
+Operaciones Ejecutivos,Sexo,operaciones.ejecutivo,sexo,VARCHAR(9),
+Operaciones Ejecutivos,Cargo,operaciones.ejecutivo,cargo,VARCHAR(100),
+Operaciones Ejecutivos,(derivado),operaciones.ejecutivo,activo,BOOLEAN,Derivado: True
+Operaciones Gestores,ID,operaciones.gestor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Gestores,Rut,operaciones.gestor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Gestores,Nombre,operaciones.gestor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Gestores,2do Nombre,operaciones.gestor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Gestores,Paterno,operaciones.gestor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Gestores,Materno,operaciones.gestor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Gestores,Corto,operaciones.gestor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Gestores,Correo,operaciones.gestor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Gestores,Correo 2,operaciones.gestor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Gestores,Celular,operaciones.gestor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Gestores,Fijo,operaciones.gestor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Gestores,Domicilio,operaciones.gestor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Gestores,Detalles Domicilio,operaciones.gestor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Gestores,Fecha Nacimiento,operaciones.gestor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Gestores,Sexo,operaciones.gestor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Gestores,Cuenta Corriente,operaciones.gestor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Gestores,Usermail,operaciones.gestor,usermail,VARCHAR(150),
+Operaciones Gestores,(derivado),operaciones.gestor,activo,BOOLEAN,Derivado: True
+Operaciones Partners,ID,operaciones.partner,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Partners,Rut,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Nombre,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,2do Nombre,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Paterno,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Materno,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Corto,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Correo,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Correo 2,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Celular,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Fijo,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Domicilio,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Detalles Domicilio,operaciones.partner,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Partners,Fecha Nacimiento,operaciones.partner,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Partners,Sexo,operaciones.partner,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Partners,Cuenta Corriente,operaciones.partner,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Partners,Comisión Nuevos,operaciones.partner,comision_nuevos,"NUMERIC(5, 2)",
+Operaciones Partners,Comisión Renovaciones,operaciones.partner,comision_renovaciones,"NUMERIC(5, 2)",
+Operaciones Partners,Contrato,operaciones.partner,contrato,VARCHAR(500),
+Operaciones Partners,(derivado),operaciones.partner,activo,BOOLEAN,Derivado: True
+Operaciones Planes,ID,operaciones.plan,appsheet_id,VARCHAR(50),
+Operaciones Planes,Plan,operaciones.plan,plan,VARCHAR(200),
+Operaciones Planes,Descripción,operaciones.plan,descripcion,TEXT,
+Operaciones Productos,ID,operaciones.producto,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Productos,Producto,operaciones.producto,nombre,VARCHAR(200),
+Operaciones Productos,Seguro,operaciones.producto,seguro_id,FK → operaciones.seguro,FK resuelta vía maps[...] (appsheet_id → id)
+Operaciones Productos,Compañía,operaciones.producto,compania_id,FK → operaciones.compania,FK resuelta vía maps[...] (appsheet_id → id)
+Operaciones Productos,Ramo,operaciones.producto,ramo_id,FK → operaciones.ramo,FK resuelta vía maps[...] (appsheet_id → id)
+Operaciones Productos,Tipo Comisión,operaciones.producto,tipo_comision,VARCHAR(50),
+Operaciones Productos,Canal,operaciones.producto,canal,VARCHAR(50),
+Operaciones Productos,Convenio,operaciones.producto,convenio,VARCHAR(100),
+Operaciones Productos,Tipo Renovación,operaciones.producto,tipo_renovacion,VARCHAR(50),
+Operaciones Productos,Uso,operaciones.producto,uso,VARCHAR(50),
+Operaciones Productos,Comisión Afecta,operaciones.producto,comision_afecta,"NUMERIC(5, 2)",
+Operaciones Productos,Comisión Exenta,operaciones.producto,comision_exenta,"NUMERIC(5, 2)",
+Operaciones Productos,PDF Cobertura,operaciones.producto,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Productos,(derivado),operaciones.producto,activo,BOOLEAN,Derivado: True
+Operaciones Proveedores,ID,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,Rut,operaciones.proveedor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Proveedores,Razón Social,operaciones.proveedor,rut_id,FK → datos.rut,Opción B: identidad en datos.rut vía rut_id
+Operaciones Proveedores,Corto,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,Casa Matriz,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,Sucursal Asignada,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,Fono Matriz,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,Fono Sucursal,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,Página Web,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,Portal,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,Servicio,operaciones.proveedor,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Proveedores,(derivado),operaciones.proveedor,activo,BOOLEAN,Derivado: True
+Operaciones Ramos,ID,operaciones.ramo,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Ramos,Ramo,operaciones.ramo,ramo,VARCHAR(100),
+Operaciones Ramos,Código,operaciones.ramo,codigo,VARCHAR(20),
+Operaciones Ramos,(derivado),operaciones.ramo,activo,BOOLEAN,Derivado: True
+Operaciones Seguros,ID,operaciones.seguro,(ninguno),—,DROPPED — sin destino en el schema nuevo
+Operaciones Seguros,Seguro,operaciones.seguro,nombre,VARCHAR(100),
+Operaciones Seguros,Perfil,operaciones.seguro,perfil,VARCHAR(100),
+Operaciones Seguros,Info Técnica,operaciones.seguro,info_tecnica,TEXT,
+Operaciones Seguros,Guia Corredor,operaciones.seguro,guia_corredor,TEXT,
+Operaciones Seguros,Info Venta,operaciones.seguro,info_venta,TEXT,
+Operaciones Seguros,(derivado),operaciones.seguro,activo,BOOLEAN,Derivado: True
+Agenda Obligaciones,Entidad,agenda.obligacion,grupo_entidad_id,FK → grupos.grupo_entidad,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Obligaciones,Compañía,agenda.obligacion,compania_id,FK → operaciones.compania,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Obligaciones,Póliza,agenda.obligacion,poliza_id,FK → gestion.poliza,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Obligaciones,Partner,agenda.obligacion,partner_id,FK → operaciones.partner,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Obligaciones,Gestor,agenda.obligacion,gestor_id,FK → operaciones.gestor,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Tareas,Entidad,agenda.tarea,grupo_entidad_id,FK → grupos.grupo_entidad,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Tareas,Compañía,agenda.tarea,compania_id,FK → operaciones.compania,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Tareas,Póliza,agenda.tarea,poliza_id,FK → gestion.poliza,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Tareas,Partner,agenda.tarea,partner_id,FK → operaciones.partner,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Agenda Tareas,Gestor,agenda.tarea,gestor_id,FK → operaciones.gestor,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Comunicación Cobranza,Cliente,comunicacion.com_cobranza,grupo_cliente_id,FK → grupos.grupo_cliente,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Comunicación Cobranza,Contratante,comunicacion.com_cobranza,contratante_id,FK → datos.rut,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Comunicación Comisiones,Compañía,comunicacion.com_comision,compania_id,FK → operaciones.compania,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"
+Contabilidad Contables,Entidad,contabilidad.contable,grupo_entidad_id,FK → grupos.grupo_entidad,"PENDIENTE — declarado en spec, sin FK implementada (ver audit_relations)"

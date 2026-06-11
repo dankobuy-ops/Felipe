@@ -10,9 +10,11 @@ Navigation:
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urljoin
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
@@ -24,9 +26,15 @@ STATUS_FILE  = Path("/tmp/scrape_status")
 DOWNLOAD_DIR = Path("/tmp/pdfs")
 
 SEL_ENTRY_LINK = "a:has-text('CONSULTA DE CAUSAS'), a:has-text('Consulta de Causas')"
-SEL_RUT_INPUT  = "input[type='text'][id*='Rut'], input[type='text'][id*='rut'], input[type='text'][id*='txt']"
-SEL_SEARCH_BTN = "input[id*='Buscar'], input[id*='buscar'], input[type='submit']"
+# ASP.NET form (vitacura): radio selects search type, then txtRut + btnAceptar.
+SEL_RADIO_RUT  = "#ctl00_ContentPlaceHolder1_RdBoRut, input[type='radio'][value='RdBoRut']"
+SEL_RUT_INPUT  = "#ctl00_ContentPlaceHolder1_txtRut, input[type='text'][id*='txtRut'], input[type='text'][id*='Rut']"
+SEL_SEARCH_BTN = "#ctl00_ContentPlaceHolder1_btnAceptar, input[type='submit'][value='Aceptar'], input[type='submit']"
 SEL_RESULTS    = "table tbody tr"
+
+# Text that only appears on the SEARCH FORM — if we still see it after submitting,
+# the search did not execute (no search-type selected / postback re-rendered form).
+FORM_MARKERS = ("seleccione la opción", "ej: 12345678", "ej: aa1111", "placa:")
 
 
 def parse_args():
@@ -100,7 +108,11 @@ def enter_via_parent(page, context, parent_url):
 
 
 def search_rut(page, rut):
-    """Fill RUT and submit — arrives at Level 2 (results list)."""
+    """Select RUT search type, fill RUT, submit — arrives at Level 2 (results list).
+
+    The form REQUIRES selecting the RdBoRut radio first; submitting without a
+    search type just re-renders the form (no results).
+    """
     try:
         page.wait_for_selector(SEL_RUT_INPUT, timeout=20_000)
     except PlaywrightTimeout:
@@ -108,18 +120,75 @@ def search_rut(page, rut):
         write_status("crashed")
         raise RuntimeError("RUT input not found.")
 
+    # 1. Ensure the RUT search-type radio is selected. It is selected by default,
+    #    so only click it if needed — avoids a spurious AutoPostBack that could
+    #    reset the form.
+    try:
+        if not page.is_checked(SEL_RADIO_RUT):
+            page.check(SEL_RADIO_RUT, timeout=5_000)
+            log("[INFO] Selected RUT search-type radio")
+            try:
+                page.wait_for_load_state("networkidle", timeout=8_000)
+            except PlaywrightTimeout:
+                pass
+            page.wait_for_selector(SEL_RUT_INPUT, timeout=10_000)
+        else:
+            log("[INFO] RUT radio already selected")
+    except PlaywrightTimeout:
+        log("[WARN] RUT radio not found — proceeding without it")
+
+    # 2. Fill the RUT (after any radio postback, so the value survives).
     page.fill(SEL_RUT_INPUT, rut)
     log(f"[INFO] Filled RUT: {rut}")
 
+    # 3. Submit. A valid RUT triggers a full postback that redirects to
+    #    frmBusqueda.aspx (with a loading overlay). Wait for that navigation;
+    #    if the click doesn't fire it, trigger the ASP.NET postback directly.
+    def _on_results():
+        return "frmbusqueda" in page.url.lower()
+
     try:
         page.wait_for_selector(SEL_SEARCH_BTN, timeout=5_000)
-        page.click(SEL_SEARCH_BTN)
     except PlaywrightTimeout:
-        page.keyboard.press("Enter")
+        pass
 
-    # Wait for AJAX/UpdatePanel to complete after search
-    page.wait_for_load_state("networkidle", timeout=20_000)
-    log("[INFO] Search submitted and network idle")
+    log(f"[INFO] Submitting search. URL before click: {page.url}")
+    try:
+        with page.expect_navigation(url="**frmBusqueda*", timeout=20_000):
+            page.click(SEL_SEARCH_BTN)
+        log("[INFO] Click navigated to results page")
+    except PlaywrightTimeout:
+        log(f"[WARN] Click did not navigate (url={page.url}). Trying __doPostBack fallback")
+        try:
+            with page.expect_navigation(url="**frmBusqueda*", timeout=20_000):
+                page.evaluate(
+                    "() => { if (window.__doPostBack) __doPostBack('ctl00$ContentPlaceHolder1$btnAceptar',''); }"
+                )
+            log("[INFO] __doPostBack navigated to results page")
+        except PlaywrightTimeout:
+            log(f"[WARN] Still not on results after fallback (url={page.url})")
+
+    try:
+        page.wait_for_load_state("networkidle", timeout=15_000)
+    except PlaywrightTimeout:
+        pass
+
+    # Diagnostic: capture any validation / status message the server returned.
+    try:
+        msgs = page.evaluate("""() => {
+            const re = /no existe|inv[aá]lid|incorrect|debe ingresar|sin resultado|error/i;
+            return Array.from(document.querySelectorAll('span,div,td,p,label'))
+                .map(e => (e.innerText || '').trim())
+                .filter(t => t && t.length < 120 && re.test(t))
+                .slice(0, 8);
+        }""")
+        if msgs:
+            log(f"[INFO] Page messages after submit: {msgs}")
+    except Exception:
+        pass
+
+    log(f"[INFO] After submit: on_results={_on_results()} url={page.url}")
+    return page
 
     # ── DEBUG: dump all tables with id/class so we can pick the right selector ──
     table_info = page.evaluate("""() => {
@@ -162,6 +231,14 @@ def get_results_list(page):
         dump_page(page, "no-results")
         write_status("crashed")
         raise RuntimeError("Results table never appeared — target crashed or RUT returned nothing.")
+
+    # Guard: if the search form is still visible, the search did NOT execute.
+    # Don't scrape the form's layout tables as fake causas.
+    page_text = page.evaluate("() => document.body.innerText.toLowerCase()")
+    if any(m in page_text for m in FORM_MARKERS):
+        dump_page(page, "still-on-form")
+        write_status("crashed")
+        raise RuntimeError("Still on search form after submit — search did not execute.")
 
     records = page.evaluate("""() => {
         const rows = Array.from(document.querySelectorAll('table tbody tr'));
@@ -219,13 +296,15 @@ def get_results_list(page):
     return records
 
 
-def write_meta(supabase_url, supabase_key, job_id, total):
-    """Write __meta__ row with total causa count so the SPA knows upfront."""
+def write_meta(supabase_url, supabase_key, job_id, total, rut="", year=""):
+    """Write __meta__ row with total count + query params so the SPA can list
+    and label previous jobs (the 'Jobs anteriores' history)."""
     write_checkpoints(supabase_url, supabase_key, [{
         "job_id":    job_id,
         "record_id": "__meta__",
         "status":    "running",
-        "text":      json.dumps({"total": total}),
+        "text":      json.dumps({"total": total, "rut": rut, "year": year,
+                                 "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}),
         "pdf_url":   "",
     }])
 
@@ -403,34 +482,66 @@ def extract_level3(page):
 
 # ── PDF download from Level 3 ─────────────────────────────────────────────────
 
-def download_pdfs(page, context, tramites, job_id, rol, supabase_url, supabase_key, bucket):
-    """Download PDFs from Sección C Abrir links using page.request (same session/cookies)."""
-    pdf_urls = []
-    for i, tramite in enumerate(tramites):
-        local_pdf = DOWNLOAD_DIR / f"{rol}_doc{i}.pdf"
-        href = tramite.get("href", "")
-        try:
-            if href and not href.startswith("javascript"):
-                # Use Playwright's request API — same cookies/session, no page navigation
-                response = page.request.get(href, timeout=30_000)
-                if response.ok:
-                    local_pdf.write_bytes(response.body())
-                else:
-                    log(f"[WARN] PDF {i+1} HTTP {response.status} for ROL {rol}")
-                    continue
-            else:
-                # Postback link — click it and capture the download
-                with page.expect_download(timeout=25_000) as dl:
-                    page.evaluate(f"""() => {{
-                        const links = Array.from(document.querySelectorAll('a'))
-                            .filter(a => a.innerText.trim().toLowerCase() === 'abrir');
-                        if (links[{i}]) links[{i}].click();
-                    }}""")
-                dl.value.save_as(str(local_pdf))
+def _resolve_embedded_pdf(html, base_url):
+    """If the viewer returned HTML, find the embedded/linked PDF URL inside it."""
+    for pat in (
+        r'<embed[^>]+src=["\']([^"\']+)["\']',
+        r'<iframe[^>]+src=["\']([^"\']+)["\']',
+        r'<object[^>]+data=["\']([^"\']+)["\']',
+        r'href=["\']([^"\']*(?:MostrarPDF|\.pdf|getfile)[^"\']*)["\']',
+    ):
+        m = re.search(pat, html, re.IGNORECASE)
+        if m:
+            return urljoin(base_url, m.group(1))
+    return None
 
+
+def _fetch_pdf(context, href, depth=0):
+    """Fetch a PDF via the AUTHENTICATED session (context.request shares the
+    login cookie). The MostrarPDF.aspx href either streams the PDF directly or
+    returns an HTML viewer embedding it — follow one level. Returns bytes/None."""
+    resp = context.request.get(href, timeout=30_000)
+    if not resp.ok:
+        log(f"[WARN]   fetch -> HTTP {resp.status} for {href}")
+        return None
+    body = resp.body()
+    if b"%PDF-" in body[:1024]:
+        return body
+    if depth == 0:
+        html = body.decode("utf-8", "ignore")
+        if "login.aspx" in (resp.url or "").lower() or "ReturnUrl" in html:
+            log("[WARN]   viewer bounced to Login — session not authenticated")
+            return None
+        real = _resolve_embedded_pdf(html, resp.url or href)
+        if real and real != href:
+            log(f"[INFO]   viewer embeds PDF at {real}")
+            return _fetch_pdf(context, real, depth + 1)
+    return None
+
+
+def download_pdfs(page, context, docs, job_id, rol, supabase_url, supabase_key, bucket):
+    """Download each Sección C/D 'Abrir' document via its captured MostrarPDF.aspx
+    href, using the authenticated browser session. (The viewer requires login —
+    only works because search_rut established the forms-auth cookie.)"""
+    pdf_urls = []
+    doc_list = [d for d in docs
+                if d.get("href") and not d["href"].startswith("javascript")]
+    log(f"[INFO] ROL {rol}: {len(doc_list)} document href(s)")
+
+    for i, doc in enumerate(doc_list):
+        local_pdf = DOWNLOAD_DIR / f"{rol}_doc{i}.pdf"
+        try:
+            body = _fetch_pdf(context, doc["href"])
+            if not body:
+                log(f"[WARN] ROL {rol} doc {i+1}: no PDF resolved from {doc['href']}")
+                continue
+            local_pdf.write_bytes(body)
             url = upload_pdf(supabase_url, supabase_key, bucket, job_id, f"{rol}_doc{i}", local_pdf)
+            # Tag the trámite/adjunto with its Supabase public URL so the SPA
+            # links to the downloaded PDF, not the login-gated source viewer.
+            doc["pdf_url"] = url
             pdf_urls.append(url)
-            log(f"[INFO] PDF {i+1} uploaded for ROL {rol}")
+            log(f"[INFO] PDF {i+1} uploaded for ROL {rol} ({len(body)} bytes)")
         except Exception as e:
             log(f"[WARN] PDF {i+1} failed for ROL {rol}: {e}")
 
@@ -452,13 +563,28 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
         # Level 1 → Level 2
         active = enter_via_parent(page, ctx, args.target_url)
-        search_rut(active, args.search_code)
+        active = search_rut(active, args.search_code)
         records = get_results_list(active)
         records = filter_by_year(records, args.year)
+
+        # Dedupe by ROL: the results list can repeat a ROL, and checkpoints are
+        # keyed by (job_id, record_id), so a duplicate would collapse to one row
+        # and make the "all done" check unsatisfiable (job never completes).
+        seen_rol, unique = set(), []
+        for r in records:
+            rid = r.get("rol")
+            if rid and rid not in seen_rol:
+                seen_rol.add(rid)
+                unique.append(r)
+        if len(unique) != len(records):
+            log(f"[INFO] Deduped {len(records)} -> {len(unique)} unique ROLs")
+        records = unique
+
         results_url = active.url  # remember Level 2 URL to return after each detail
 
         # Tell the SPA the total count immediately so progress is accurate from the start
-        write_meta(supabase_url, supabase_key, args.job_id, len(records))
+        write_meta(supabase_url, supabase_key, args.job_id, len(records),
+                   rut=args.search_code, year=args.year)
 
         hit_limit = False
         for rec in records:
@@ -486,8 +612,9 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
                 case_data = {**rec, **detail}
 
-                # Download PDFs from Sección C + D (only rows that have an href)
-                all_docs = [d for d in detail.get("tramites", []) + detail.get("adjuntos", []) if d.get("href")]
+                # Download PDFs from Sección C + D via the captured MostrarPDF.aspx
+                # hrefs, using the authenticated session.
+                all_docs = detail.get("tramites", []) + detail.get("adjuntos", [])
                 pdf_urls = download_pdfs(
                     active, ctx, all_docs,
                     args.job_id, rol, supabase_url, supabase_key, supabase_bucket,
@@ -510,7 +637,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
                     # Site is slow — re-enter via parent to recover session
                     log(f"[WARN] Return to results timed out — re-entering via parent")
                     active = enter_via_parent(active, ctx, args.target_url)
-                    search_rut(active, args.search_code)
+                    active = search_rut(active, args.search_code)
                     active.wait_for_selector(SEL_RESULTS, timeout=20_000)
                     results_url = active.url
 
@@ -531,9 +658,13 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         ctx.close()
         browser.close()
 
-    final    = read_checkpoint(supabase_url, supabase_key, args.job_id)
-    done_count = sum(1 for k, v in final.items() if k != "__job__" and v == "done")
-    all_done = not hit_limit and done_count == len(records)
+    final = read_checkpoint(supabase_url, supabase_key, args.job_id)
+    # Completion = every target ROL has a 'done' checkpoint. Set-based so a
+    # duplicate ROL or a skipped empty row can't make this unsatisfiable.
+    target_rols = {r["rol"] for r in records if r.get("rol")}
+    done_rols   = {k for k, v in final.items()
+                   if k not in ("__job__", "__meta__") and v == "done"}
+    all_done = not hit_limit and target_rols.issubset(done_rols)
 
     if all_done and final:
         mark_job_status(supabase_url, supabase_key, args.job_id, "complete")

@@ -144,6 +144,7 @@ class Compania(AppSheetMixin, Base):
     # Nombre comercial/de marca — permite distinguir entidades que comparten RUT
     # (ej. Liberty vs HDI-Liberty comparten 99061000-2 pero son marcas distintas)
     nombre_comercial: Mapped[Optional[str]] = mapped_column(String(150))
+    color:            Mapped[Optional[str]] = mapped_column(String(20))
 
     # Datos operativos específicos de la compañía
     codigo_corredor:  Mapped[Optional[str]] = mapped_column(String(30))
@@ -156,6 +157,10 @@ class Compania(AppSheetMixin, Base):
     web:              Mapped[Optional[str]] = mapped_column(String(200))
     portal:           Mapped[Optional[str]] = mapped_column(String(200))
     activa:           Mapped[bool]          = mapped_column(Boolean, default=True, nullable=False)
+
+    # Plazos de gracia para pólizas caídas por no pago (Radar de Rehabilitación)
+    dias_gracia_carta:      Mapped[Optional[int]] = mapped_column(Integer)
+    dias_gracia_inspeccion: Mapped[Optional[int]] = mapped_column(Integer)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -252,7 +257,6 @@ class LineaNegocio(AppSheetMixin, Base):
 
     linea:      Mapped[str]           = mapped_column(String(150), nullable=False)
     carpeta:    Mapped[Optional[str]] = mapped_column(String(500))
-    comentarios: Mapped[Optional[str]] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

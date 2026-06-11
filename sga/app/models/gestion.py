@@ -20,12 +20,13 @@ if TYPE_CHECKING:
     from app.models.grupos import GrupoCliente, GrupoMateria, CruceMateriasXRegistro
     from app.models.operaciones import (
         Seguro, Producto, Ejecutivo, Compania, Ramo, Partner, Plan,
-        CruceValoresXCotizacion
+        CruceValoresXCotizacion, Gestor,
     )
     from app.models.contabilidad import Liquidacion, Contable
     from app.models.comunicacion import (
         ComRegistro, ComPoliza, ComDocumento, ComPlanPago, ComCobranza, ComComision
     )
+    from app.models.cruce_tablas import CruceNotasXEntidades
 
 
 # ─── Enums ────────────────────────────────────────────────────────────────────
@@ -63,13 +64,15 @@ class Moneda(str, enum.Enum):
     usd = "usd"
 
 class EstadoSeguro(str, enum.Enum):
-    pendiente  = "pendiente"
-    inspeccion = "inspeccion"
-    ok         = "ok"
-    cancelada  = "cancelada"
-    anulada    = "anulada"
-    consumido  = "consumido"
-    nulo       = "nulo"       # cayó antes de vigencia; sin movimiento de prima
+    pendiente   = "pendiente"
+    inspeccion  = "inspeccion"
+    ok          = "ok"
+    cancelada   = "cancelada"
+    anulada     = "anulada"
+    consumido   = "consumido"
+    nulo        = "nulo"        # cayó antes de vigencia; sin movimiento de prima
+    caido       = "caido"       # caída por no pago; ventana de rehabilitación activa
+    condicional = "condicional" # en vigor con condiciones administrativas pendientes
 
 class TipoDocumento(str, enum.Enum):
     poliza     = "poliza"
@@ -84,11 +87,6 @@ class TipoDocumento(str, enum.Enum):
     rehabilitacion = "rehabilitacion"
     otro       = "otro"
 
-class EstadoCuota(str, enum.Enum):
-    pendiente    = "pendiente"
-    pagada       = "pagada"
-    vencida      = "vencida"
-    anulada      = "anulada"
 
 class FormaPago(str, enum.Enum):
     directa    = "directa"
@@ -180,7 +178,6 @@ class Registro(AppSheetMixin, Base):
     fecha_inicio_vigencia: Mapped[Optional[date]] = mapped_column(Date)
     condiciones:      Mapped[Optional[str]] = mapped_column(Text)
     archivos:         Mapped[Optional[str]] = mapped_column(String(500))
-    comentarios:      Mapped[Optional[str]] = mapped_column(Text)
     fin_gestion:      Mapped[Optional[date]] = mapped_column(Date)
     traspaso_info_1:  Mapped[Optional[str]] = mapped_column(String(300))
     traspaso_info_2:  Mapped[Optional[str]] = mapped_column(String(300))
@@ -251,7 +248,6 @@ class Cotizacion(AppSheetMixin, Base):
     recomendada:        Mapped[bool]           = mapped_column(Boolean, default=False, nullable=False)
     plan_aceptado:      Mapped[Optional[str]]  = mapped_column(String(200))
     deducible_recomendado: Mapped[Optional[str]] = mapped_column(String(200))
-    comentarios:        Mapped[Optional[str]]  = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -328,16 +324,7 @@ class Poliza(AppSheetMixin, Base):
 
     otros_archivos:     Mapped[Optional[str]]  = mapped_column(String(500))
     fecha_cancelacion: Mapped[Optional[date]] = mapped_column(Date)
-    comentarios:       Mapped[Optional[str]]  = mapped_column(Text)
 
-    # Legacy (backward compat)
-    prima_neta:        Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
-    prima_total:       Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
-    suma_asegurada:    Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
-    numero_cuotas:     Mapped[Optional[int]]   = mapped_column(Integer)
-    porcentaje_comision: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
-    monto_comision:    Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
-    cotizacion_id:     Mapped[Optional[int]]   = mapped_column(Integer, ForeignKey("gestion.cotizacion.id"), index=True)
     poliza_anterior_id: Mapped[Optional[int]]  = mapped_column(Integer, ForeignKey("gestion.poliza.id"), index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -400,7 +387,7 @@ class Poliza(AppSheetMixin, Base):
         """
         if self.estado_seguro in (EstadoSeguro.anulada, EstadoSeguro.nulo):
             return 0
-        if self.estado_seguro == EstadoSeguro.cancelada:
+        if self.estado_seguro in (EstadoSeguro.cancelada, EstadoSeguro.caido):
             if self.fecha_cancelacion and self.fecha_inicio:
                 return abs((self.fecha_cancelacion - self.fecha_inicio).days)
             return 0
@@ -410,12 +397,31 @@ class Poliza(AppSheetMixin, Base):
 
     @hybrid_property
     def estado_poliza(self) -> str:
-        """Estado operativo calculado de la póliza. Delega vigencia a estado_vigencia."""
+        """Estado operativo calculado de la póliza. Delega vigencia a estado_vigencia.
+
+        Para estado_seguro == 'caido': joinedload(Poliza.compania) requerido.
+        """
+        # ── Radar de rehabilitación (semi-terminal, con ventana temporal) ─────
+        if self.estado_seguro == EstadoSeguro.caido:
+            if not self.fecha_cancelacion:
+                return "Caída - Recotizar"
+            days_elapsed = (date.today() - self.fecha_cancelacion).days
+            compania = self.compania
+            gracia_carta      = compania.dias_gracia_carta      if compania else None
+            gracia_inspeccion = compania.dias_gracia_inspeccion if compania else None
+            if gracia_carta is not None and days_elapsed <= gracia_carta:
+                return "Rehabilitable (Carta)"
+            if gracia_inspeccion is not None and days_elapsed <= gracia_inspeccion:
+                return "Rehabilitable (Inspección)"
+            return "Caída - Recotizar"
+
+        # ── Estados con mapeo directo ─────────────────────────────────────────
         mapa_terminal = {
-            EstadoSeguro.consumido: "Consumida",
-            EstadoSeguro.cancelada: "Cancelada",
-            EstadoSeguro.anulada:   "Anulada",
-            EstadoSeguro.nulo:      "Nula",
+            EstadoSeguro.consumido:   "Consumida",
+            EstadoSeguro.cancelada:   "Cancelada",
+            EstadoSeguro.anulada:     "Anulada",
+            EstadoSeguro.nulo:        "Nula",
+            EstadoSeguro.condicional: "Condicional",
         }
         if self.estado_seguro in mapa_terminal:
             return mapa_terminal[self.estado_seguro]
@@ -429,15 +435,40 @@ class Poliza(AppSheetMixin, Base):
     @estado_poliza.expression
     @classmethod
     def estado_poliza(cls):
-        from sqlalchemy import or_
+        from sqlalchemy import or_, select as sa_select
+        from app.models.operaciones import Compania
+
         hoy = func.current_date()
+
+        # Correlated subqueries — períodos de gracia de la compañía
+        gracia_carta_sq = (
+            sa_select(Compania.dias_gracia_carta)
+            .where(Compania.id == cls.compania_id)
+            .scalar_subquery()
+        )
+        gracia_inspeccion_sq = (
+            sa_select(Compania.dias_gracia_inspeccion)
+            .where(Compania.id == cls.compania_id)
+            .scalar_subquery()
+        )
+        dias_transcurridos = hoy - cls.fecha_cancelacion
+
+        caido_sub = case(
+            (cls.fecha_cancelacion.is_(None),           "Caída - Recotizar"),
+            (dias_transcurridos <= gracia_carta_sq,      "Rehabilitable (Carta)"),
+            (dias_transcurridos <= gracia_inspeccion_sq, "Rehabilitable (Inspección)"),
+            else_="Caída - Recotizar",
+        )
+
         return case(
-            (cls.estado_seguro == EstadoSeguro.consumido, "Consumida"),
-            (cls.estado_seguro == EstadoSeguro.cancelada, "Cancelada"),
-            (cls.estado_seguro == EstadoSeguro.anulada,   "Anulada"),
-            (cls.estado_seguro == EstadoSeguro.nulo,      "Nula"),
-            (cls.numero_poliza == "Pendiente",            "Pendiente"),
-            (cls.recotizar.is_(True),                     "Recotizar"),
+            (cls.estado_seguro == EstadoSeguro.caido,       caido_sub),
+            (cls.estado_seguro == EstadoSeguro.consumido,   "Consumida"),
+            (cls.estado_seguro == EstadoSeguro.cancelada,   "Cancelada"),
+            (cls.estado_seguro == EstadoSeguro.anulada,     "Anulada"),
+            (cls.estado_seguro == EstadoSeguro.nulo,        "Nula"),
+            (cls.estado_seguro == EstadoSeguro.condicional, "Condicional"),
+            (cls.numero_poliza == "Pendiente",              "Pendiente"),
+            (cls.recotizar.is_(True),                       "Recotizar"),
             # estado_vigencia inlined — evita doble evaluación CASE en SQL
             (or_(cls.fecha_inicio.is_(None), cls.fecha_inicio > hoy), "Espera"),
             (cls.fecha_termino > hoy,                                   "Ok"),
@@ -511,7 +542,6 @@ class Documento(AppSheetMixin, Base):
     enviado:         Mapped[bool]          = mapped_column(Boolean, default=False, nullable=False)
     traspaso_info_1: Mapped[Optional[str]] = mapped_column(String(300))
     traspaso_info_2: Mapped[Optional[str]] = mapped_column(String(300))
-    comentarios:     Mapped[Optional[str]] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -549,6 +579,17 @@ class Documento(AppSheetMixin, Base):
             return "Pendiente"
         return "Ok"
 
+    @property
+    def dias_vigencia(self) -> int:
+        return (self.fecha_termino - self.fecha_inicio).days
+
+    @property
+    def contador_meses_vigentes(self) -> int:
+        """Meses completos consumidos desde fecha_inicio hasta hoy (regla del día)."""
+        today = date.today()
+        i = self.fecha_inicio
+        return (today.year - i.year) * 12 + (today.month - i.month) - (1 if today.day < i.day else 0)
+
 
 # ─── Materia ──────────────────────────────────────────────────────────────────
 
@@ -563,13 +604,14 @@ class Materia(AppSheetMixin, Base):
     documento_id:     Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("gestion.documento.id"), index=True)
     base_materia_id:  Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("grupos.grupo_materia.id"), index=True)  # "Base Materia"
     seguro_id:        Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("operaciones.seguro.id"), index=True)
+    plan_id:          Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("operaciones.plan.id"), index=True)   # "Deducible" → plan de deducible
     asegurado_id:     Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("datos.rut.id"), index=True)
     contratante_id:   Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("datos.rut.id"), index=True)
     poliza_id:        Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("gestion.poliza.id"), index=True)
     grupo_cliente_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("grupos.grupo_cliente.id"), index=True)
 
     uso:          Mapped[Optional[str]]   = mapped_column(String(60))
-    deducible:    Mapped[Optional[str]]   = mapped_column(String(200))
+    deducible:    Mapped[Optional[str]]   = mapped_column(String(200))   # legacy: appsheet_id crudo del plan (ver plan_id)
     item:         Mapped[Optional[int]]   = mapped_column(Integer)
     afecta_uf:    Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
     exenta_uf:    Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
@@ -581,7 +623,6 @@ class Materia(AppSheetMixin, Base):
     tasa_afecta:  Mapped[Optional[float]] = mapped_column(Numeric(6, 4))
     tasa_exenta:  Mapped[Optional[float]] = mapped_column(Numeric(6, 4))
     fecha_exclusion: Mapped[Optional[date]] = mapped_column(Date)
-    comentarios:  Mapped[Optional[str]]   = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -589,6 +630,7 @@ class Materia(AppSheetMixin, Base):
     documento:     Mapped[Optional["Documento"]]  = relationship("Documento",   back_populates="materias")
     base_materia:  Mapped[Optional["GrupoMateria"]] = relationship("GrupoMateria", back_populates="materias_gestion")
     seguro:        Mapped[Optional["Seguro"]]     = relationship("Seguro",      foreign_keys=[seguro_id])
+    plan:          Mapped[Optional["Plan"]]       = relationship("Plan",        foreign_keys=[plan_id])
     asegurado:     Mapped[Optional["Rut"]]        = relationship("Rut",         foreign_keys=[asegurado_id])
     contratante:   Mapped[Optional["Rut"]]        = relationship("Rut",         foreign_keys=[contratante_id])
     poliza:        Mapped[Optional["Poliza"]]     = relationship("Poliza",      back_populates="materias", foreign_keys=[poliza_id])
@@ -597,6 +639,43 @@ class Materia(AppSheetMixin, Base):
     siniestros:    Mapped[list["Siniestro"]]      = relationship("Siniestro",   back_populates="materia")
     envios_link:   Mapped[list["CruceMateriasXEnvio"]] = relationship("CruceMateriasXEnvio", back_populates="materia")
     items_envio_link: Mapped[list["CruceItemsXEnvioCliente"]] = relationship("CruceItemsXEnvioCliente", back_populates="materia")
+
+    # ── Propiedades calculadas ────────────────────────────────────────────────
+
+    @property
+    def estado_cobertura(self) -> str:
+        """Cobertura activa si la póliza está vigente y el documento es de tipo activante.
+
+        Requiere: joinedload(Materia.poliza) + joinedload(Materia.documento).
+        """
+        if not self.poliza:
+            return "Inactiva"
+        estados_ok = {"Ok", "Espera", "Pendiente", "Condicional"}
+        if self.poliza.estado_poliza not in estados_ok:
+            return "Inactiva"
+        if not self.documento:
+            return "Inactiva"
+        tipos_activos = {
+            TipoDocumento.poliza,
+            TipoDocumento.inclusion,
+            TipoDocumento.prorroga,
+            TipoDocumento.modificacion,
+            TipoDocumento.rehabilitacion,
+        }
+        return "Activa" if self.documento.tipo_documento in tipos_activos else "Inactiva"
+
+    @property
+    def estado_materia(self) -> str:
+        """Materia cubierta solo cuando la póliza está Ok/Espera y la cobertura es Activa.
+
+        Requiere: joinedload(Materia.poliza) + joinedload(Materia.documento).
+        Depende de estado_cobertura.
+        """
+        if not self.poliza:
+            return "No Cubierta"
+        if self.poliza.estado_poliza not in {"Ok", "Espera", "Condicional"}:
+            return "No Cubierta"
+        return "Cubierta" if self.estado_cobertura == "Activa" else "No Cubierta"
 
 
 # ─── PlanPago ─────────────────────────────────────────────────────────────────
@@ -629,7 +708,6 @@ class PlanPago(AppSheetMixin, Base):
     enviado:        Mapped[bool]            = mapped_column(Boolean, default=False, nullable=False)
     recibo_envio:   Mapped[Optional[str]]   = mapped_column(String(200))
     cargado_cuota:  Mapped[bool]            = mapped_column(Boolean, default=False, nullable=False)
-    comentarios:    Mapped[Optional[str]]   = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -660,6 +738,14 @@ class PlanPago(AppSheetMixin, Base):
             return "Ok"
         return estado_pol
 
+    @property
+    def estado_gestion(self) -> str:
+        if not self.activo:       return "Ok"
+        if not self.firmado:      return "Firmar"
+        if not self.enviado:      return "Enviar"
+        if not self.recibo_envio: return "Pendiente"
+        return "Ok"
+
 
 # ─── Cuota ────────────────────────────────────────────────────────────────────
 
@@ -680,7 +766,6 @@ class Cuota(AppSheetMixin, Base):
 
     control_pago:   Mapped[Optional[str]]   = mapped_column(String(30))
     numero_cuota:   Mapped[int]             = mapped_column(Integer, nullable=False)
-    estado:         Mapped[EstadoCuota]     = mapped_column(Enum(EstadoCuota, schema="gestion"), nullable=False, default=EstadoCuota.pendiente)
     vencimiento:    Mapped[date]            = mapped_column(Date, nullable=False)
     valor_uf:       Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
     valor_clp:      Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
@@ -696,13 +781,6 @@ class Cuota(AppSheetMixin, Base):
     cobrada:        Mapped[bool]            = mapped_column(Boolean, default=False, nullable=False)
     cobro_automatico: Mapped[bool]          = mapped_column(Boolean, default=False, nullable=False)
     cobrar:         Mapped[bool]            = mapped_column(Boolean, default=False, nullable=False)
-    comentarios:    Mapped[Optional[str]]   = mapped_column(Text)
-
-    # Aliases (backward compat)
-    monto_clp: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
-    monto_uf:  Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
-    monto_usd: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
-    fecha_vencimiento: Mapped[Optional[date]] = mapped_column(Date)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -774,7 +852,6 @@ class Cobranza(AppSheetMixin, Base):
     c_uf_pago:      Mapped[Optional[float]]  = mapped_column(Numeric(10, 4))
     c_usd_cobro:    Mapped[Optional[float]]  = mapped_column(Numeric(10, 2))
     c_usd_pago:     Mapped[Optional[float]]  = mapped_column(Numeric(10, 2))
-    comentarios:    Mapped[Optional[str]]    = mapped_column(Text)
     verificador_accion: Mapped[Optional[str]] = mapped_column(String(200))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -815,7 +892,6 @@ class Solicitud(AppSheetMixin, Base):
     impresion_pdf: Mapped[Optional[str]] = mapped_column(String(500))
     condiciones:  Mapped[Optional[str]]  = mapped_column(Text)
     finalizada:   Mapped[bool]           = mapped_column(Boolean, default=False, nullable=False)
-    comentarios:  Mapped[Optional[str]]  = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -867,7 +943,6 @@ class Siniestro(AppSheetMixin, Base):
     respaldo:         Mapped[Optional[str]] = mapped_column(String(500))
     denuncia:         Mapped[Optional[str]] = mapped_column(String(500))
     carpeta:          Mapped[Optional[str]] = mapped_column(String(500))
-    comentarios:      Mapped[Optional[str]] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -894,9 +969,9 @@ class Comision(AppSheetMixin, Base):
     facturacion:        Mapped[Optional[str]]   = mapped_column(String(200))
     monto_afecto:       Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     monto_exento:       Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    tipo_cambio:        Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
     liquidacion_pdf:    Mapped[Optional[str]]   = mapped_column(String(500))
     detalle:            Mapped[Optional[str]]   = mapped_column(Text)
-    comentarios:        Mapped[Optional[str]]   = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -928,6 +1003,39 @@ class Comision(AppSheetMixin, Base):
         if len(self.facturas_link) < self.n_facturas:
             return "Facturar"
         return "Ok"
+
+    @property
+    def total_documentado(self) -> float:
+        """SUM de montos contables con estado_documento == 'Ok'.
+
+        Requiere: selectinload(Comision.facturas_link)
+                  .joinedload(CruceFacturasXComision.contable).
+        """
+        return sum(
+            (lk.contable.total or 0)
+            for lk in self.facturas_link
+            if lk.contable and lk.contable.estado_documento == "Ok"
+        )
+
+
+# ─── Nota ────────────────────────────────────────────────────────────────────
+
+class Nota(AppSheetMixin, Base):
+    """Nota de gestión centralizada. Reemplaza los campos comentarios dispersos en cada tabla."""
+    __tablename__ = "nota"
+    __table_args__ = {"schema": "gestion"}
+
+    id:        Mapped[int]            = mapped_column(Integer, primary_key=True, index=True)
+    autor_id:  Mapped[Optional[int]]  = mapped_column(Integer, ForeignKey("operaciones.gestor.id"), index=True)
+    titulo:    Mapped[Optional[str]]  = mapped_column(String(200))
+    contenido: Mapped[str]            = mapped_column(Text, nullable=False)
+    fecha:     Mapped[Optional[date]] = mapped_column(Date)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    autor:          Mapped[Optional["Gestor"]]           = relationship("Gestor", foreign_keys=[autor_id])
+    entidades_link: Mapped[list["CruceNotasXEntidades"]] = relationship("CruceNotasXEntidades", back_populates="nota")
 
 
 # ─── Tablas puente de gestión ─────────────────────────────────────────────────
@@ -978,6 +1086,11 @@ class CruceDocumentosXComision(AppSheetMixin, Base):
 
     comision:  Mapped["Comision"]  = relationship("Comision",  back_populates="documentos_link")
     documento: Mapped["Documento"] = relationship("Documento", back_populates="comisiones_link")
+
+    @property
+    def es_saldo(self) -> bool:
+        """True si los montos CLP netos no generan flujo real de prima."""
+        return ((self.afecto_clp or 0) + (self.exento_clp or 0)) <= 0
 
 
 class CruceDocumentosXLiquidacion(AppSheetMixin, Base):

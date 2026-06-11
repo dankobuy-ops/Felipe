@@ -13,10 +13,10 @@ async def lifespan(app: FastAPI):
     # Startup: crear esquemas y tablas
     create_schemas()
     Base.metadata.create_all(bind=engine)
-    print(f"✅ SGA Aegis v{settings.app_version} iniciado — {settings.environment}")
+    print(f"SGA Aegis v{settings.app_version} iniciado - {settings.environment}")
     yield
     # Shutdown
-    print("👋 SGA Aegis detenido.")
+    print("SGA Aegis detenido.")
 
 
 app = FastAPI(
