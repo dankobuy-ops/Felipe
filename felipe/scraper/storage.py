@@ -21,11 +21,11 @@ def upload_pdf(
     job_id: str,
     record_id: str,
     local_path: Path,
-    expiry_seconds: int = 3600,
 ) -> str:
-    """Upload PDF to Supabase Storage, verify integrity, return signed URL.
+    """Upload PDF to a PUBLIC Supabase Storage bucket, return its public URL.
 
-    Raises if the file is too small (corrupt/partial download guard).
+    The bucket must be public (no token, never expires). Raises if the file is
+    too small (corrupt/partial download guard).
     """
     if local_path.stat().st_size < 1024:
         raise RuntimeError(f"PDF for {record_id} is too small — likely corrupt or partial.")
@@ -43,17 +43,6 @@ def upload_pdf(
     r = requests.post(upload_url, headers=headers, data=data, timeout=60)
     r.raise_for_status()
 
-    # Generate a signed URL valid for expiry_seconds
-    sign_url = f"{supabase_url}/storage/v1/object/sign/{bucket}/{object_path}"
-    r2 = requests.post(
-        sign_url,
-        headers={**_headers(supabase_key), "Content-Type": "application/json"},
-        json={"expiresIn": expiry_seconds},
-        timeout=15,
-    )
-    r2.raise_for_status()
-    signed_path = r2.json()["signedURL"]
-
-    # signedURL is a path — prepend the Supabase storage base
+    # Public URL — permanent, no token (bucket is public).
     base = supabase_url.rstrip("/")
-    return f"{base}/storage/v1{signed_path}"
+    return f"{base}/storage/v1/object/public/{bucket}/{object_path}"

@@ -12,9 +12,20 @@ Recent session work (other Claude session, please read):
 
 **STATUS 2026-06-10: scraper works END-TO-END.** Verified run (year=2019,
 RUT 96992030-1): search→login→74 causas→Level 3 extraction→PDFs. Job marked
-`complete`, 11/11 causas done, 74 PDFs in Supabase Storage with real sizes.
+`complete`, 11/11 causas done, PDFs in Supabase Storage with real sizes.
 Key fixes below. The site is `appl.smc.cl/JuzgadoDoc` (forms-auth), reached
 via the vitacura.cl parent link.
+
+**STORAGE IS NOW PUBLIC.** The `pdfs` bucket was switched to public and
+`storage.py` returns permanent public URLs (`/object/public/...`) instead of
+1-hour signed URLs (those expired → "broken page"). All previous jobs +
+storage objects were wiped on 2026-06-10 for a fresh start.
+
+**'Stuck on last record' — FIXED.** The results list can repeat a ROL;
+checkpoints are keyed by (job_id, record_id) so duplicates collapsed and the
+old `done_count == len(records)` completion check was unsatisfiable → job
+re-dispatched until the cap stalled it. Now records are deduped by ROL and
+completion is set-based (`target_rols.issubset(done_rols)`).
 
 0. **Level 2 search was scraping the FORM, not results — FIXED** (`run.py`).
    - The vitacura form is ASP.NET: search-type radios `RdBoRut/RdBoRol/RdBoPPU`,
