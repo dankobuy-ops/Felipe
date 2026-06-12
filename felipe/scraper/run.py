@@ -376,7 +376,6 @@ def extract_level3(page):
                     party = {};
                     const row  = cells[i].closest('tr');
                     const tds  = row ? Array.from(row.querySelectorAll('td')) : [];
-                    // walk the row: label → value pairs
                     for (let j = 0; j < tds.length - 1; j++) {
                         const lbl = tds[j].innerText.trim().toUpperCase().replace(':','');
                         const val = tds[j+1].innerText.trim();
@@ -394,6 +393,12 @@ def extract_level3(page):
                         else if (lbl === 'COMUNA') party.comuna = val;
                         else if (lbl === 'TELEFONO' || lbl === 'TELÉFONO' || lbl === 'FONO' || lbl === 'CELULAR') party.telefono = val;
                         else if (lbl === 'CORREO' || lbl === 'EMAIL' || lbl === 'CORREO ELECTRONICO' || lbl === 'CORREO ELECTRÓNICO') party.email = val;
+                        // Vehicle fields — present per-demandado on some JPL layouts
+                        else if (lbl.includes('MARCA')) party.marca = val;
+                        else if (lbl.includes('MODELO')) party.modelo = val;
+                        else if (lbl === 'AÑO' || lbl === 'ANO' || lbl === 'AÑO VEHICULO' || lbl === 'AÑO VEHÍCULO') party.año = val;
+                        else if (lbl === 'PATENTE' || lbl.includes('PLACA')) party.patente = val;
+                        else if (lbl === 'USO' || lbl === 'USO VEHICULO' || lbl === 'USO VEHÍCULO') party.uso = val;
                     }
                 }
             }
@@ -408,7 +413,9 @@ def extract_level3(page):
                             'MONTO','MONTO DEMANDADO','CUANTIA','CUANTÍA','MONTO MULTA',
                             'MARCA','MARCA VEHICULO','MARCA VEHÍCULO',
                             'MODELO','MODELO VEHICULO','MODELO VEHÍCULO',
-                            'AÑO','ANO','AÑO VEHICULO','AÑO VEHÍCULO'];
+                            'AÑO','ANO','AÑO VEHICULO','AÑO VEHÍCULO',
+                            'MATERIA','MATERIA CAUSA','MATERIA DE LA CAUSA',
+                            'USO','USO VEHICULO','USO VEHÍCULO'];
             const cells = allCells();
             const out   = {};
             for (let i = 0; i < cells.length - 1; i++) {

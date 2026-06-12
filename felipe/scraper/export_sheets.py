@@ -1,10 +1,12 @@
 """Export scraped JPL data from Supabase to a Google Sheet (standalone command).
 
-Produces two linked tabs and POSTs them to a Google Apps Script web app bound
+Produces four linked tabs and POSTs them to a Google Apps Script web app bound
 to the target sheet (see sheets_webapp.gs for the script + setup):
 
-  Causas      — one row per causa with demandado details, case info, vehicle + PDF links
-  Documentos  — one row per PDF (trámite / adjunto)
+  Causas      — one row per causa (case header + remisor info)
+  Demandados  — one row per demandado per causa (party + vehicle details)
+  Trámites    — one row per trámite from Sección C (linked by Caso ID)
+  Documentos  — one row per adjunto from Sección D (linked by Caso ID)
 
 Usage:
   python export_sheets.py --webhook <APPS_SCRIPT_EXEC_URL> --all
@@ -20,18 +22,28 @@ import sys
 import requests
 
 CAUSAS_HEADER = [
-    "Caso ID", "ROL", "Fecha proceso", "Juzgado",
-    # Case
-    "Materia", "Monto demandado",
-    # Demandado (primary)
-    "Nombres", "Apellidos", "RUT", "Domicilio", "Email", "Teléfono",
-    # Vehicle
-    "Marca", "Modelo", "Año", "Patente",
-    # PDFs
-    "N° PDFs", "Links PDFs",
+    "Caso ID", "ROL",
+    "RUT Demandante", "Razón Social Demandante",
+    "Carátula",
+    "Fecha Causa", "Fecha Citación", "Fecha Estado", "Estado",
+    "Boleta N°", "Fecha Boleta",
+    "Monto Demandado", "Materia",
 ]
 
-DOCS_HEADER = ["Caso ID", "ROL", "Sección", "Fecha", "Descripción", "PDF URL"]
+DEMANDADOS_HEADER = [
+    "Caso ID", "ROL",
+    "Nombre", "Segundo Nombre", "Ap. Paterno", "Ap. Materno",
+    "RUT", "Email", "Teléfono", "Domicilio",
+    "Marca", "Modelo", "Año", "Patente", "Uso",
+]
+
+TRAMITES_HEADER = [
+    "Caso ID", "ROL", "Fecha", "Descripción", "Link PDF",
+]
+
+DOCUMENTOS_HEADER = [
+    "Caso ID", "ROL", "Descripción", "Link PDF",
+]
 
 
 def _caso_id(job, rol):
@@ -52,18 +64,40 @@ def fetch_rows(sb_url, sb_key, job_id=None):
 
 
 def _split_name(nombre):
-    """Split a full-name string into (nombres, apellidos).
+    """Split a full name into (nombre, segundo_nombre, ap_paterno, ap_materno).
 
-    Chilean official systems often use "APELLIDO1 APELLIDO2, NOMBRE1 NOMBRE2".
-    If a comma is present: before comma = apellidos, after = nombres.
-    Otherwise return the whole string as nombres with empty apellidos.
+    Chilean court systems often format as "APELLIDO1 APELLIDO2, NOMBRE1 NOMBRE2".
+    If a comma is present: before = apellidos, after = nombres.
+    Without a comma, split by position (best-effort heuristic).
     """
     if not nombre:
-        return "", ""
+        return "", "", "", ""
+    nombre = nombre.strip()
     if "," in nombre:
-        apellidos, nombres = nombre.split(",", 1)
-        return nombres.strip().title(), apellidos.strip().title()
-    return nombre.strip().title(), ""
+        apellidos_str, nombres_str = nombre.split(",", 1)
+        apellidos = apellidos_str.strip().split()
+        nombres   = nombres_str.strip().split()
+        ap_paterno = apellidos[0].title() if len(apellidos) >= 1 else ""
+        ap_materno = apellidos[1].title() if len(apellidos) >= 2 else ""
+        nombre1    = nombres[0].title()   if len(nombres)   >= 1 else ""
+        segundo    = " ".join(p.title() for p in nombres[1:])
+        return nombre1, segundo, ap_paterno, ap_materno
+    parts = nombre.split()
+    n = len(parts)
+    if n == 0:
+        return "", "", "", ""
+    if n == 1:
+        return parts[0].title(), "", "", ""
+    if n == 2:
+        return parts[0].title(), "", parts[1].title(), ""
+    if n == 3:
+        return parts[0].title(), "", parts[1].title(), parts[2].title()
+    # 4+ words: first = nombre, last two = apellidos, middle = segundo nombre
+    nombre1    = parts[0].title()
+    ap_paterno = parts[-2].title()
+    ap_materno = parts[-1].title()
+    segundo    = " ".join(p.title() for p in parts[1:-2])
+    return nombre1, segundo, ap_paterno, ap_materno
 
 
 def _domicilio(party):
@@ -71,17 +105,26 @@ def _domicilio(party):
     return ", ".join(p for p in parts if p)
 
 
-def _first_match(causa, *keys):
-    """Return the first non-empty value from causa dict for the given keys."""
+def _first_match(d, *keys):
     for k in keys:
-        v = causa.get(k, "")
+        v = d.get(k, "")
         if v:
             return v
     return ""
 
 
 def build_tables(rows):
-    causas, documentos = [], []
+    # Collect job meta (rut, etc.) keyed by job_id
+    job_meta = {}
+    for row in rows:
+        if row.get("record_id") == "__meta__":
+            try:
+                job_meta[row["job_id"]] = json.loads(row.get("text") or "{}")
+            except Exception:
+                pass
+
+    causas, demandados, tramites, documentos = [], [], [], []
+
     for row in rows:
         rid = row.get("record_id", "")
         if rid in ("__job__", "__meta__"):
@@ -90,66 +133,78 @@ def build_tables(rows):
             d = json.loads(row.get("text") or "{}")
         except Exception:
             d = {}
-        rol  = d.get("rol") or rid
-        job  = row.get("job_id", "")
-        cid  = _caso_id(job, rol)
+
+        rol   = d.get("rol") or rid
+        job   = row.get("job_id", "")
+        cid   = _caso_id(job, rol)
         causa = d.get("causa") or {}
+        meta  = job_meta.get(job, {})
 
-        # Primary demandado
-        demandados = d.get("demandados") or []
-        dem = demandados[0] if demandados else {}
-        nombres, apellidos = _split_name(dem.get("nombre", ""))
-
-        # Vehicle fields — may live in causa section or demandado section
-        marca   = _first_match(causa, "marca", "marca_vehiculo", "marca_vehículo")
-        modelo  = _first_match(causa, "modelo", "modelo_vehiculo", "modelo_vehículo")
-        año     = _first_match(causa, "año", "ano", "año_vehiculo", "año_vehículo")
-        patente = _first_match(causa, "placa_patente")
-
-        # Monto demandado — try several possible key names
-        monto = _first_match(causa, "monto", "monto_demandado", "cuantia", "cuantía", "monto_multa")
-
-        # PDF links
-        tramites = d.get("tramites") or []
-        adjuntos = d.get("adjuntos") or []
-        all_docs = tramites + adjuntos
-        pdf_links = [x["pdf_url"] for x in all_docs if x.get("pdf_url")]
-
+        # ── Table 1: Causas ───────────────────────────────────────────────────
         causas.append([
             cid,
             rol,
-            d.get("fecha_proceso", ""),
-            d.get("juzgado", ""),
-            # Case
-            d.get("descripcion", "") or causa.get("descripcion", "") or causa.get("descripción", ""),
-            monto,
-            # Demandado
-            nombres,
-            apellidos,
-            dem.get("rut", ""),
-            _domicilio(dem),
-            dem.get("email", ""),
-            dem.get("telefono", ""),
-            # Vehicle
-            marca,
-            modelo,
-            año,
-            patente,
-            # PDFs
-            len(pdf_links),
-            "\n".join(pdf_links),
+            meta.get("rut", ""),
+            _first_match(causa, "remisor"),
+            d.get("descripcion", "") or _first_match(causa, "descripcion", "descripción"),
+            _first_match(causa, "fecha_causa"),
+            _first_match(causa, "fecha_citacion", "fecha_citación"),
+            _first_match(causa, "fecha_estado"),
+            causa.get("estado", ""),
+            causa.get("boleta_numero", ""),
+            causa.get("boleta_fecha", ""),
+            _first_match(causa, "monto", "monto_demandado", "cuantia", "cuantía", "monto_multa"),
+            _first_match(causa, "materia", "materia_causa", "materia_de_la_causa"),
         ])
 
-        for t in tramites:
-            if t.get("pdf_url"):
-                documentos.append([cid, rol, "Trámite", t.get("fecha", ""),
-                                   t.get("descripcion", ""), t["pdf_url"]])
-        for a in adjuntos:
-            if a.get("pdf_url"):
-                documentos.append([cid, rol, "Adjunto", "",
-                                   a.get("descripcion", ""), a["pdf_url"]])
+        # ── Table 2: Demandados ───────────────────────────────────────────────
+        # Vehicle fallback from Section B if not captured per demandado
+        veh = {
+            "marca":   _first_match(causa, "marca", "marca_vehiculo", "marca_vehículo"),
+            "modelo":  _first_match(causa, "modelo", "modelo_vehiculo", "modelo_vehículo"),
+            "año":     _first_match(causa, "año", "ano", "año_vehiculo", "año_vehículo"),
+            "patente": _first_match(causa, "placa_patente"),
+            "uso":     _first_match(causa, "uso", "uso_vehiculo", "uso_vehículo"),
+        }
+        dem_list = d.get("demandados") or []
+        if not dem_list:
+            # Preserve FK row even if parsing found no parties
+            demandados.append([cid, rol, "", "", "", "", "", "", "", "",
+                               veh["marca"], veh["modelo"], veh["año"], veh["patente"], veh["uso"]])
+        for dem in dem_list:
+            nombre, segundo, ap_paterno, ap_materno = _split_name(dem.get("nombre", ""))
+            demandados.append([
+                cid, rol,
+                nombre, segundo, ap_paterno, ap_materno,
+                dem.get("rut", ""),
+                dem.get("email", ""),
+                dem.get("telefono", ""),
+                _domicilio(dem),
+                dem.get("marca") or veh["marca"],
+                dem.get("modelo") or veh["modelo"],
+                dem.get("año") or veh["año"],
+                dem.get("patente") or veh["patente"],
+                dem.get("uso") or veh["uso"],
+            ])
 
-    return causas, documentos
+        # ── Table 3: Trámites (Sección C) ─────────────────────────────────────
+        for t in d.get("tramites") or []:
+            tramites.append([
+                cid, rol,
+                t.get("fecha", ""),
+                t.get("descripcion", ""),
+                t.get("pdf_url", ""),
+            ])
+
+        # ── Table 4: Documentos (Sección D adjuntos) ──────────────────────────
+        for a in d.get("adjuntos") or []:
+            documentos.append([
+                cid, rol,
+                a.get("descripcion", ""),
+                a.get("pdf_url", ""),
+            ])
+
+    return causas, demandados, tramites, documentos
 
 
 def main():
@@ -170,15 +225,20 @@ def main():
 
     rows = fetch_rows(args.supabase_url, args.supabase_key,
                       None if args.all else args.job_id)
-    causas, documentos = build_tables(rows)
+    causas, demandados, tramites, documentos = build_tables(rows)
 
     payload = {
-        "causas":     {"header": CAUSAS_HEADER, "rows": causas},
-        "documentos": {"header": DOCS_HEADER,   "rows": documentos},
+        "causas":     {"header": CAUSAS_HEADER,     "rows": causas},
+        "demandados": {"header": DEMANDADOS_HEADER,  "rows": demandados},
+        "tramites":   {"header": TRAMITES_HEADER,    "rows": tramites},
+        "documentos": {"header": DOCUMENTOS_HEADER,  "rows": documentos},
     }
     r = requests.post(args.webhook, json=payload, timeout=120)
     r.raise_for_status()
-    print(f"Exported {len(causas)} causas, {len(documentos)} documentos -> {r.text[:300]}")
+    print(
+        f"Exported {len(causas)} causas, {len(demandados)} demandados, "
+        f"{len(tramites)} trámites, {len(documentos)} documentos → {r.text[:300]}"
+    )
 
 
 if __name__ == "__main__":

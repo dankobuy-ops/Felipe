@@ -1,7 +1,11 @@
 /**
  * Google Apps Script web app to receive scraped JPL data and write it into THIS
- * spreadsheet as two linked tabs: "Causas" (Level 2) and "Documentos" (Level 3),
- * linked by the ROL column.
+ * spreadsheet as four linked tabs, all keyed by "Caso ID" (job-prefix/ROL):
+ *
+ *   Causas      — one row per causa (case header + remisor)
+ *   Demandados  — one row per demandado per causa (party + vehicle details)
+ *   Trámites    — one row per trámite from Sección C
+ *   Documentos  — one row per adjunto from Sección D
  *
  * SETUP (one time, ~2 min):
  *   1. Open your target Google Sheet.
@@ -14,15 +18,17 @@
  *      Deploy, authorize when prompted, copy the "/exec" Web app URL.
  *   5. Give that URL to export_sheets.py via --webhook (or SHEETS_WEBHOOK_URL).
  *
- * Each export REPLACES the contents of both tabs (full refresh).
+ * Each export REPLACES the contents of all tabs (full refresh).
  */
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var c = writeTab_(ss, "Causas", body.causas);
-    var d = writeTab_(ss, "Documentos", body.documentos);
-    return json_({ ok: true, causas: c, documentos: d });
+    var ss   = SpreadsheetApp.getActiveSpreadsheet();
+    var c = writeTab_(ss, "Causas",     body.causas);
+    var d = writeTab_(ss, "Demandados", body.demandados);
+    var t = writeTab_(ss, "Trámites",   body.tramites);
+    var x = writeTab_(ss, "Documentos", body.documentos);
+    return json_({ ok: true, causas: c, demandados: d, tramites: t, documentos: x });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
