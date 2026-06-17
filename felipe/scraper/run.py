@@ -427,7 +427,7 @@ def extract_level3(page):
 
         function dedupVal(s) {
             if (!s) return s;
-            const parts = s.split(/[\s\n\r]+/).filter(Boolean);
+            const parts = s.trim().split(/\s+/).filter(Boolean);
             const unique = [...new Set(parts)];
             if (unique.length < parts.length) return unique.join(' ');
             if (s.length % 2 === 0 && s.slice(0, s.length/2) === s.slice(s.length/2))
