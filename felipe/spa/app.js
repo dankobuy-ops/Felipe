@@ -584,7 +584,7 @@ function buildSheetsPayload(jobId, allData) {
       tramites.push([cid, rol, t.fecha || "", t.descripcion || "", t.pdf_url || ""]);
     }
     for (const a of (data.adjuntos || [])) {
-      documentos.push([cid, rol, a.descripcion || "", a.pdf_url || ""]);
+      if (a.pdf_url) documentos.push([cid, rol, a.descripcion || "", a.pdf_url]);
     }
   }
 
