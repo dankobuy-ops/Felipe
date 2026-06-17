@@ -169,38 +169,38 @@ def build_tables(rows):
         }
         dem_list = d.get("demandados") or []
         if not dem_list:
-            # Preserve FK row even if parsing found no parties
-            demandados.append([cid, rol, "", "", "", "", "", "", "", "",
+            demandados.append([f"{cid}/d1", rol, "", "", "", "", "", "", "", "",
                                veh["marca"], veh["modelo"], veh["año"], veh["patente"], veh["uso"]])
-        for dem in dem_list:
-            nombre, segundo, ap_paterno, ap_materno = _split_name(dem.get("nombre", ""))
-            demandados.append([
-                cid, rol,
-                nombre, segundo, ap_paterno, ap_materno,
-                dem.get("rut", ""),
-                dem.get("email", ""),
-                dem.get("telefono", ""),
-                _domicilio(dem),
-                dem.get("marca") or veh["marca"],
-                dem.get("modelo") or veh["modelo"],
-                dem.get("año") or veh["año"],
-                dem.get("patente") or veh["patente"],
-                dem.get("uso") or veh["uso"],
-            ])
+        else:
+            for di, dem in enumerate(dem_list, 1):
+                nombre, segundo, ap_paterno, ap_materno = _split_name(dem.get("nombre", ""))
+                demandados.append([
+                    f"{cid}/d{di}", rol,
+                    nombre, segundo, ap_paterno, ap_materno,
+                    dem.get("rut", ""),
+                    dem.get("email", ""),
+                    dem.get("telefono", ""),
+                    _domicilio(dem),
+                    dem.get("marca") or veh["marca"],
+                    dem.get("modelo") or veh["modelo"],
+                    dem.get("año") or veh["año"],
+                    dem.get("patente") or veh["patente"],
+                    dem.get("uso") or veh["uso"],
+                ])
 
         # ── Table 3: Trámites (Sección C) ─────────────────────────────────────
-        for t in d.get("tramites") or []:
+        for ti, t in enumerate(d.get("tramites") or [], 1):
             tramites.append([
-                cid, rol,
+                f"{cid}/t{ti}", rol,
                 t.get("fecha", ""),
                 t.get("descripcion", ""),
                 t.get("pdf_url", ""),
             ])
 
         # ── Table 4: Documentos (Sección D adjuntos) ──────────────────────────
-        for a in d.get("adjuntos") or []:
+        for xi, a in enumerate(d.get("adjuntos") or [], 1):
             documentos.append([
-                cid, rol,
+                f"{cid}/x{xi}", rol,
                 a.get("descripcion", ""),
                 a.get("pdf_url", ""),
             ])

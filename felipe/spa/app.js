@@ -611,17 +611,14 @@ function buildSheetsPayload(jobId, allData) {
     // Exclude the demandante (search RUT) — it leaks into Section A.1 on some layouts
     const demList = (data.demandados || []).filter(d => normRut(d.rut) !== rutNorm);
     if (!demList.length) {
-      demandados.push([cid, rol, "", "", "", "", "", "", "", "", veh.marca, veh.modelo, veh.año, veh.patente, veh.uso]);
+      demandados.push([`${cid}/d1`, rol, "", "", "", "", "", "", "", "", veh.marca, veh.modelo, veh.año, veh.patente, veh.uso]);
     } else {
-      // Deduplicate by RUT (or nombre if no RUT) — scraper can emit two entries
-      // for the same person when the ASP.NET grid repeats the label row once
-      // without address data and once with it. Merge both so no data is lost.
       const demMap = new Map();
       for (const dem of demList) {
         const key = dem.rut || dem.nombre || "";
         const [nombre1, segundo, apPaterno, apMaterno] = splitName(dem.nombre);
         const row = [
-          cid, rol,
+          null, rol,  // placeholder — index assigned below
           nombre1, segundo, apPaterno, apMaterno,
           dem.rut || "", dem.email || "", dem.telefono || "", domicilio(dem),
           dem.marca || veh.marca, dem.modelo || veh.modelo,
@@ -634,14 +631,20 @@ function buildSheetsPayload(jobId, allData) {
           demMap.set(key, existing.map((v, i) => v || row[i]));
         }
       }
-      demandados.push(...demMap.values());
+      let di = 0;
+      for (const row of demMap.values()) {
+        row[0] = `${cid}/d${++di}`;
+        demandados.push(row);
+      }
     }
 
+    let ti = 0;
     for (const t of (data.tramites || [])) {
-      tramites.push([cid, rol, t.fecha || "", t.descripcion || "", t.pdf_url || ""]);
+      tramites.push([`${cid}/t${++ti}`, rol, t.fecha || "", t.descripcion || "", t.pdf_url || ""]);
     }
+    let xi = 0;
     for (const a of (data.adjuntos || [])) {
-      if (a.pdf_url) documentos.push([cid, rol, a.descripcion || "", a.pdf_url]);
+      if (a.pdf_url) documentos.push([`${cid}/x${++xi}`, rol, a.descripcion || "", a.pdf_url]);
     }
   }
 
