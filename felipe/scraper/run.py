@@ -403,7 +403,21 @@ def extract_level3(page):
                 }
             }
             if (party) parties.push(party);
-            return parties.filter(p => p.nombre);
+
+            // Deduplicate by RUT (fallback: nombre) — ASP.NET grids can render
+            // the same party twice: once as a label row (no address) and once
+            // with full data. Merge both so no field is lost.
+            const seen = new Map();
+            for (const p of parties) {
+                const key = p.rut || p.nombre || '';
+                if (!seen.has(key)) {
+                    seen.set(key, Object.assign({}, p));
+                } else {
+                    const ex = seen.get(key);
+                    for (const k of Object.keys(p)) { if (!ex[k] && p[k]) ex[k] = p[k]; }
+                }
+            }
+            return Array.from(seen.values()).filter(p => p.nombre);
         }
 
         function extractSectionB() {
