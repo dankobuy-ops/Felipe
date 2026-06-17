@@ -331,9 +331,22 @@ git push origin main
 
 ---
 
+## Last Claude Code session
+
+To resume the most recent conversation (context + full history):
+
+```
+claude --resume e19c461d-de6e-4147-b6b5-4b0722b19bd8
+```
+
+File: `C:\Users\Danko\.claude\projects\C--Claude-felipe\e19c461d-de6e-4147-b6b5-4b0722b19bd8.jsonl`
+
+---
+
 ## Session log
 
 | Date | What happened |
 |---|---|
 | 2026-06-03 | Connected repo to Felipe.git, pulled remote state (CEO plan + README), installed gstack at root level (54 skills), created this handoff file |
 | 2026-06-03 | Built full scraper stack: GHA workflow, Playwright scraper, Supabase checkpoint store, Supabase Storage for PDFs, static SPA (Screen 1 + 2), local backend hop. Tested end-to-end — pipeline fires, re-dispatches, and caps correctly. |
+| 2026-06-17 | Google Sheets export (5-tab schema: RUTs, Causas, Demandados, Trámites, Documentos), upsert by Caso ID, name parsing fix (Chilean no-comma format), patente dedup, per-row unique Caso ID (/d1 /t1 /x1 suffixes), clear/wipe history buttons, per-job delete button, runtime raised to 50 min / 50 re-dispatches. |
