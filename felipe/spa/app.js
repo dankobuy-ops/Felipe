@@ -512,6 +512,19 @@ function buildSheetsPayload(jobId, allData) {
     return "";
   }
 
+  function dedupValue(val) {
+    if (!val) return "";
+    const s = String(val).trim();
+    // Space/newline-separated duplicate: "AB1234 AB1234" → "AB1234"
+    const parts = s.split(/[\s\n\r]+/).filter(Boolean);
+    const unique = [...new Set(parts)];
+    if (unique.length < parts.length) return unique.join(" ");
+    // Concatenated duplicate: "AB1234AB1234" → "AB1234"
+    if (s.length % 2 === 0 && s.slice(0, s.length / 2) === s.slice(s.length / 2))
+      return s.slice(0, s.length / 2);
+    return s;
+  }
+
   // Normalize RUT for comparison: strip dots/spaces, lowercase
   function normRut(r) { return String(r || "").replace(/[.\s]/g, "").toLowerCase(); }
   const rutNorm = normRut(rutDemandante);
@@ -528,7 +541,7 @@ function buildSheetsPayload(jobId, allData) {
       marca:   firstOf(causa, "marca", "marca_vehiculo", "marca_vehículo"),
       modelo:  firstOf(causa, "modelo", "modelo_vehiculo", "modelo_vehículo"),
       año:     firstOf(causa, "año", "ano", "año_vehiculo", "año_vehículo"),
-      patente: firstOf(causa, "placa_patente"),
+      patente: dedupValue(firstOf(causa, "placa_patente")),
       uso:     firstOf(causa, "uso", "uso_vehiculo", "uso_vehículo"),
     };
 
@@ -569,7 +582,7 @@ function buildSheetsPayload(jobId, allData) {
           nombre1, segundo, apPaterno, apMaterno,
           dem.rut || "", dem.email || "", dem.telefono || "", domicilio(dem),
           dem.marca || veh.marca, dem.modelo || veh.modelo,
-          dem.año || veh.año, dem.patente || veh.patente, dem.uso || veh.uso,
+          dem.año || veh.año, dedupValue(dem.patente || veh.patente), dem.uso || veh.uso,
         ];
         const existing = demMap.get(key);
         if (!existing) {

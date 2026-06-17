@@ -425,6 +425,16 @@ def extract_level3(page):
             return Array.from(seen.values()).filter(p => p.nombre);
         }
 
+        function dedupVal(s) {
+            if (!s) return s;
+            const parts = s.split(/[\s\n\r]+/).filter(Boolean);
+            const unique = [...new Set(parts)];
+            if (unique.length < parts.length) return unique.join(' ');
+            if (s.length % 2 === 0 && s.slice(0, s.length/2) === s.slice(s.length/2))
+                return s.slice(0, s.length/2);
+            return s;
+        }
+
         function extractSectionB() {
             const LABELS = ['ROL INICIO','DESCRIPCION','DESCRIPCIÓN','FECHA CAUSA',
                             'ACTUARIO','PLACA PATENTE','REMISOR','FECHA CITACION',
@@ -442,7 +452,7 @@ def extract_level3(page):
                 if (LABELS.includes(t)) {
                     const val = cells[i+1].innerText.trim();
                     if (val && !LABELS.includes(val.toUpperCase().replace(':','')))
-                        out[t.toLowerCase().replace(/ /g,'_')] = val;
+                        out[t.toLowerCase().replace(/ /g,'_')] = dedupVal(val);
                 }
                 // PARTE Y/O BOLETA DE CITACIÓN row has N° and FECHA as sub-fields
                 if (t.includes('PARTE') && t.includes('BOLETA')) {
