@@ -19,9 +19,14 @@
           <input type="password" id="pat-input" required placeholder="ghp_..." autocomplete="off" />
         </label>
         <label>
-          Webhook Google Sheets
+          ID de Google Sheet
+          <input type="text" id="sheet-id-input" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74Og..." autocomplete="off" />
+          <span class="hint-small">ID en la URL de tu hoja: …/spreadsheets/d/<strong>[ID]</strong>/edit</span>
+        </label>
+        <label>
+          URL Apps Script (webhook)
           <input type="url" id="webhook-input" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" />
-          <span class="hint-small">Apps Script /exec URL — necesario para exportar a Sheets.</span>
+          <span class="hint-small">Configuración única — despliega <code>sheets_webapp.gs</code> como Web app y pega el /exec URL aquí.</span>
         </label>
         <button type="submit">Guardar y continuar</button>
       </form>
@@ -96,6 +101,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

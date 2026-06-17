@@ -66,6 +66,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 
 .hint { font-size: .85rem; color: #6b7280; margin-top: .8rem; line-height: 1.5; }
 .hint code { background: #f3f4f6; padding: .1em .4em; border-radius: 4px; font-size: .8rem; }
+.hint-small { font-size: .78rem; color: #9ca3af; margin-top: .2rem; line-height: 1.4; }
+.hint-small code { background: #f3f4f6; padding: .1em .3em; border-radius: 3px; font-size: .75rem; }
 .error { color: #dc2626; font-size: .875rem; margin-top: .8rem; }
 
 /* Results */

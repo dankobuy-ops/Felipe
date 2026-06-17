@@ -10,6 +10,8 @@ const getPAT            = ()  => localStorage.getItem("gh_pat") || "";
 const setPAT            = (v) => localStorage.setItem("gh_pat", v);
 const getSheetsWebhook  = ()  => localStorage.getItem("sheets_webhook") || "";
 const setSheetsWebhook  = (v) => localStorage.setItem("sheets_webhook", v);
+const getSheetId        = ()  => localStorage.getItem("sheets_id") || "";
+const setSheetId        = (v) => localStorage.setItem("sheets_id", v);
 
 // Local job history (rut/year/date per job triggered from this browser).
 const HISTORY_KEY = "job_history";
@@ -43,6 +45,7 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const pat     = document.getElementById("pat-input").value.trim();
   const webhook = document.getElementById("webhook-input").value.trim();
+  const sheetId = document.getElementById("sheet-id-input").value.trim();
   const err     = document.getElementById("setup-error");
   err.classList.add("hidden");
   try {
@@ -52,6 +55,7 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
     if (!r.ok) throw new Error(`GitHub rechazó el token (${r.status})`);
     setPAT(pat);
     if (webhook) setSheetsWebhook(webhook);
+    if (sheetId) setSheetId(sheetId);
     showScreen("screen-trigger");
   } catch (ex) {
     err.textContent = ex.message;
@@ -60,8 +64,9 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
 });
 
 document.getElementById("settings-btn").addEventListener("click", () => {
-  document.getElementById("pat-input").value      = getPAT();
-  document.getElementById("webhook-input").value  = getSheetsWebhook();
+  document.getElementById("pat-input").value       = getPAT();
+  document.getElementById("sheet-id-input").value  = getSheetId();
+  document.getElementById("webhook-input").value   = getSheetsWebhook();
   showScreen("screen-setup");
 });
 
@@ -450,29 +455,50 @@ function buildDetail(data, causa) {
 // ── Google Sheets export ──────────────────────────────────────────────────────
 
 const CAUSAS_HEADER = [
-  "Caso ID", "ROL", "Fecha proceso", "Juzgado",
-  "Materia", "Monto demandado",
-  "Nombres", "Apellidos", "RUT", "Domicilio", "Email", "Teléfono",
-  "Marca", "Modelo", "Año", "Patente",
-  "N° PDFs", "Links PDFs",
+  "Caso ID", "ROL",
+  "RUT Demandante", "Razón Social Demandante",
+  "Carátula",
+  "Fecha Causa", "Fecha Citación", "Fecha Estado", "Estado",
+  "Boleta N°", "Fecha Boleta",
+  "Monto Demandado", "Materia",
 ];
-const DOCS_HEADER = ["Caso ID", "ROL", "Sección", "Fecha", "Descripción", "PDF URL"];
+const DEMANDADOS_HEADER = [
+  "Caso ID", "ROL",
+  "Nombre", "Segundo Nombre", "Ap. Paterno", "Ap. Materno",
+  "RUT", "Email", "Teléfono", "Domicilio",
+  "Marca", "Modelo", "Año", "Patente", "Uso",
+];
+const TRAMITES_HEADER  = ["Caso ID", "ROL", "Fecha", "Descripción", "Link PDF"];
+const DOCUMENTOS_HEADER = ["Caso ID", "ROL", "Descripción", "Link PDF"];
 
 function buildSheetsPayload(jobId, allData) {
+  const rutDemandante = document.getElementById("rut-display").textContent;
+
   function casoId(job, rol) { return `${(job || "").slice(0, 8)}/${rol}`; }
 
-  function splitName(nombre) {
-    if (!nombre) return ["", ""];
-    const s = String(nombre);
-    if (s.includes(",")) {
-      const idx = s.indexOf(",");
-      return [toTitle(s.slice(idx + 1)), toTitle(s.slice(0, idx))];
-    }
-    return [toTitle(s), ""];
+  function toTitle(s) {
+    return String(s || "").trim().replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
   }
 
-  function toTitle(s) {
-    return s.trim().replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+  function splitName(nombre) {
+    if (!nombre) return ["", "", "", ""];
+    const s = String(nombre).trim();
+    if (s.includes(",")) {
+      const apellidosParts = s.slice(0, s.indexOf(",")).trim().split(/\s+/);
+      const nombresParts   = s.slice(s.indexOf(",") + 1).trim().split(/\s+/);
+      return [
+        toTitle(nombresParts[0] || ""),
+        nombresParts.slice(1).map(toTitle).join(" "),
+        toTitle(apellidosParts[0] || ""),
+        toTitle(apellidosParts[1] || ""),
+      ];
+    }
+    const parts = s.split(/\s+/);
+    const n = parts.length;
+    if (n <= 1) return [toTitle(parts[0] || ""), "", "", ""];
+    if (n === 2) return [toTitle(parts[0]), "", toTitle(parts[1]), ""];
+    if (n === 3) return [toTitle(parts[0]), "", toTitle(parts[1]), toTitle(parts[2])];
+    return [toTitle(parts[0]), parts.slice(1, n - 2).map(toTitle).join(" "), toTitle(parts[n - 2]), toTitle(parts[n - 1])];
   }
 
   function domicilio(party) {
@@ -484,72 +510,85 @@ function buildSheetsPayload(jobId, allData) {
     return "";
   }
 
-  const causas = [];
-  const docs   = [];
+  const causas = [], demandados = [], tramites = [], documentos = [];
 
   for (const row of allData) {
-    const data    = row._data;
-    const rol     = data.rol || row.record_id;
-    const cid     = casoId(jobId, rol);
-    const causa   = (typeof data.causa === "object" && data.causa) ? data.causa : {};
-    const dem     = (data.demandados || [])[0] || {};
-    const [nombres, apellidos] = splitName(dem.nombre);
-
-    const tramites  = data.tramites || [];
-    const adjuntos  = data.adjuntos || [];
-    const pdfLinks  = [...tramites, ...adjuntos].filter((x) => x.pdf_url).map((x) => x.pdf_url);
+    const data  = row._data;
+    const rol   = data.rol || row.record_id;
+    const cid   = casoId(jobId, rol);
+    const causa = (typeof data.causa === "object" && data.causa) ? data.causa : {};
+    const veh   = {
+      marca:   firstOf(causa, "marca", "marca_vehiculo", "marca_vehículo"),
+      modelo:  firstOf(causa, "modelo", "modelo_vehiculo", "modelo_vehículo"),
+      año:     firstOf(causa, "año", "ano", "año_vehiculo", "año_vehículo"),
+      patente: firstOf(causa, "placa_patente"),
+      uso:     firstOf(causa, "uso", "uso_vehiculo", "uso_vehículo"),
+    };
 
     causas.push([
       cid, rol,
-      data.fecha_proceso || "",
-      data.juzgado || "",
+      rutDemandante,
+      firstOf(causa, "remisor"),
       data.descripcion || causa.descripcion || causa["descripción"] || "",
+      firstOf(causa, "fecha_causa"),
+      firstOf(causa, "fecha_citacion", "fecha_citación"),
+      firstOf(causa, "fecha_estado"),
+      causa.estado || "",
+      causa.boleta_numero || "",
+      causa.boleta_fecha || "",
       firstOf(causa, "monto", "monto_demandado", "cuantia", "cuantía", "monto_multa"),
-      nombres, apellidos,
-      dem.rut || "",
-      domicilio(dem),
-      dem.email || "",
-      dem.telefono || "",
-      firstOf(causa, "marca", "marca_vehiculo", "marca_vehículo"),
-      firstOf(causa, "modelo", "modelo_vehiculo", "modelo_vehículo"),
-      firstOf(causa, "año", "ano", "año_vehiculo", "año_vehículo"),
-      firstOf(causa, "placa_patente"),
-      pdfLinks.length,
-      pdfLinks.join("\n"),
+      firstOf(causa, "materia", "materia_causa", "materia_de_la_causa"),
     ]);
 
-    for (const t of tramites) {
-      if (t.pdf_url) docs.push([cid, rol, "Trámite", t.fecha || "", t.descripcion || "", t.pdf_url]);
+    const demList = data.demandados || [];
+    if (!demList.length) {
+      demandados.push([cid, rol, "", "", "", "", "", "", "", "", veh.marca, veh.modelo, veh.año, veh.patente, veh.uso]);
     }
-    for (const a of adjuntos) {
-      if (a.pdf_url) docs.push([cid, rol, "Adjunto", "", a.descripcion || "", a.pdf_url]);
+    for (const dem of demList) {
+      const [nombre1, segundo, apPaterno, apMaterno] = splitName(dem.nombre);
+      demandados.push([
+        cid, rol,
+        nombre1, segundo, apPaterno, apMaterno,
+        dem.rut || "", dem.email || "", dem.telefono || "", domicilio(dem),
+        dem.marca || veh.marca, dem.modelo || veh.modelo,
+        dem.año || veh.año, dem.patente || veh.patente, dem.uso || veh.uso,
+      ]);
+    }
+
+    for (const t of (data.tramites || [])) {
+      tramites.push([cid, rol, t.fecha || "", t.descripcion || "", t.pdf_url || ""]);
+    }
+    for (const a of (data.adjuntos || [])) {
+      documentos.push([cid, rol, a.descripcion || "", a.pdf_url || ""]);
     }
   }
 
   return {
-    causas:     { header: CAUSAS_HEADER, rows: causas },
-    documentos: { header: DOCS_HEADER,   rows: docs   },
+    causas:     { header: CAUSAS_HEADER,     rows: causas },
+    demandados: { header: DEMANDADOS_HEADER,  rows: demandados },
+    tramites:   { header: TRAMITES_HEADER,    rows: tramites },
+    documentos: { header: DOCUMENTOS_HEADER,  rows: documentos },
   };
 }
 
 document.getElementById("sheets-btn").addEventListener("click", async () => {
   const webhook = getSheetsWebhook();
-  if (!webhook) {
-    alert("Ingresa el URL del webhook de Google Sheets en Configuración (⚙).");
+  const sheetId = getSheetId();
+  if (!webhook || !sheetId) {
+    alert("Configura el ID de la hoja y la URL del Apps Script en Configuración (⚙).");
     return;
   }
   if (!_allData.length) return;
 
-  const btn   = document.getElementById("sheets-btn");
+  const btn = document.getElementById("sheets-btn");
   btn.disabled = true;
   btn.textContent = "Enviando…";
 
   const jobId   = document.getElementById("job-id-display").textContent;
-  const payload = buildSheetsPayload(jobId, _allData);
+  const payload = { spreadsheet_id: sheetId, ...buildSheetsPayload(jobId, _allData) };
 
   try {
-    // no-cors: skips CORS preflight; Apps Script receives the body as plain text.
-    // Response is opaque (can't be read), but the script executes and writes the sheet.
+    // no-cors: Apps Script receives body as plain text; response is opaque but script runs.
     await fetch(webhook, {
       method:  "POST",
       mode:    "no-cors",

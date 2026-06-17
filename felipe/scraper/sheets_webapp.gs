@@ -23,7 +23,9 @@
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
-    var ss   = SpreadsheetApp.getActiveSpreadsheet();
+    var ss   = body.spreadsheet_id
+      ? SpreadsheetApp.openById(body.spreadsheet_id)
+      : SpreadsheetApp.getActiveSpreadsheet();
     var c = writeTab_(ss, "Causas",     body.causas);
     var d = writeTab_(ss, "Demandados", body.demandados);
     var t = writeTab_(ss, "Trámites",   body.tramites);
