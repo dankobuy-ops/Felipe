@@ -47,6 +47,11 @@ def parse_args():
     return p.parse_args()
 
 
+def norm_rut(r):
+    """Normalize RUT for comparison — strips dots and spaces, lowercases."""
+    return re.sub(r'[\.\s]', '', str(r or '')).lower()
+
+
 def extract_year(fecha_str):
     """Return 4-digit year string from dates like '01/01/2024', '2024-01-01', or None if unparseable."""
     for part in fecha_str.strip().replace("-", "/").replace(".", "/").split("/"):
@@ -634,6 +639,15 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
                 # Extract all Level 3 data via JS
                 detail = extract_level3(active)
+
+                # Remove the demandante (search RUT) from demandados — some JPL
+                # layouts include the plaintiff in Section A.1 alongside defendants.
+                search_norm = norm_rut(args.search_code)
+                detail['demandados'] = [
+                    d for d in detail.get('demandados', [])
+                    if norm_rut(d.get('rut', '')) != search_norm
+                ]
+
                 log(f"[INFO] Extracted: {len(detail.get('tramites', []))} trámites, "
                     f"{len(detail.get('demandados', []))} demandados")
 
