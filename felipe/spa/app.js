@@ -500,7 +500,7 @@ function buildDetail(data, causa) {
 const RUTS_HEADER = ["RUT", "Nombre"];
 const CAUSAS_HEADER = [
   "Caso ID", "ROL",
-  "RUT Demandante",
+  "Demandante",
   "Carátula",
   "Fecha Causa", "Fecha Citación", "Fecha Estado", "Estado",
   "Boleta N°", "Fecha Boleta",

@@ -23,7 +23,7 @@ import requests
 
 CAUSAS_HEADER = [
     "Caso ID", "ROL",
-    "RUT Demandante", "Razón Social Demandante",
+    "Demandante", "Razón Social Demandante",
     "Carátula",
     "Fecha Causa", "Fecha Citación", "Fecha Estado", "Estado",
     "Boleta N°", "Fecha Boleta",
