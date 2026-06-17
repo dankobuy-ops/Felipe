@@ -454,9 +454,10 @@ function buildDetail(data, causa) {
 
 // ── Google Sheets export ──────────────────────────────────────────────────────
 
+const RUTS_HEADER = ["RUT", "Nombre"];
 const CAUSAS_HEADER = [
   "Caso ID", "ROL",
-  "RUT Demandante", "Razón Social Demandante",
+  "RUT Demandante",
   "Carátula",
   "Fecha Causa", "Fecha Citación", "Fecha Estado", "Estado",
   "Boleta N°", "Fecha Boleta",
@@ -511,6 +512,7 @@ function buildSheetsPayload(jobId, allData) {
   }
 
   const causas = [], demandados = [], tramites = [], documentos = [];
+  let nombreDemandante = "";
 
   for (const row of allData) {
     const data  = row._data;
@@ -525,10 +527,11 @@ function buildSheetsPayload(jobId, allData) {
       uso:     firstOf(causa, "uso", "uso_vehiculo", "uso_vehículo"),
     };
 
+    if (!nombreDemandante) nombreDemandante = firstOf(causa, "remisor");
+
     causas.push([
       cid, rol,
       rutDemandante,
-      firstOf(causa, "remisor"),
       data.descripcion || causa.descripcion || causa["descripción"] || "",
       firstOf(causa, "fecha_causa"),
       firstOf(causa, "fecha_citacion", "fecha_citación"),
@@ -564,6 +567,7 @@ function buildSheetsPayload(jobId, allData) {
   }
 
   return {
+    ruts:       { header: RUTS_HEADER,       rows: [[rutDemandante, nombreDemandante]] },
     causas:     { header: CAUSAS_HEADER,     rows: causas },
     demandados: { header: DEMANDADOS_HEADER,  rows: demandados },
     tramites:   { header: TRAMITES_HEADER,    rows: tramites },
