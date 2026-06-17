@@ -204,6 +204,40 @@ document.getElementById("history-clear").addEventListener("click", () => {
   localStorage.setItem(CLEARED_AT_KEY, new Date().toISOString());
   renderJobHistory();
 });
+document.getElementById("supabase-wipe").addEventListener("click", async () => {
+  if (!confirm("¿Limpiar todos los datos de Supabase?")) return;
+  const btn = document.getElementById("supabase-wipe");
+  btn.disabled = true;
+  btn.textContent = "⏳";
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/wipe.yml/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getPAT()}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ref: "main" }),
+      }
+    );
+    if (r.status === 204) {
+      btn.textContent = "✓";
+      localStorage.removeItem(HISTORY_KEY);
+      localStorage.setItem(CLEARED_AT_KEY, new Date().toISOString());
+      setTimeout(() => { btn.textContent = "🧹"; btn.disabled = false; renderJobHistory(); }, 2000);
+    } else {
+      alert(`Error ${r.status}`);
+      btn.textContent = "🧹";
+      btn.disabled = false;
+    }
+  } catch (err) {
+    alert(String(err));
+    btn.textContent = "🧹";
+    btn.disabled = false;
+  }
+});
 
 async function renderJobHistory() {
   const block = document.getElementById("history-block");

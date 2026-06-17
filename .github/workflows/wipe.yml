@@ -1,0 +1,19 @@
+name: Limpiar Supabase
+
+on:
+  workflow_dispatch:
+
+jobs:
+  wipe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Delete all checkpoints
+        run: |
+          curl -s -X DELETE \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/checkpoints?record_id=not.is.null" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Prefer: return=representation" \
+            -o /dev/null -w "HTTP %{http_code}\n"
+          echo "Supabase checkpoints wiped."
