@@ -511,6 +511,10 @@ function buildSheetsPayload(jobId, allData) {
     return "";
   }
 
+  // Normalize RUT for comparison: strip dots/spaces, lowercase
+  function normRut(r) { return String(r || "").replace(/[.\s]/g, "").toLowerCase(); }
+  const rutNorm = normRut(rutDemandante);
+
   const causas = [], demandados = [], tramites = [], documentos = [];
   let nombreDemandante = "";
 
@@ -527,7 +531,11 @@ function buildSheetsPayload(jobId, allData) {
       uso:     firstOf(causa, "uso", "uso_vehiculo", "uso_vehículo"),
     };
 
-    if (!nombreDemandante) nombreDemandante = firstOf(causa, "remisor");
+    // Get demandante name from Section A.2 (demandantes array), fall back to remisor
+    if (!nombreDemandante) {
+      const match = (data.demandantes || []).find(d => normRut(d.rut) === rutNorm);
+      nombreDemandante = (match && match.nombre) || firstOf(causa, "remisor");
+    }
 
     causas.push([
       cid, rol,
@@ -543,7 +551,8 @@ function buildSheetsPayload(jobId, allData) {
       firstOf(causa, "materia", "materia_causa", "materia_de_la_causa"),
     ]);
 
-    const demList = data.demandados || [];
+    // Exclude the demandante (search RUT) — it leaks into Section A.1 on some layouts
+    const demList = (data.demandados || []).filter(d => normRut(d.rut) !== rutNorm);
     if (!demList.length) {
       demandados.push([cid, rol, "", "", "", "", "", "", "", "", veh.marca, veh.modelo, veh.año, veh.patente, veh.uso]);
     } else {
