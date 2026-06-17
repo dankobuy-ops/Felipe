@@ -23,13 +23,13 @@ on:
         default: ""
 
 env:
-  MAX_RESUME_ATTEMPTS: "10"
-  MAX_RUNTIME_SECONDS: "240"
+  MAX_RESUME_ATTEMPTS: "50"
+  MAX_RUNTIME_SECONDS: "3000"
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 55
 
     steps:
       - name: Checkout
