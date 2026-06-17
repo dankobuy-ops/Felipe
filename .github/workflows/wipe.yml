@@ -2,18 +2,31 @@ name: Limpiar Supabase
 
 on:
   workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Job ID a eliminar (vacío = borrar todo)"
+        required: false
+        default: ""
 
 jobs:
   wipe:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Delete all checkpoints
+      - name: Delete checkpoints
         run: |
+          JOB_ID="${{ github.event.inputs.job_id }}"
+          if [ -n "$JOB_ID" ]; then
+            FILTER="job_id=eq.${JOB_ID}"
+            echo "Deleting job: $JOB_ID"
+          else
+            FILTER="record_id=not.is.null"
+            echo "Deleting all checkpoints"
+          fi
           curl -s -X DELETE \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/checkpoints?record_id=not.is.null" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/checkpoints?${FILTER}" \
             -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
             -H "Prefer: return=representation" \
             -o /dev/null -w "HTTP %{http_code}\n"
-          echo "Supabase checkpoints wiped."
+          echo "Done."

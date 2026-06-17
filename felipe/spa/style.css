@@ -193,4 +193,6 @@ button.danger:hover { background: #fecaca; }
 .hi-rut { font-weight: 600; color: #111827; font-size: .9rem; }
 .hi-year { font-size: .78rem; color: #6b7280; }
 .hi-main .badge { margin-left: auto; }
+.hi-del { font-size: .85rem; padding: .1rem .3rem; color: #9ca3af; }
+.hi-del:hover { color: #dc2626; background: #fee2e2; }
 .hi-sub { font-size: .74rem; color: #9ca3af; margin-top: .15rem; }

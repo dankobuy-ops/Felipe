@@ -288,9 +288,39 @@ async function renderJobHistory() {
         <span class="hi-rut">${esc(j.rut || j.jobId.slice(0, 8))}</span>
         ${j.year ? `<span class="hi-year">año ${esc(j.year)}</span>` : ""}
         <span class="badge ${st === "complete" ? "complete" : st === "stalled" ? "stalled" : ""}">${esc(labelMap[j.status] || st)}</span>
+        <button class="hi-del link-btn" title="Eliminar" data-job="${esc(j.jobId)}">🗑</button>
       </div>
       <div class="hi-sub">${esc(when)}</div>`;
-    li.addEventListener("click", () => showResultsScreen(j.jobId, j.rut || "", j.year || ""));
+    li.addEventListener("click", (e) => {
+      if (e.target.closest(".hi-del")) return;
+      showResultsScreen(j.jobId, j.rut || "", j.year || "");
+    });
+    li.querySelector(".hi-del").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "⏳";
+      // Remove from localStorage
+      const updated = getLocalJobs().filter(l => l.jobId !== j.jobId);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+      // Dispatch wipe workflow for this job_id
+      try {
+        await fetch(
+          `https://api.github.com/repos/${GH_REPO}/actions/workflows/wipe.yml/dispatches`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${getPAT()}`,
+              Accept: "application/vnd.github+json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ ref: "main", inputs: { job_id: j.jobId } }),
+          }
+        );
+      } catch (_) {}
+      li.remove();
+      if (!list.children.length) block.classList.add("hidden");
+    });
     list.appendChild(li);
   }
 }
