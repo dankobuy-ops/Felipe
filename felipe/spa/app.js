@@ -14,7 +14,8 @@ const getSheetId        = ()  => localStorage.getItem("sheets_id") || "";
 const setSheetId        = (v) => localStorage.setItem("sheets_id", v);
 
 // Local job history (rut/year/date per job triggered from this browser).
-const HISTORY_KEY = "job_history";
+const HISTORY_KEY    = "job_history";
+const CLEARED_AT_KEY = "history_cleared_at";
 function getLocalJobs() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch (_) { return []; }
 }
@@ -200,6 +201,7 @@ document.getElementById("back-btn").addEventListener("click", () => {
 document.getElementById("history-refresh").addEventListener("click", renderJobHistory);
 document.getElementById("history-clear").addEventListener("click", () => {
   localStorage.removeItem(HISTORY_KEY);
+  localStorage.setItem(CLEARED_AT_KEY, new Date().toISOString());
   renderJobHistory();
 });
 
@@ -233,7 +235,10 @@ async function renderJobHistory() {
     }
   } catch (_) { /* offline / RLS — fall back to local-only list */ }
 
-  const jobs = Object.values(byId).sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
+  const clearedAt = localStorage.getItem(CLEARED_AT_KEY) || "";
+  const jobs = Object.values(byId)
+    .filter(j => !clearedAt || (j.ts && j.ts > clearedAt) || local.some(l => l.jobId === j.jobId))
+    .sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
   if (!jobs.length) { block.classList.add("hidden"); return; }
   block.classList.remove("hidden");
 
