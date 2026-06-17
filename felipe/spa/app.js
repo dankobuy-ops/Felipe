@@ -546,16 +546,29 @@ function buildSheetsPayload(jobId, allData) {
     const demList = data.demandados || [];
     if (!demList.length) {
       demandados.push([cid, rol, "", "", "", "", "", "", "", "", veh.marca, veh.modelo, veh.año, veh.patente, veh.uso]);
-    }
-    for (const dem of demList) {
-      const [nombre1, segundo, apPaterno, apMaterno] = splitName(dem.nombre);
-      demandados.push([
-        cid, rol,
-        nombre1, segundo, apPaterno, apMaterno,
-        dem.rut || "", dem.email || "", dem.telefono || "", domicilio(dem),
-        dem.marca || veh.marca, dem.modelo || veh.modelo,
-        dem.año || veh.año, dem.patente || veh.patente, dem.uso || veh.uso,
-      ]);
+    } else {
+      // Deduplicate by RUT (or nombre if no RUT) — scraper can emit two entries
+      // for the same person when the ASP.NET grid repeats the label row once
+      // without address data and once with it. Merge both so no data is lost.
+      const demMap = new Map();
+      for (const dem of demList) {
+        const key = dem.rut || dem.nombre || "";
+        const [nombre1, segundo, apPaterno, apMaterno] = splitName(dem.nombre);
+        const row = [
+          cid, rol,
+          nombre1, segundo, apPaterno, apMaterno,
+          dem.rut || "", dem.email || "", dem.telefono || "", domicilio(dem),
+          dem.marca || veh.marca, dem.modelo || veh.modelo,
+          dem.año || veh.año, dem.patente || veh.patente, dem.uso || veh.uso,
+        ];
+        const existing = demMap.get(key);
+        if (!existing) {
+          demMap.set(key, row);
+        } else {
+          demMap.set(key, existing.map((v, i) => v || row[i]));
+        }
+      }
+      demandados.push(...demMap.values());
     }
 
     for (const t of (data.tramites || [])) {
