@@ -661,6 +661,11 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
                     args.job_id, rol, supabase_url, supabase_key, supabase_bucket,
                 )
 
+                # Drop adjuntos with no downloaded PDF before persisting
+                case_data['adjuntos'] = [
+                    a for a in case_data.get('adjuntos', []) if a.get('pdf_url')
+                ]
+
                 write_checkpoints(supabase_url, supabase_key, [{
                     "job_id":    args.job_id,
                     "record_id": rol,
