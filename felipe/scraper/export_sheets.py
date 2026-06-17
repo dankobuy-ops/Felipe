@@ -82,6 +82,7 @@ def _split_name(nombre):
         nombre1    = nombres[0].title()   if len(nombres)   >= 1 else ""
         segundo    = " ".join(p.title() for p in nombres[1:])
         return nombre1, segundo, ap_paterno, ap_materno
+    # No comma — Chilean courts use PATERNO MATERNO NOMBRE [SEGUNDO] order
     parts = nombre.split()
     n = len(parts)
     if n == 0:
@@ -89,14 +90,14 @@ def _split_name(nombre):
     if n == 1:
         return parts[0].title(), "", "", ""
     if n == 2:
-        return parts[0].title(), "", parts[1].title(), ""
+        return parts[1].title(), "", parts[0].title(), ""
     if n == 3:
-        return parts[0].title(), "", parts[1].title(), parts[2].title()
-    # 4+ words: first = nombre, last two = apellidos, middle = segundo nombre
-    nombre1    = parts[0].title()
-    ap_paterno = parts[-2].title()
-    ap_materno = parts[-1].title()
-    segundo    = " ".join(p.title() for p in parts[1:-2])
+        return parts[2].title(), "", parts[0].title(), parts[1].title()
+    # 4+ words: first two = apellidos, rest = nombres
+    ap_paterno = parts[0].title()
+    ap_materno = parts[1].title()
+    nombre1    = parts[2].title()
+    segundo    = " ".join(p.title() for p in parts[3:])
     return nombre1, segundo, ap_paterno, ap_materno
 
 

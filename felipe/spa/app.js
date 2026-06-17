@@ -494,12 +494,13 @@ function buildSheetsPayload(jobId, allData) {
         toTitle(apellidosParts[1] || ""),
       ];
     }
+    // No comma — Chilean courts use PATERNO MATERNO NOMBRE [SEGUNDO] order
     const parts = s.split(/\s+/);
     const n = parts.length;
     if (n <= 1) return [toTitle(parts[0] || ""), "", "", ""];
-    if (n === 2) return [toTitle(parts[0]), "", toTitle(parts[1]), ""];
-    if (n === 3) return [toTitle(parts[0]), "", toTitle(parts[1]), toTitle(parts[2])];
-    return [toTitle(parts[0]), parts.slice(1, n - 2).map(toTitle).join(" "), toTitle(parts[n - 2]), toTitle(parts[n - 1])];
+    if (n === 2) return [toTitle(parts[1]), "", toTitle(parts[0]), ""];
+    if (n === 3) return [toTitle(parts[2]), "", toTitle(parts[0]), toTitle(parts[1])];
+    return [toTitle(parts[2]), parts.slice(3).map(toTitle).join(" "), toTitle(parts[0]), toTitle(parts[1])];
   }
 
   function domicilio(party) {
