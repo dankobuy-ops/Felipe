@@ -198,6 +198,10 @@ document.getElementById("back-btn").addEventListener("click", () => {
 
 // ── Job history (previous jobs) ───────────────────────────────────────────────
 document.getElementById("history-refresh").addEventListener("click", renderJobHistory);
+document.getElementById("history-clear").addEventListener("click", () => {
+  localStorage.removeItem(HISTORY_KEY);
+  renderJobHistory();
+});
 
 async function renderJobHistory() {
   const block = document.getElementById("history-block");
