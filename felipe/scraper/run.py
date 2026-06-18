@@ -90,17 +90,65 @@ def dump_page(page, label):
 def enter_via_parent(page, context, parent_url):
     """Load the municipality/court parent page and navigate to the SMC search form."""
     if "custhelp.com" in parent_url:
-        # Lo Barnechea: JS onclick opens SMC in a new window — unreliable in headless mode.
-        # Load custhelp first to establish the Referer header, then navigate directly to SMC.
+        # Lo Barnechea: custhelp has a JS onclick that opens the SMC form.
+        # Strategy: load custhelp fully (networkidle), check for embedded frames or SMC links,
+        # then try click-to-new-window; fall back to direct SMC URL with retry.
         try:
-            page.goto(parent_url, wait_until="domcontentloaded", timeout=45_000)
+            page.goto(parent_url, wait_until="networkidle", timeout=60_000)
         except PlaywrightTimeout:
-            pass  # OK — we just need the Referer; custhelp timing out is fine
+            pass  # Continue even if networkidle times out
+
+        # Check if custhelp embedded an SMC frame already
+        for frame in page.frames:
+            if "appl.smc.cl" in frame.url or "JuzgadoDoc" in frame.url.lower():
+                log(f"[DEBUG lb] Found embedded SMC frame: {frame.url}")
+                return frame  # type: ignore[return-value]
+
+        # Try to extract the SMC URL from any links or onclick attributes on the page
+        smc_href = page.evaluate("""() => {
+            const selectors = [
+                'a[href*="appl.smc.cl"]',
+                'a[href*="JuzgadoDoc"]',
+                'a[onclick*="appl.smc.cl"]',
+                'a[onclick*="JuzgadoDoc"]',
+            ];
+            for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el) return el.href || el.getAttribute('onclick');
+            }
+            return null;
+        }""")
+        if smc_href:
+            log(f"[DEBUG lb] Found SMC href on custhelp page: {smc_href}")
+
+        # Try the JS-driven click — custhelp platform opens SMC in a new window via window.open().
+        try:
+            with context.expect_page(timeout=12_000) as info:
+                page.click(SEL_ENTRY_LINK, force=True)
+            p = info.value
+            p.wait_for_load_state("domcontentloaded", timeout=30_000)
+            log(f"[DEBUG lb] New window opened: {p.url}")
+            return p
+        except Exception as e:
+            log(f"[DEBUG lb] expect_page failed ({e}), trying same-page wait")
+
+        # Check if the current page navigated to SMC after the click
+        if "appl.smc.cl" in page.url:
+            return page
+
+        # Last resort: navigate directly to the known SMC URL.
+        # Login.aspx requires an ASP.NET session — first hit the base app to establish one.
+        log(f"[DEBUG lb] Navigating directly to SMC (base then Login)")
+        try:
+            page.goto("https://appl.smc.cl/JuzgadoDoc/", wait_until="domcontentloaded", timeout=20_000)
+        except PlaywrightTimeout:
+            pass
         try:
             page.goto(SMC_LB_URL, wait_until="domcontentloaded", timeout=45_000)
         except PlaywrightTimeout:
             write_status("crashed")
             raise RuntimeError(f"Lo Barnechea SMC form timed out: {SMC_LB_URL}")
+        dump_page(page, "lb-after-direct-nav")
         return page
 
     # Standard path (Vitacura and others): parent page → click Consulta de Causas link
