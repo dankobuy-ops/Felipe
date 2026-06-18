@@ -26,6 +26,8 @@ STATUS_FILE  = Path("/tmp/scrape_status")
 DOWNLOAD_DIR = Path("/tmp/pdfs")
 
 SEL_ENTRY_LINK = "a:has-text('CONSULTA DE CAUSAS'), a:has-text('Consulta de Causas')"
+# Lo Barnechea SMC form URL — custhelp JS opens this; we navigate directly after setting Referer.
+SMC_LB_URL = "https://appl.smc.cl/JuzgadoDoc/Login.aspx?ReturnUrl=%2fjuzgadodoc%2ffrmBusqueda.aspx"
 # ASP.NET form (vitacura): radio selects search type, then txtRut + btnAceptar.
 SEL_RADIO_RUT  = "#ctl00_ContentPlaceHolder1_RdBoRut, input[type='radio'][value='RdBoRut']"
 SEL_RUT_INPUT  = "#ctl00_ContentPlaceHolder1_txtRut, input[type='text'][id*='txtRut'], input[type='text'][id*='Rut']"
@@ -86,8 +88,22 @@ def dump_page(page, label):
 # ── Level 1 → Level 2: entry via parent ───────────────────────────────────────
 
 def enter_via_parent(page, context, parent_url):
-    """Load the municipality/court parent page and click the Consulta de Causas link."""
-    # Navigate to the parent page, then click the consulta link
+    """Load the municipality/court parent page and navigate to the SMC search form."""
+    if "custhelp.com" in parent_url:
+        # Lo Barnechea: JS onclick opens SMC in a new window — unreliable in headless mode.
+        # Load custhelp first to establish the Referer header, then navigate directly to SMC.
+        try:
+            page.goto(parent_url, wait_until="domcontentloaded", timeout=45_000)
+        except PlaywrightTimeout:
+            pass  # OK — we just need the Referer; custhelp timing out is fine
+        try:
+            page.goto(SMC_LB_URL, wait_until="domcontentloaded", timeout=45_000)
+        except PlaywrightTimeout:
+            write_status("crashed")
+            raise RuntimeError(f"Lo Barnechea SMC form timed out: {SMC_LB_URL}")
+        return page
+
+    # Standard path (Vitacura and others): parent page → click Consulta de Causas link
     try:
         page.goto(parent_url, wait_until="domcontentloaded", timeout=45_000)
     except PlaywrightTimeout:
@@ -101,11 +117,10 @@ def enter_via_parent(page, context, parent_url):
         write_status("crashed")
         raise RuntimeError("CONSULTA DE CAUSAS link not found on parent page.")
 
-    # force=True bypasses overlay divs that intercept pointer events (custhelp).
-    # Try expect_page first — handles both target="_blank" and window.open() via JS onclick.
+    # Try expect_page first — handles target="_blank" and window.open() JS onclick.
     try:
         with context.expect_page(timeout=8_000) as info:
-            page.click(SEL_ENTRY_LINK, force=True)
+            page.click(SEL_ENTRY_LINK)
         p = info.value
         p.wait_for_load_state("domcontentloaded", timeout=30_000)
         return p
@@ -430,7 +445,7 @@ def extract_level3(page):
 
         function dedupVal(s) {
             if (!s) return s;
-            const parts = s.trim().split(/\s+/).filter(Boolean);
+            const parts = s.trim().split(/\\s+/).filter(Boolean);
             const unique = [...new Set(parts)];
             if (unique.length < parts.length) return unique.join(' ');
             if (s.length % 2 === 0 && s.slice(0, s.length/2) === s.slice(s.length/2))
