@@ -403,6 +403,43 @@ async function renderJobHistory() {
 }
 
 // ── Enrich emails button ──────────────────────────────────────────────────────
+let _enrichCancelled = false;
+
+async function cancelEnrichRuns() {
+  const r = await fetch(
+    `https://api.github.com/repos/${GH_REPO}/actions/workflows/${ENRICH_WORKFLOW}/runs?per_page=10`,
+    { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
+  );
+  if (!r.ok) throw new Error(`GitHub ${r.status}`);
+  const { workflow_runs = [] } = await r.json();
+  const active = workflow_runs.filter((w) => w.status === "in_progress" || w.status === "queued");
+  await Promise.all(active.map((w) =>
+    fetch(`https://api.github.com/repos/${GH_REPO}/actions/runs/${w.id}/cancel`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" },
+    })
+  ));
+  return active.length;
+}
+
+document.getElementById("stop-enrich-btn").addEventListener("click", async () => {
+  const stopBtn = document.getElementById("stop-enrich-btn");
+  stopBtn.disabled = true;
+  stopBtn.textContent = "Deteniendo…";
+  _enrichCancelled = true;
+  try {
+    await cancelEnrichRuns();
+  } catch (_) {}
+  stopBtn.classList.add("hidden");
+  stopBtn.disabled = false;
+  stopBtn.textContent = "Detener búsqueda";
+  const btn = document.getElementById("enrich-btn");
+  btn.disabled = false;
+  btn.textContent = "Buscar Emails";
+  btn.className = "secondary";
+  setEnrichStatus("");
+});
+
 async function countEnrichProgress(jobId) {
   try {
     const rows = await fetchCheckpoints(jobId);
@@ -452,6 +489,8 @@ document.getElementById("enrich-btn").addEventListener("click", async () => {
       throw new Error(`GitHub ${r.status}: ${body || "sin detalle"}`);
     }
     btn.textContent = "Buscando…";
+    _enrichCancelled = false;
+    document.getElementById("stop-enrich-btn").classList.remove("hidden");
     pollEnrich(btn, jobId, dispatchedAt);
   } catch (ex) {
     btn.disabled = false;
@@ -460,11 +499,17 @@ document.getElementById("enrich-btn").addEventListener("click", async () => {
   }
 });
 
+function _enrichDone(btn) {
+  document.getElementById("stop-enrich-btn").classList.add("hidden");
+  setEnrichStatus("");
+}
+
 async function pollEnrich(btn, jobId, dispatchedAt, attempt = 0) {
+  if (_enrichCancelled) return;
   if (attempt > 60) {
+    _enrichDone(btn);
     btn.disabled = false;
     btn.textContent = "Timeout — reintentar";
-    setEnrichStatus("");
     return;
   }
 
@@ -498,12 +543,12 @@ async function pollEnrich(btn, jobId, dispatchedAt, attempt = 0) {
       btn.textContent = label;
       btn.className = "btn-done";
       btn.disabled = false;
-      setEnrichStatus("");
+      _enrichDone(btn);
     } else {
       btn.textContent = "Falló — reintentar";
       btn.disabled = false;
       btn.className = "secondary";
-      setEnrichStatus("");
+      _enrichDone(btn);
     }
   } catch (_) {
     setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 10_000);
