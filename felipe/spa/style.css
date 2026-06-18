@@ -175,6 +175,16 @@ a.doc-link:hover { text-decoration: underline; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Enrich live status */
+.enrich-status {
+  font-size: .8rem;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: .25rem .6rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
 /* Enrich done state */
 button.btn-done {
   background: #d1fae5;

@@ -403,6 +403,26 @@ async function renderJobHistory() {
 }
 
 // ── Enrich emails button ──────────────────────────────────────────────────────
+async function countEnrichProgress(jobId) {
+  try {
+    const rows = await fetchCheckpoints(jobId);
+    let total = 0, found = 0;
+    for (const row of rows) {
+      if (row.record_id === "__job__" || row.record_id === "__meta__") continue;
+      try {
+        const d = JSON.parse(row.text || "{}");
+        for (const dem of d.demandados || []) { total++; if (dem.email) found++; }
+      } catch (_) {}
+    }
+    return { total, found };
+  } catch (_) { return null; }
+}
+
+function setEnrichStatus(text) {
+  document.getElementById("enrich-status").textContent = text;
+  document.getElementById("enrich-status").classList.toggle("hidden", !text);
+}
+
 document.getElementById("enrich-btn").addEventListener("click", async () => {
   const jobId = document.getElementById("job-id-display").textContent.trim();
   if (!jobId) return;
@@ -410,6 +430,7 @@ document.getElementById("enrich-btn").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "Iniciando…";
   btn.className = "secondary";
+  setEnrichStatus("");
 
   try {
     const dispatchedAt = new Date().toISOString();
@@ -430,8 +451,8 @@ document.getElementById("enrich-btn").addEventListener("click", async () => {
       const body = await r.text().catch(() => "");
       throw new Error(`GitHub ${r.status}: ${body || "sin detalle"}`);
     }
-    btn.textContent = "Enriqueciendo…";
-    pollEnrich(btn, dispatchedAt);
+    btn.textContent = "Buscando…";
+    pollEnrich(btn, jobId, dispatchedAt);
   } catch (ex) {
     btn.disabled = false;
     btn.textContent = "Error — reintentar";
@@ -439,12 +460,21 @@ document.getElementById("enrich-btn").addEventListener("click", async () => {
   }
 });
 
-async function pollEnrich(btn, dispatchedAt, attempt = 0) {
+async function pollEnrich(btn, jobId, dispatchedAt, attempt = 0) {
   if (attempt > 60) {
     btn.disabled = false;
     btn.textContent = "Timeout — reintentar";
+    setEnrichStatus("");
     return;
   }
+
+  // Update live email count from Supabase on every tick
+  const progress = await countEnrichProgress(jobId);
+  if (progress) {
+    const { total, found } = progress;
+    btn.textContent = total ? `Buscando… ${found}/${total}` : "Buscando…";
+  }
+
   try {
     const r = await fetch(
       `https://api.github.com/repos/${GH_REPO}/actions/workflows/${ENRICH_WORKFLOW}/runs?per_page=5&event=workflow_dispatch`,
@@ -454,21 +484,26 @@ async function pollEnrich(btn, dispatchedAt, attempt = 0) {
     const { workflow_runs = [] } = await r.json();
     const run = workflow_runs.find((w) => w.created_at >= dispatchedAt);
     if (!run) {
-      setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 5_000);
+      setTimeout(() => pollEnrich(btn, jobId, dispatchedAt, attempt + 1), 8_000);
       return;
     }
     if (!run.conclusion) {
-      setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 10_000);
+      setTimeout(() => pollEnrich(btn, jobId, dispatchedAt, attempt + 1), 10_000);
       return;
     }
+    // Workflow finished — do one final count
+    const final = await countEnrichProgress(jobId);
     if (run.conclusion === "success") {
-      btn.textContent = "✓ Emails buscados";
+      const label = final ? `✓ ${final.found}/${final.total} emails` : "✓ Listo";
+      btn.textContent = label;
       btn.className = "btn-done";
       btn.disabled = false;
+      setEnrichStatus("");
     } else {
       btn.textContent = "Falló — reintentar";
       btn.disabled = false;
       btn.className = "secondary";
+      setEnrichStatus("");
     }
   } catch (_) {
     setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 10_000);
