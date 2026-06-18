@@ -24,7 +24,7 @@ import requests
 JUZGADOS_HEADER = ["Juzgado ID", "Nombre", "URL"]
 JUZGADOS_ROWS = [
     ["vitacura",    "Vitacura",     "https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/"],
-    ["lobarnechea", "Lo Barnechea", "https://appl.smc.cl/JuzgadoDoc/frmBusqueda.aspx"],
+    ["lobarnechea", "Lo Barnechea", "https://mlobarnechea.custhelp.com/app/answers/detail/a_id/83/incidents.c$tipo_atencion/221"],
 ]
 JUZGADO_NAMES = {
     "vitacura":    "Vitacura",

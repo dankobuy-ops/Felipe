@@ -1,7 +1,7 @@
 // ── Config ────────────────────────────────────────────────────────────────────
 const JUZGADOS = {
   vitacura:    { name: "Vitacura",     url: "https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/" },
-  lobarnechea: { name: "Lo Barnechea", url: "https://appl.smc.cl/JuzgadoDoc/frmBusqueda.aspx" },
+  lobarnechea: { name: "Lo Barnechea", url: "https://mlobarnechea.custhelp.com/app/answers/detail/a_id/83/incidents.c$tipo_atencion/221" },
 };
 
 const RUTS = [

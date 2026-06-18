@@ -85,21 +85,9 @@ def dump_page(page, label):
 
 # ── Level 1 → Level 2: entry via parent ───────────────────────────────────────
 
-SMC_SEARCH_URL = "https://appl.smc.cl/JuzgadoDoc/frmBusqueda.aspx"
-
 def enter_via_parent(page, context, parent_url):
-    """Navigate to the JPL search form. If parent_url is already the SMC backend,
-    go directly; otherwise load the municipality page and click the consulta link."""
-    if "appl.smc.cl/JuzgadoDoc" in parent_url:
-        # Direct SMC URL — navigate straight to the search form
-        try:
-            page.goto(SMC_SEARCH_URL, wait_until="domcontentloaded", timeout=45_000)
-        except PlaywrightTimeout:
-            write_status("crashed")
-            raise RuntimeError(f"SMC search form timed out: {SMC_SEARCH_URL}")
-        return page
-
-    # Municipality parent page — navigate there, then click the consulta link
+    """Load the municipality/court parent page and click the Consulta de Causas link."""
+    # Navigate to the parent page, then click the consulta link
     try:
         page.goto(parent_url, wait_until="domcontentloaded", timeout=45_000)
     except PlaywrightTimeout:
