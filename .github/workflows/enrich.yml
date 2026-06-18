@@ -50,7 +50,9 @@ jobs:
 
       - name: Install Playwright OS deps (cache hit)
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: playwright install-deps chromium
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            fonts-freefont-ttf fonts-liberation libfontconfig1 xvfb 2>/dev/null || true
 
       - name: Run email enrichment
         working-directory: ${{ github.workspace }}/felipe

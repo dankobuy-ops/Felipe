@@ -75,7 +75,12 @@ jobs:
 
       - name: Install Playwright OS deps (cache hit)
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: playwright install-deps chromium
+        run: |
+          # ubuntu-latest already has all Chromium system libs.
+          # Only missing packages are CJK/extra fonts — not needed for Spanish sites.
+          # Install just the minimal extras Chromium needs that may not be present.
+          sudo apt-get install -y --no-install-recommends \
+            fonts-freefont-ttf fonts-liberation libfontconfig1 xvfb 2>/dev/null || true
 
       - name: Validate URL
         run: python felipe/scraper/validate_inputs.py "${{ github.event.inputs.target_url }}"
