@@ -44,7 +44,7 @@ CAUSAS_HEADER = [
 DEMANDADOS_HEADER = [
     "Caso ID", "ROL",
     "Nombre", "Segundo Nombre", "Ap. Paterno", "Ap. Materno",
-    "RUT", "Email", "Teléfono", "Domicilio",
+    "RUT", "Email", "Fuente Email", "Teléfono", "Domicilio",
     "Marca", "Modelo", "Año", "Patente", "Uso",
 ]
 
@@ -182,7 +182,7 @@ def build_tables(rows):
         }
         dem_list = d.get("demandados") or []
         if not dem_list:
-            demandados.append([f"{cid}/d1", rol, "", "", "", "", "", "", "", "",
+            demandados.append([f"{cid}/d1", rol, "", "", "", "", "", "", "", "", "",
                                veh["marca"], veh["modelo"], veh["año"], veh["patente"], veh["uso"]])
         else:
             for di, dem in enumerate(dem_list, 1):
@@ -192,6 +192,7 @@ def build_tables(rows):
                     nombre, segundo, ap_paterno, ap_materno,
                     dem.get("rut", ""),
                     dem.get("email", ""),
+                    dem.get("email_source", ""),
                     dem.get("telefono", ""),
                     _domicilio(dem),
                     dem.get("marca") or veh["marca"],

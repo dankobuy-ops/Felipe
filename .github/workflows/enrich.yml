@@ -1,0 +1,58 @@
+name: Enrich Emails
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Job ID to enrich (blank = all jobs)"
+        required: false
+        default: ""
+      sources:
+        description: "Sources to use, comma-separated (blank = all): linkedin,pjud,diario_oficial,boletin_concursal,hunter,rocketreach,lusha,facebook,instagram,genealogia"
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry run — print findings without writing to Supabase"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
+
+      - name: Run email enrichment
+        working-directory: ${{ github.workspace }}/felipe
+        run: |
+          python scraper/enrich_emails.py \
+            ${{ github.event.inputs.job_id != '' && format('--job-id "{0}"', github.event.inputs.job_id) || '--all' }} \
+            ${{ github.event.inputs.sources != '' && format('--sources "{0}"', github.event.inputs.sources) || '' }} \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          HUNTER_API_KEY:       ${{ secrets.HUNTER_API_KEY }}
+          ROCKETREACH_API_KEY:  ${{ secrets.ROCKETREACH_API_KEY }}
+          LUSHA_API_KEY:        ${{ secrets.LUSHA_API_KEY }}
+          LINKEDIN_EMAIL:       ${{ secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD:    ${{ secrets.LINKEDIN_PASSWORD }}
+          FACEBOOK_EMAIL:       ${{ secrets.FACEBOOK_EMAIL }}
+          FACEBOOK_PASSWORD:    ${{ secrets.FACEBOOK_PASSWORD }}
+          INSTAGRAM_EMAIL:      ${{ secrets.INSTAGRAM_EMAIL }}
+          INSTAGRAM_PASSWORD:   ${{ secrets.INSTAGRAM_PASSWORD }}
