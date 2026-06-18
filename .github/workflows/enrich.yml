@@ -47,12 +47,3 @@ jobs:
         env:
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          HUNTER_API_KEY:       ${{ secrets.HUNTER_API_KEY }}
-          ROCKETREACH_API_KEY:  ${{ secrets.ROCKETREACH_API_KEY }}
-          LUSHA_API_KEY:        ${{ secrets.LUSHA_API_KEY }}
-          LINKEDIN_EMAIL:       ${{ secrets.LINKEDIN_EMAIL }}
-          LINKEDIN_PASSWORD:    ${{ secrets.LINKEDIN_PASSWORD }}
-          FACEBOOK_EMAIL:       ${{ secrets.FACEBOOK_EMAIL }}
-          FACEBOOK_PASSWORD:    ${{ secrets.FACEBOOK_PASSWORD }}
-          INSTAGRAM_EMAIL:      ${{ secrets.INSTAGRAM_EMAIL }}
-          INSTAGRAM_PASSWORD:   ${{ secrets.INSTAGRAM_PASSWORD }}
