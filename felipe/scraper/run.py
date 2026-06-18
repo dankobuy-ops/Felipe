@@ -127,6 +127,22 @@ def enter_via_parent(page, context, parent_url):
         except PlaywrightTimeout:
             write_status("crashed")
             raise RuntimeError(f"Lo Barnechea SMC form timed out: {target_smc}")
+
+        # If we landed on Login.aspx (ASP.NET auth redirect), follow the ReturnUrl parameter
+        # to reach the actual search form (frmBusqueda.aspx).
+        if "login.aspx" in page.url.lower():
+            from urllib.parse import parse_qs, unquote, urlparse
+            qs = parse_qs(urlparse(page.url).query)
+            return_path = qs.get("ReturnUrl", [None])[0]
+            if return_path:
+                base = "http://appl.smc.cl"
+                target_form = base + unquote(return_path)
+                log(f"[DEBUG lb] On Login.aspx, following ReturnUrl → {target_form}")
+                try:
+                    page.goto(target_form, wait_until="domcontentloaded", timeout=30_000)
+                except PlaywrightTimeout:
+                    pass
+                log(f"[DEBUG lb] After ReturnUrl nav: {page.url}")
         return page
 
     # Standard path (Vitacura and others): parent page → click Consulta de Causas link
@@ -202,18 +218,20 @@ def search_rut(page, rut):
         pass
 
     log(f"[INFO] Submitting search. URL before click: {page.url}")
+    url_before = page.url
+    page.click(SEL_SEARCH_BTN)
+    # Wait for navigation away from the current URL (handles both full postback and UpdatePanel).
     try:
-        with page.expect_navigation(url="**frmBusqueda*", timeout=20_000):
-            page.click(SEL_SEARCH_BTN)
-        log("[INFO] Click navigated to results page")
+        page.wait_for_url(lambda u: u != url_before, timeout=20_000)
+        log(f"[INFO] Click navigated: {page.url}")
     except PlaywrightTimeout:
         log(f"[WARN] Click did not navigate (url={page.url}). Trying __doPostBack fallback")
+        page.evaluate(
+            "() => { if (window.__doPostBack) __doPostBack('ctl00$ContentPlaceHolder1$btnAceptar',''); }"
+        )
         try:
-            with page.expect_navigation(url="**frmBusqueda*", timeout=20_000):
-                page.evaluate(
-                    "() => { if (window.__doPostBack) __doPostBack('ctl00$ContentPlaceHolder1$btnAceptar',''); }"
-                )
-            log("[INFO] __doPostBack navigated to results page")
+            page.wait_for_url(lambda u: u != url_before, timeout=20_000)
+            log(f"[INFO] __doPostBack navigated: {page.url}")
         except PlaywrightTimeout:
             log(f"[WARN] Still not on results after fallback (url={page.url})")
 
