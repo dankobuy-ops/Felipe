@@ -160,46 +160,42 @@ def enter_via_parent(page, context, parent_url):
 
 
 def fill_login_selects(page, year):
-    """Fill any extra dropdowns on Login.aspx (year + court) before the RUT search.
+    """Fill year+court dropdowns on Lo Barnechea's Login.aspx via JavaScript.
 
-    Lo Barnechea's Login.aspx has two extra <select> elements not present on
-    Vitacura's frmBusqueda.aspx. We scan all selects, log them for diagnosis,
-    then pick the right year and the Lo Barnechea court option.
+    The selects have disabled="disabled" in the initial HTML so Playwright's
+    select_option() waits forever for them to become enabled. We bypass the
+    disabled attribute entirely using evaluate(), remove it, set the value,
+    and fire a change event so any onchange handlers still run.
     """
-    selects = page.evaluate("""() => {
-        return Array.from(document.querySelectorAll('select')).map(s => ({
-            id: s.id, name: s.name,
-            options: Array.from(s.options).map(o => ({text: o.text, value: o.value}))
-        }));
-    }""")
-    log(f"[DEBUG lb-selects] {selects}")
+    # Known IDs from diagnostic run — set year and court directly via JS
+    year_values = ["2026", "2025", "2024", "2023", "2022", "2021"]
+    target_year = year if year in year_values else year_values[0]
 
-    for sel in selects:
-        opts = sel.get("options", [])
-        sel_id = sel.get("id") or sel.get("name")
-        if not sel_id:
-            continue
-        css = f"#{sel_id}" if sel.get("id") else f"select[name='{sel_id}']"
-
-        # Year dropdown — pick the requested year, or the most recent available
-        year_values = [o["value"] for o in opts if o["value"].isdigit() and len(o["value"]) == 4]
-        if year_values:
-            target_year = year if year in year_values else year_values[0]
-            try:
-                page.select_option(css, value=target_year)
-                log(f"[INFO] Selected year {target_year} in {sel_id}")
-            except Exception as e:
-                log(f"[WARN] Could not select year in {sel_id}: {e}")
-            continue
-
-        # Court dropdown — pick the first non-TAG option (Lo Barnechea court)
-        court_opts = [o for o in opts if "TAG" not in o["text"].upper() and o["value"]]
-        if court_opts:
-            try:
-                page.select_option(css, value=court_opts[0]["value"])
-                log(f"[INFO] Selected court '{court_opts[0]['text']}' in {sel_id}")
-            except Exception as e:
-                log(f"[WARN] Could not select court in {sel_id}: {e}")
+    result = page.evaluate("""
+        (targetYear) => {
+            var out = {};
+            var yearSel = document.getElementById('ctl00_ContentPlaceHolder1_Cmbyear');
+            if (yearSel) {
+                yearSel.removeAttribute('disabled');
+                yearSel.value = targetYear;
+                yearSel.dispatchEvent(new Event('change', {bubbles: true}));
+                out.year = yearSel.value;
+            } else {
+                out.year = 'not found';
+            }
+            var courtSel = document.getElementById('ctl00_ContentPlaceHolder1_CmbJuz');
+            if (courtSel) {
+                courtSel.removeAttribute('disabled');
+                courtSel.value = '1';
+                courtSel.dispatchEvent(new Event('change', {bubbles: true}));
+                out.court = courtSel.value;
+            } else {
+                out.court = 'not found';
+            }
+            return out;
+        }
+    """, target_year)
+    log(f"[INFO] lb-selects set via JS: {result}")
 
 
 def search_rut(page, rut, year="", juzgado=""):
