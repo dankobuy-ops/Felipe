@@ -31,13 +31,15 @@ h1 { font-size: 1.4rem; color: #1a1a2e; }
 
 form { display: flex; flex-direction: column; gap: 1.2rem; margin-top: 1.4rem; }
 label { display: flex; flex-direction: column; gap: .4rem; font-size: .875rem; font-weight: 600; color: #444; }
-input[type=text], input[type=url], input[type=password] {
+input[type=text], input[type=url], input[type=password], select {
   padding: .6rem .8rem;
   border: 1px solid #d0d0d0;
   border-radius: 8px;
   font-size: 1rem;
+  background: #fff;
 }
-input:focus { outline: 2px solid #4f46e5; border-color: transparent; }
+input:focus, select:focus { outline: 2px solid #4f46e5; border-color: transparent; }
+select:disabled { opacity: .45; cursor: not-allowed; background: #f9fafb; }
 
 button {
   padding: .7rem 1.4rem;
@@ -203,7 +205,8 @@ button.danger:hover { background: #fecaca; }
   transition: border-color .15s, background .15s, color .15s;
 }
 .juzgado-btn:hover { border-color: #a5b4fc; background: #eef2ff; color: #1e1b4b; }
-.juzgado-btn.active { border-color: #4f46e5; background: #eef2ff; color: #3730a3; }
+.juzgado-btn.active { border-color: #4f46e5; background: #4f46e5; color: #fff; box-shadow: 0 2px 8px rgba(79,70,229,.3); }
+.juzgado-btn.active:hover { background: #4338ca; border-color: #4338ca; }
 .jb-name { font-size: .95rem; }
 .hi-juzgado {
   font-size: .74rem;

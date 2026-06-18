@@ -4,6 +4,34 @@ const JUZGADOS = {
   lobarnechea: { name: "Lo Barnechea", url: "https://appl.smc.cl/JuzgadoDoc/frmBusqueda.aspx" },
 };
 
+const RUTS = [
+  { name: "Autopista Central",        rut: "96.945.440-8" },
+  { name: "Costanera Norte",          rut: "76.496.130-7" },
+  { name: "Vespucio Norte",           rut: "96.992.030-1" },
+  { name: "Vespucio Sur",             rut: "76.052.927-3" },
+  { name: "Vespucio Oriente (AVO 1)", rut: "76.376.061-8" },
+  { name: "Vespucio Oriente (AVO 2)", rut: "76.870.948-3" },
+  { name: "Autopista Nororiente",     rut: "99.548.570-2" },
+  { name: "Acceso Vial AMB",          rut: "76.706.496-9" },
+];
+
+function normR(r) { return String(r || "").replace(/[.\s]/g, "").toLowerCase(); }
+
+function populateRutSelect(doneRuts) {
+  const sel  = document.getElementById("search-code");
+  const prev = sel.value;
+  sel.innerHTML = '<option value="" disabled selected>— Selecciona RUT —</option>';
+  for (const r of RUTS) {
+    const done = doneRuts.has(normR(r.rut));
+    const opt  = document.createElement("option");
+    opt.value       = r.rut;
+    opt.textContent = (done ? "✓  " : "      ") + r.name + "   " + r.rut;
+    if (r.rut === prev) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.disabled = false;
+}
+
 const SUPABASE_URL     = "https://xjlpsgchgfxryvhhrklx.supabase.co";
 const SUPABASE_ANON    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqbHBzZ2NoZ2Z4cnl2aGhya2x4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDU2NzAsImV4cCI6MjA5NjA4MTY3MH0.LVxF3eX8S8FqcLHHHr7l_LkM1R3fJ7SSbg0ZNM1hM-g";
 const GH_REPO          = "dankobuy-ops/Felipe";
@@ -39,6 +67,10 @@ document.querySelectorAll(".juzgado-btn").forEach((btn) => {
     document.querySelectorAll(".juzgado-btn").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     _selectedJuzgado = btn.dataset.juzgado;
+    const sel = document.getElementById("search-code");
+    sel.innerHTML = '<option value="">Cargando…</option>';
+    sel.disabled = true;
+    renderJobHistory();
   });
 });
 
@@ -99,6 +131,11 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
 
   if (!_selectedJuzgado) {
     err.textContent = "Selecciona un juzgado primero.";
+    err.classList.remove("hidden");
+    return;
+  }
+  if (!rut) {
+    err.textContent = "Selecciona un RUT.";
     err.classList.remove("hidden");
     return;
   }
@@ -269,6 +306,7 @@ document.getElementById("supabase-wipe").addEventListener("click", async () => {
 async function renderJobHistory() {
   const block = document.getElementById("history-block");
   const list  = document.getElementById("history-list");
+  if (!_selectedJuzgado) { block.classList.add("hidden"); return; }
   const local = getLocalJobs();
 
   // Pull every job's status + meta from Supabase (cross-device, includes jobs
@@ -297,8 +335,17 @@ async function renderJobHistory() {
     }
   } catch (_) { /* offline / RLS — fall back to local-only list */ }
 
+  // Populate RUT select with checkmarks for RUTs that have completed jobs for this juzgado
+  const doneRuts = new Set(
+    Object.values(byId)
+      .filter(j => j.juzgado === _selectedJuzgado && j.status === "complete")
+      .map(j => normR(j.rut))
+  );
+  populateRutSelect(doneRuts);
+
   const clearedAt = localStorage.getItem(CLEARED_AT_KEY) || "";
   const jobs = Object.values(byId)
+    .filter(j => j.juzgado === _selectedJuzgado)
     .filter(j => !clearedAt || (j.ts && j.ts > clearedAt) || local.some(l => l.jobId === j.jobId))
     .sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
   if (!jobs.length) { block.classList.add("hidden"); return; }
@@ -309,14 +356,12 @@ async function renderJobHistory() {
   for (const j of jobs) {
     const li = document.createElement("li");
     li.className = "history-item";
-    const when      = j.ts ? new Date(j.ts).toLocaleString() : "";
-    const st        = j.status || "running";
-    const juzgadoLabel = JUZGADOS[j.juzgado]?.name || j.juzgado || "";
+    const when = j.ts ? new Date(j.ts).toLocaleString() : "";
+    const st   = j.status || "running";
     li.innerHTML = `
       <div class="hi-main">
         <span class="hi-rut">${esc(j.rut || j.jobId.slice(0, 8))}</span>
         ${j.year ? `<span class="hi-year">año ${esc(j.year)}</span>` : ""}
-        ${juzgadoLabel ? `<span class="hi-juzgado">${esc(juzgadoLabel)}</span>` : ""}
         <span class="badge ${st === "complete" ? "complete" : st === "stalled" ? "stalled" : ""}">${esc(labelMap[j.status] || st)}</span>
         <button class="hi-del link-btn" title="Eliminar" data-job="${esc(j.jobId)}">🗑</button>
       </div>
