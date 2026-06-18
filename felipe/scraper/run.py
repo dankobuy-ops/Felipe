@@ -118,37 +118,15 @@ def enter_via_parent(page, context, parent_url):
             }
             return null;
         }""")
-        if smc_href:
-            log(f"[DEBUG lb] Found SMC href on custhelp page: {smc_href}")
 
-        # Try the JS-driven click — custhelp platform opens SMC in a new window via window.open().
+        # Navigate directly to the SMC URL found in the custhelp page, or fall back to constant.
+        target_smc = smc_href if smc_href else SMC_LB_URL
+        log(f"[DEBUG lb] Navigating to SMC: {target_smc}")
         try:
-            with context.expect_page(timeout=12_000) as info:
-                page.click(SEL_ENTRY_LINK, force=True)
-            p = info.value
-            p.wait_for_load_state("domcontentloaded", timeout=30_000)
-            log(f"[DEBUG lb] New window opened: {p.url}")
-            return p
-        except Exception as e:
-            log(f"[DEBUG lb] expect_page failed ({e}), trying same-page wait")
-
-        # Check if the current page navigated to SMC after the click
-        if "appl.smc.cl" in page.url:
-            return page
-
-        # Last resort: navigate directly to the known SMC URL.
-        # Login.aspx requires an ASP.NET session — first hit the base app to establish one.
-        log(f"[DEBUG lb] Navigating directly to SMC (base then Login)")
-        try:
-            page.goto("https://appl.smc.cl/JuzgadoDoc/", wait_until="domcontentloaded", timeout=20_000)
-        except PlaywrightTimeout:
-            pass
-        try:
-            page.goto(SMC_LB_URL, wait_until="domcontentloaded", timeout=45_000)
+            page.goto(target_smc, wait_until="domcontentloaded", timeout=45_000)
         except PlaywrightTimeout:
             write_status("crashed")
-            raise RuntimeError(f"Lo Barnechea SMC form timed out: {SMC_LB_URL}")
-        dump_page(page, "lb-after-direct-nav")
+            raise RuntimeError(f"Lo Barnechea SMC form timed out: {target_smc}")
         return page
 
     # Standard path (Vitacura and others): parent page → click Consulta de Causas link
