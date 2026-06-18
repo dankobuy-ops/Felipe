@@ -36,6 +36,7 @@ const SUPABASE_URL     = "https://xjlpsgchgfxryvhhrklx.supabase.co";
 const SUPABASE_ANON    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqbHBzZ2NoZ2Z4cnl2aGhya2x4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDU2NzAsImV4cCI6MjA5NjA4MTY3MH0.LVxF3eX8S8FqcLHHHr7l_LkM1R3fJ7SSbg0ZNM1hM-g";
 const GH_REPO          = "dankobuy-ops/Felipe";
 const WORKFLOW_FILE    = "scrape.yml";
+const ENRICH_WORKFLOW  = "enrich.yml";
 const POLL_INTERVAL_MS = 8000;
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -397,6 +398,79 @@ async function renderJobHistory() {
       if (!list.children.length) block.classList.add("hidden");
     });
     list.appendChild(li);
+  }
+}
+
+// ── Enrich emails button ──────────────────────────────────────────────────────
+document.getElementById("enrich-btn").addEventListener("click", async () => {
+  const jobId = document.getElementById("job-id-display").textContent.trim();
+  if (!jobId) return;
+  const btn = document.getElementById("enrich-btn");
+  btn.disabled = true;
+  btn.textContent = "Iniciando…";
+  btn.className = "secondary";
+
+  try {
+    const dispatchedAt = new Date().toISOString();
+    const r = await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${ENRICH_WORKFLOW}/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getPAT()}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        body: JSON.stringify({ ref: "main", inputs: { job_id: jobId } }),
+      }
+    );
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      throw new Error(`GitHub ${r.status}: ${body || "sin detalle"}`);
+    }
+    btn.textContent = "Enriqueciendo…";
+    pollEnrich(btn, dispatchedAt);
+  } catch (ex) {
+    btn.disabled = false;
+    btn.textContent = "Error — reintentar";
+    btn.title = ex.message;
+  }
+});
+
+async function pollEnrich(btn, dispatchedAt, attempt = 0) {
+  if (attempt > 60) {
+    btn.disabled = false;
+    btn.textContent = "Timeout — reintentar";
+    return;
+  }
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${ENRICH_WORKFLOW}/runs?per_page=5&event=workflow_dispatch`,
+      { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
+    );
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    const { workflow_runs = [] } = await r.json();
+    const run = workflow_runs.find((w) => w.created_at >= dispatchedAt);
+    if (!run) {
+      setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 5_000);
+      return;
+    }
+    if (!run.conclusion) {
+      setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 10_000);
+      return;
+    }
+    if (run.conclusion === "success") {
+      btn.textContent = "✓ Emails buscados";
+      btn.className = "btn-done";
+      btn.disabled = false;
+    } else {
+      btn.textContent = "Falló — reintentar";
+      btn.disabled = false;
+      btn.className = "secondary";
+    }
+  } catch (_) {
+    setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 10_000);
   }
 }
 

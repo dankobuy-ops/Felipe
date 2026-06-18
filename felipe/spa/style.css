@@ -175,6 +175,16 @@ a.doc-link:hover { text-decoration: underline; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Enrich done state */
+button.btn-done {
+  background: #d1fae5;
+  color: #065f46;
+  border: none;
+  font-weight: 600;
+  cursor: default;
+}
+button.btn-done:hover { background: #d1fae5; }
+
 /* Danger / stop button */
 button.danger {
   background: #fee2e2;
