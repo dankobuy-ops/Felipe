@@ -101,16 +101,17 @@ def enter_via_parent(page, context, parent_url):
         write_status("crashed")
         raise RuntimeError("CONSULTA DE CAUSAS link not found on parent page.")
 
-    target_attr = page.get_attribute(SEL_ENTRY_LINK, "target") or ""
-    if target_attr.strip() == "_blank":
-        with context.expect_page(timeout=30_000) as info:
-            page.click(SEL_ENTRY_LINK)
+    # force=True bypasses overlay divs that intercept pointer events (custhelp).
+    # Try expect_page first — handles both target="_blank" and window.open() via JS onclick.
+    try:
+        with context.expect_page(timeout=8_000) as info:
+            page.click(SEL_ENTRY_LINK, force=True)
         p = info.value
         p.wait_for_load_state("domcontentloaded", timeout=30_000)
         return p
-    else:
-        with page.expect_navigation(wait_until="domcontentloaded", timeout=30_000):
-            page.click(SEL_ENTRY_LINK)
+    except Exception:
+        # No new window — link navigated in the current page
+        page.wait_for_load_state("domcontentloaded", timeout=30_000)
         return page
 
 
