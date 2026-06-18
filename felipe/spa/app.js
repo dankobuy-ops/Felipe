@@ -338,14 +338,14 @@ async function renderJobHistory() {
   // Populate RUT select with checkmarks for RUTs that have completed jobs for this juzgado
   const doneRuts = new Set(
     Object.values(byId)
-      .filter(j => j.juzgado === _selectedJuzgado && j.status === "complete")
+      .filter(j => (j.juzgado === _selectedJuzgado || (_selectedJuzgado === "vitacura" && !j.juzgado)) && j.status === "complete")
       .map(j => normR(j.rut))
   );
   populateRutSelect(doneRuts);
 
   const clearedAt = localStorage.getItem(CLEARED_AT_KEY) || "";
   const jobs = Object.values(byId)
-    .filter(j => j.juzgado === _selectedJuzgado)
+    .filter(j => j.juzgado === _selectedJuzgado || (_selectedJuzgado === "vitacura" && !j.juzgado))
     .filter(j => !clearedAt || (j.ts && j.ts > clearedAt) || local.some(l => l.jobId === j.jobId))
     .sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
   if (!jobs.length) { block.classList.add("hidden"); return; }
