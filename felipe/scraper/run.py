@@ -159,12 +159,60 @@ def enter_via_parent(page, context, parent_url):
         return page
 
 
-def search_rut(page, rut):
+def fill_login_selects(page, year):
+    """Fill any extra dropdowns on Login.aspx (year + court) before the RUT search.
+
+    Lo Barnechea's Login.aspx has two extra <select> elements not present on
+    Vitacura's frmBusqueda.aspx. We scan all selects, log them for diagnosis,
+    then pick the right year and the Lo Barnechea court option.
+    """
+    selects = page.evaluate("""() => {
+        return Array.from(document.querySelectorAll('select')).map(s => ({
+            id: s.id, name: s.name,
+            options: Array.from(s.options).map(o => ({text: o.text, value: o.value}))
+        }));
+    }""")
+    log(f"[DEBUG lb-selects] {selects}")
+
+    for sel in selects:
+        opts = sel.get("options", [])
+        sel_id = sel.get("id") or sel.get("name")
+        if not sel_id:
+            continue
+        css = f"#{sel_id}" if sel.get("id") else f"select[name='{sel_id}']"
+
+        # Year dropdown — pick the requested year, or the most recent available
+        year_values = [o["value"] for o in opts if o["value"].isdigit() and len(o["value"]) == 4]
+        if year_values:
+            target_year = year if year in year_values else year_values[0]
+            try:
+                page.select_option(css, value=target_year)
+                log(f"[INFO] Selected year {target_year} in {sel_id}")
+            except Exception as e:
+                log(f"[WARN] Could not select year in {sel_id}: {e}")
+            continue
+
+        # Court dropdown — pick the first non-TAG option (Lo Barnechea court)
+        court_opts = [o for o in opts if "TAG" not in o["text"].upper() and o["value"]]
+        if court_opts:
+            try:
+                page.select_option(css, value=court_opts[0]["value"])
+                log(f"[INFO] Selected court '{court_opts[0]['text']}' in {sel_id}")
+            except Exception as e:
+                log(f"[WARN] Could not select court in {sel_id}: {e}")
+
+
+def search_rut(page, rut, year="", juzgado=""):
     """Select RUT search type, fill RUT, submit — arrives at Level 2 (results list).
 
     The form REQUIRES selecting the RdBoRut radio first; submitting without a
     search type just re-renders the form (no results).
+    Lo Barnechea's Login.aspx also needs year + court dropdowns filled first.
     """
+    # Fill extra dropdowns if present (Lo Barnechea Login.aspx)
+    if page.query_selector("select"):
+        fill_login_selects(page, year)
+
     try:
         page.wait_for_selector(SEL_RUT_INPUT, timeout=20_000)
     except PlaywrightTimeout:
@@ -207,20 +255,34 @@ def search_rut(page, rut):
     log(f"[INFO] Submitting search. URL before click: {page.url}")
     url_before = page.url
     page.click(SEL_SEARCH_BTN)
-    # Wait for navigation away from the current URL (handles both full postback and UpdatePanel).
+    # Wait for navigation (full postback) or UpdatePanel response (URL stays same).
+    navigated = False
     try:
         page.wait_for_url(lambda u: u != url_before, timeout=20_000)
         log(f"[INFO] Click navigated: {page.url}")
+        navigated = True
     except PlaywrightTimeout:
-        log(f"[WARN] Click did not navigate (url={page.url}). Trying __doPostBack fallback")
+        log(f"[WARN] Click did not navigate (url={page.url}). Trying form.submit() fallback")
         try:
-            page.evaluate(
-                "() => { if (window.__doPostBack) __doPostBack('ctl00$ContentPlaceHolder1$btnAceptar',''); }"
-            )
+            # Bypass __doPostBack (which calls ASP.NET Ajax's _doPostBack that uses
+            # `arguments` — banned in Playwright's strict-mode evaluate context).
+            # Instead, set the hidden event fields and call form.submit() directly.
+            page.evaluate("""
+                () => {
+                    var f = document.getElementById('aspnetForm') || document.forms[0];
+                    if (!f) return;
+                    var et = document.getElementById('__EVENTTARGET');
+                    var ea = document.getElementById('__EVENTARGUMENT');
+                    if (et) et.value = 'ctl00$ContentPlaceHolder1$btnAceptar';
+                    if (ea) ea.value = '';
+                    f.submit();
+                }
+            """)
             page.wait_for_url(lambda u: u != url_before, timeout=20_000)
-            log(f"[INFO] __doPostBack navigated: {page.url}")
+            log(f"[INFO] form.submit() navigated: {page.url}")
+            navigated = True
         except Exception as e:
-            log(f"[WARN] Still not on results after fallback (url={page.url}): {e}")
+            log(f"[WARN] Still not navigated after fallback (url={page.url}): {e}")
             dump_page(page, "after-submit-stuck")
 
     try:
@@ -655,7 +717,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
         # Level 1 → Level 2
         active = enter_via_parent(page, ctx, args.target_url)
-        active = search_rut(active, args.search_code)
+        active = search_rut(active, args.search_code, year=args.year, juzgado=args.juzgado)
         records = get_results_list(active)
         records = filter_by_year(records, args.year)
 
@@ -743,7 +805,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
                     # Site is slow — re-enter via parent to recover session
                     log(f"[WARN] Return to results timed out — re-entering via parent")
                     active = enter_via_parent(active, ctx, args.target_url)
-                    active = search_rut(active, args.search_code)
+                    active = search_rut(active, args.search_code, year=args.year, juzgado=args.juzgado)
                     active.wait_for_selector(SEL_RESULTS, timeout=20_000)
                     results_url = active.url
 
