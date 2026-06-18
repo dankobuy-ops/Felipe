@@ -161,6 +161,7 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
 });
 
 async function triggerWorkflow(jobId, rut, targetUrl, year = "", juzgado = "") {
+  const rutClean = rut.replace(/\./g, "");
   const r = await fetch(
     `https://api.github.com/repos/${GH_REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
     {
@@ -175,7 +176,7 @@ async function triggerWorkflow(jobId, rut, targetUrl, year = "", juzgado = "") {
         ref: "main",
         inputs: {
           job_id:         jobId,
-          search_code:    rut,
+          search_code:    rutClean,
           target_url:     targetUrl,
           resume_attempt: "0",
           year:           year,
