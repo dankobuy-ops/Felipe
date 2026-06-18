@@ -43,6 +43,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: felipe/scraper/requirements.txt
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('felipe/scraper/requirements.txt') }}
 
       - name: Resolve job ID
         id: job
@@ -58,9 +67,15 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: |
-          pip install playwright requests
-          playwright install chromium --with-deps
+        run: pip install -r felipe/scraper/requirements.txt
+
+      - name: Install Playwright browser
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: playwright install chromium --with-deps
+
+      - name: Install Playwright OS deps (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: playwright install-deps chromium
 
       - name: Validate URL
         run: python felipe/scraper/validate_inputs.py "${{ github.event.inputs.target_url }}"
