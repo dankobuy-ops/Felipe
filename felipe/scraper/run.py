@@ -44,6 +44,7 @@ def parse_args():
     p.add_argument("--target-url",  required=True)
     p.add_argument("--max-seconds", type=int, default=240)
     p.add_argument("--year",        default="", help="Keep only entries whose fecha_proceso contains this year (e.g. 2024). Empty = all years.")
+    p.add_argument("--juzgado",     default="", help="Court identifier (e.g. vitacura, lobarnechea)")
     return p.parse_args()
 
 
@@ -84,8 +85,21 @@ def dump_page(page, label):
 
 # ── Level 1 → Level 2: entry via parent ───────────────────────────────────────
 
+SMC_SEARCH_URL = "https://appl.smc.cl/JuzgadoDoc/frmBusqueda.aspx"
+
 def enter_via_parent(page, context, parent_url):
-    """Navigate via parent page to establish a fresh JPL session. Returns active page."""
+    """Navigate to the JPL search form. If parent_url is already the SMC backend,
+    go directly; otherwise load the municipality page and click the consulta link."""
+    if "appl.smc.cl/JuzgadoDoc" in parent_url:
+        # Direct SMC URL — navigate straight to the search form
+        try:
+            page.goto(SMC_SEARCH_URL, wait_until="domcontentloaded", timeout=45_000)
+        except PlaywrightTimeout:
+            write_status("crashed")
+            raise RuntimeError(f"SMC search form timed out: {SMC_SEARCH_URL}")
+        return page
+
+    # Municipality parent page — navigate there, then click the consulta link
     try:
         page.goto(parent_url, wait_until="domcontentloaded", timeout=45_000)
     except PlaywrightTimeout:
@@ -301,14 +315,14 @@ def get_results_list(page):
     return records
 
 
-def write_meta(supabase_url, supabase_key, job_id, total, rut="", year=""):
+def write_meta(supabase_url, supabase_key, job_id, total, rut="", year="", juzgado=""):
     """Write __meta__ row with total count + query params so the SPA can list
     and label previous jobs (the 'Jobs anteriores' history)."""
     write_checkpoints(supabase_url, supabase_key, [{
         "job_id":    job_id,
         "record_id": "__meta__",
         "status":    "running",
-        "text":      json.dumps({"total": total, "rut": rut, "year": year,
+        "text":      json.dumps({"total": total, "rut": rut, "year": year, "juzgado": juzgado,
                                  "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}),
         "pdf_url":   "",
     }])
@@ -626,7 +640,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
         # Tell the SPA the total count immediately so progress is accurate from the start
         write_meta(supabase_url, supabase_key, args.job_id, len(records),
-                   rut=args.search_code, year=args.year)
+                   rut=args.search_code, year=args.year, juzgado=args.juzgado)
 
         hit_limit = False
         for rec in records:

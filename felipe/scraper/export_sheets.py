@@ -21,13 +21,24 @@ import sys
 
 import requests
 
+JUZGADOS_HEADER = ["Juzgado ID", "Nombre", "URL"]
+JUZGADOS_ROWS = [
+    ["vitacura",    "Vitacura",     "https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/"],
+    ["lobarnechea", "Lo Barnechea", "https://appl.smc.cl/JuzgadoDoc/frmBusqueda.aspx"],
+]
+JUZGADO_NAMES = {
+    "vitacura":    "Vitacura",
+    "lobarnechea": "Lo Barnechea",
+}
+
 CAUSAS_HEADER = [
     "Caso ID", "ROL",
+    "Juzgado",
     "Demandante", "Razón Social Demandante",
-    "Carátula",
+    "Materia",
     "Fecha Causa", "Fecha Citación", "Fecha Estado", "Estado",
     "Boleta N°", "Fecha Boleta",
-    "Monto Demandado", "Materia",
+    "Monto Demandado",
 ]
 
 DEMANDADOS_HEADER = [
@@ -142,12 +153,15 @@ def build_tables(rows):
         meta  = job_meta.get(job, {})
 
         # ── Table 1: Causas ───────────────────────────────────────────────────
+        juzgado_id   = meta.get("juzgado", "")
+        juzgado_name = JUZGADO_NAMES.get(juzgado_id, juzgado_id)
         causas.append([
             cid,
             rol,
+            juzgado_name,
             meta.get("rut", ""),
             _first_match(causa, "remisor"),
-            d.get("descripcion", "") or _first_match(causa, "descripcion", "descripción"),
+            d.get("descripcion", "") or _first_match(causa, "descripcion", "descripción", "materia", "materia_causa", "materia_de_la_causa"),
             _first_match(causa, "fecha_causa"),
             _first_match(causa, "fecha_citacion", "fecha_citación"),
             _first_match(causa, "fecha_estado"),
@@ -155,7 +169,6 @@ def build_tables(rows):
             causa.get("boleta_numero", ""),
             causa.get("boleta_fecha", ""),
             _first_match(causa, "monto", "monto_demandado", "cuantia", "cuantía", "monto_multa"),
-            _first_match(causa, "materia", "materia_causa", "materia_de_la_causa"),
         ])
 
         # ── Table 2: Demandados ───────────────────────────────────────────────
@@ -229,10 +242,11 @@ def main():
     causas, demandados, tramites, documentos = build_tables(rows)
 
     payload = {
-        "causas":     {"header": CAUSAS_HEADER,     "rows": causas},
-        "demandados": {"header": DEMANDADOS_HEADER,  "rows": demandados},
-        "tramites":   {"header": TRAMITES_HEADER,    "rows": tramites},
-        "documentos": {"header": DOCUMENTOS_HEADER,  "rows": documentos},
+        "juzgados":   {"header": JUZGADOS_HEADER,    "rows": JUZGADOS_ROWS},
+        "causas":     {"header": CAUSAS_HEADER,       "rows": causas},
+        "demandados": {"header": DEMANDADOS_HEADER,   "rows": demandados},
+        "tramites":   {"header": TRAMITES_HEADER,     "rows": tramites},
+        "documentos": {"header": DOCUMENTOS_HEADER,   "rows": documentos},
     }
     r = requests.post(args.webhook, json=payload, timeout=120)
     r.raise_for_status()

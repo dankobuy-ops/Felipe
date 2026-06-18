@@ -22,12 +22,13 @@ function doPost(e) {
     var ss   = body.spreadsheet_id
       ? SpreadsheetApp.openById(body.spreadsheet_id)
       : SpreadsheetApp.getActiveSpreadsheet();
+    var j  = upsertTab_(ss, "Juzgados",   body.juzgados);
     var ru = upsertTab_(ss, "RUTs",       body.ruts);
     var c  = upsertTab_(ss, "Causas",     body.causas);
     var d  = upsertTab_(ss, "Demandados", body.demandados);
     var t  = upsertTab_(ss, "Trámites",   body.tramites);
     var x  = upsertTab_(ss, "Documentos", body.documentos);
-    return json_({ ok: true, ruts: ru, causas: c, demandados: d, tramites: t, documentos: x });
+    return json_({ ok: true, juzgados: j, ruts: ru, causas: c, demandados: d, tramites: t, documentos: x });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }

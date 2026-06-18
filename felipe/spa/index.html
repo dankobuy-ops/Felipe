@@ -41,15 +41,18 @@
         <h1>Consulta JPL</h1>
         <button id="settings-btn" class="icon-btn" title="Configuración">⚙</button>
       </div>
+      <div class="juzgado-selector">
+        <button type="button" class="juzgado-btn" data-juzgado="vitacura">
+          <span class="jb-name">Vitacura</span>
+        </button>
+        <button type="button" class="juzgado-btn" data-juzgado="lobarnechea">
+          <span class="jb-name">Lo Barnechea</span>
+        </button>
+      </div>
       <form id="trigger-form">
-        <!-- TESTING: prefilled RUT + URL so testing is one click. Clear values when done. -->
         <label>
           RUT
-          <input type="text" id="search-code" required placeholder="12.345.678-9" value="96992030-1" />
-        </label>
-        <label>
-          URL Juzgado
-          <input type="url" id="target-url" required placeholder="https://municipio.cl/juzgado/..." value="https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/" />
+          <input type="text" id="search-code" required placeholder="12.345.678-9" />
         </label>
         <label>
           Año (opcional — deja vacío para todos)
@@ -90,7 +93,7 @@
         <thead>
           <tr>
             <th>N° Causa</th>
-            <th>Carátula</th>
+            <th>Materia</th>
             <th>Fecha ingreso</th>
             <th>Estado</th>
             <th></th>
@@ -103,6 +106,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=21"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>

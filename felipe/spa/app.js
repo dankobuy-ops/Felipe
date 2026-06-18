@@ -1,4 +1,9 @@
 // ── Config ────────────────────────────────────────────────────────────────────
+const JUZGADOS = {
+  vitacura:    { name: "Vitacura",     url: "https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/" },
+  lobarnechea: { name: "Lo Barnechea", url: "https://appl.smc.cl/JuzgadoDoc/frmBusqueda.aspx" },
+};
+
 const SUPABASE_URL     = "https://xjlpsgchgfxryvhhrklx.supabase.co";
 const SUPABASE_ANON    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqbHBzZ2NoZ2Z4cnl2aGhya2x4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDU2NzAsImV4cCI6MjA5NjA4MTY3MH0.LVxF3eX8S8FqcLHHHr7l_LkM1R3fJ7SSbg0ZNM1hM-g";
 const GH_REPO          = "dankobuy-ops/Felipe";
@@ -19,11 +24,23 @@ const CLEARED_AT_KEY = "history_cleared_at";
 function getLocalJobs() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch (_) { return []; }
 }
-function saveLocalJob(jobId, rut, year) {
+function saveLocalJob(jobId, rut, year, juzgado) {
   const jobs = getLocalJobs().filter((j) => j.jobId !== jobId);
-  jobs.unshift({ jobId, rut, year, startedAt: new Date().toISOString() });
+  jobs.unshift({ jobId, rut, year, juzgado, startedAt: new Date().toISOString() });
   localStorage.setItem(HISTORY_KEY, JSON.stringify(jobs.slice(0, 50)));
 }
+
+// ── Juzgado selector ──────────────────────────────────────────────────────────
+let _selectedJuzgado = null;
+let _currentJuzgado  = null;
+
+document.querySelectorAll(".juzgado-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".juzgado-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    _selectedJuzgado = btn.dataset.juzgado;
+  });
+});
 
 // ── Screen router ─────────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -77,18 +94,26 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
   const btn   = document.getElementById("submit-btn");
   const err   = document.getElementById("trigger-error");
   const rut   = document.getElementById("search-code").value.trim();
-  const url   = document.getElementById("target-url").value.trim();
   const year  = document.getElementById("year-filter").value.trim();
   const jobId = crypto.randomUUID();
+
+  if (!_selectedJuzgado) {
+    err.textContent = "Selecciona un juzgado primero.";
+    err.classList.remove("hidden");
+    return;
+  }
+
+  const juzgado = _selectedJuzgado;
+  const url     = JUZGADOS[juzgado].url;
 
   btn.disabled = true;
   btn.textContent = "Iniciando…";
   err.classList.add("hidden");
 
   try {
-    await triggerWorkflow(jobId, rut, url, year);
-    saveLocalJob(jobId, rut, year);
-    showResultsScreen(jobId, rut, year);
+    await triggerWorkflow(jobId, rut, url, year, juzgado);
+    saveLocalJob(jobId, rut, year, juzgado);
+    showResultsScreen(jobId, rut, year, juzgado);
   } catch (ex) {
     err.textContent = ex.message;
     err.classList.remove("hidden");
@@ -97,7 +122,7 @@ document.getElementById("trigger-form").addEventListener("submit", async (e) => 
   }
 });
 
-async function triggerWorkflow(jobId, rut, targetUrl, year = "") {
+async function triggerWorkflow(jobId, rut, targetUrl, year = "", juzgado = "") {
   const r = await fetch(
     `https://api.github.com/repos/${GH_REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
     {
@@ -116,6 +141,7 @@ async function triggerWorkflow(jobId, rut, targetUrl, year = "") {
           target_url:     targetUrl,
           resume_attempt: "0",
           year:           year,
+          juzgado:        juzgado,
         },
       }),
     }
@@ -167,7 +193,8 @@ document.getElementById("stop-btn").addEventListener("click", async () => {
 let pollTimer = null;
 let _allData  = [];
 
-function showResultsScreen(jobId, rut, year = "") {
+function showResultsScreen(jobId, rut, year = "", juzgado = "") {
+  _currentJuzgado = juzgado || _currentJuzgado;
   document.getElementById("job-id-display").textContent   = jobId;
   document.getElementById("rut-display").textContent      = rut;
   document.getElementById("year-display").textContent     = year || "todos";
@@ -248,7 +275,7 @@ async function renderJobHistory() {
   // not started from this browser). Merge with local rut/year/date.
   const byId = {};
   for (const j of local) {
-    byId[j.jobId] = { jobId: j.jobId, rut: j.rut, year: j.year, ts: j.startedAt, status: "" };
+    byId[j.jobId] = { jobId: j.jobId, rut: j.rut, year: j.year, juzgado: j.juzgado || "", ts: j.startedAt, status: "" };
   }
   try {
     const r = await fetch(
@@ -257,13 +284,14 @@ async function renderJobHistory() {
     );
     if (r.ok) {
       for (const row of await r.json()) {
-        const e = byId[row.job_id] || (byId[row.job_id] = { jobId: row.job_id, rut: "", year: "", ts: "", status: "" });
+        const e = byId[row.job_id] || (byId[row.job_id] = { jobId: row.job_id, rut: "", year: "", juzgado: "", ts: "", status: "" });
         if (row.record_id === "__job__") e.status = row.status;
         else if (row.record_id === "__meta__") {
           let m = {}; try { m = JSON.parse(row.text || "{}"); } catch (_) {}
-          e.rut  = e.rut  || m.rut  || "";
-          e.year = e.year || m.year || "";
-          e.ts   = e.ts   || m.ts   || "";
+          e.rut     = e.rut     || m.rut     || "";
+          e.year    = e.year    || m.year    || "";
+          e.juzgado = e.juzgado || m.juzgado || "";
+          e.ts      = e.ts      || m.ts      || "";
         }
       }
     }
@@ -281,19 +309,21 @@ async function renderJobHistory() {
   for (const j of jobs) {
     const li = document.createElement("li");
     li.className = "history-item";
-    const when = j.ts ? new Date(j.ts).toLocaleString() : "";
-    const st   = j.status || "running";
+    const when      = j.ts ? new Date(j.ts).toLocaleString() : "";
+    const st        = j.status || "running";
+    const juzgadoLabel = JUZGADOS[j.juzgado]?.name || j.juzgado || "";
     li.innerHTML = `
       <div class="hi-main">
         <span class="hi-rut">${esc(j.rut || j.jobId.slice(0, 8))}</span>
         ${j.year ? `<span class="hi-year">año ${esc(j.year)}</span>` : ""}
+        ${juzgadoLabel ? `<span class="hi-juzgado">${esc(juzgadoLabel)}</span>` : ""}
         <span class="badge ${st === "complete" ? "complete" : st === "stalled" ? "stalled" : ""}">${esc(labelMap[j.status] || st)}</span>
         <button class="hi-del link-btn" title="Eliminar" data-job="${esc(j.jobId)}">🗑</button>
       </div>
       <div class="hi-sub">${esc(when)}</div>`;
     li.addEventListener("click", (e) => {
       if (e.target.closest(".hi-del")) return;
-      showResultsScreen(j.jobId, j.rut || "", j.year || "");
+      showResultsScreen(j.jobId, j.rut || "", j.year || "", j.juzgado || "");
     });
     li.querySelector(".hi-del").addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -379,7 +409,11 @@ function renderResults(rows) {
   // Progress — use __meta__ total when available so count is accurate from the start
   let total = 0;
   if (metaRow) {
-    try { total = JSON.parse(metaRow.text || "{}")?.total || 0; } catch (_) {}
+    try {
+      const m = JSON.parse(metaRow.text || "{}");
+      total = m.total || 0;
+      if (m.juzgado && !_currentJuzgado) _currentJuzgado = m.juzgado;
+    } catch (_) {}
   }
   if (!total) total = dataRows.length;  // fallback for old jobs without __meta__
   const done = dataRows.filter((r) => r.status === "done").length;
@@ -527,14 +561,16 @@ function buildDetail(data, causa) {
 
 // ── Google Sheets export ──────────────────────────────────────────────────────
 
-const RUTS_HEADER = ["RUT", "Nombre"];
+const RUTS_HEADER      = ["RUT", "Nombre"];
+const JUZGADOS_HEADER  = ["Juzgado ID", "Nombre", "URL"];
 const CAUSAS_HEADER = [
   "Caso ID", "ROL",
+  "Juzgado",
   "Demandante",
-  "Carátula",
+  "Materia",
   "Fecha Causa", "Fecha Citación", "Fecha Estado", "Estado",
   "Boleta N°", "Fecha Boleta",
-  "Monto Demandado", "Materia",
+  "Monto Demandado",
 ];
 const DEMANDADOS_HEADER = [
   "Caso ID", "ROL",
@@ -547,6 +583,7 @@ const DOCUMENTOS_HEADER = ["Caso ID", "ROL", "Descripción", "Link PDF"];
 
 function buildSheetsPayload(jobId, allData) {
   const rutDemandante = document.getElementById("rut-display").textContent;
+  const juzgadoName   = JUZGADOS[_currentJuzgado]?.name || _currentJuzgado || "";
 
   function casoId(job, rol) { return `${(job || "").slice(0, 8)}/${rol}`; }
 
@@ -626,8 +663,9 @@ function buildSheetsPayload(jobId, allData) {
 
     causas.push([
       cid, rol,
+      juzgadoName,
       rutDemandante,
-      data.descripcion || causa.descripcion || causa["descripción"] || "",
+      data.descripcion || causa.descripcion || causa["descripción"] || firstOf(causa, "materia", "materia_causa", "materia_de_la_causa") || "",
       firstOf(causa, "fecha_causa"),
       firstOf(causa, "fecha_citacion", "fecha_citación"),
       firstOf(causa, "fecha_estado"),
@@ -635,7 +673,6 @@ function buildSheetsPayload(jobId, allData) {
       causa.boleta_numero || "",
       causa.boleta_fecha || "",
       firstOf(causa, "monto", "monto_demandado", "cuantia", "cuantía", "monto_multa"),
-      firstOf(causa, "materia", "materia_causa", "materia_de_la_causa"),
     ]);
 
     // Exclude the demandante (search RUT) — it leaks into Section A.1 on some layouts
@@ -679,8 +716,9 @@ function buildSheetsPayload(jobId, allData) {
   }
 
   return {
-    ruts:       { header: RUTS_HEADER,       rows: [[rutDemandante, nombreDemandante]] },
-    causas:     { header: CAUSAS_HEADER,     rows: causas },
+    juzgados:   { header: JUZGADOS_HEADER,   rows: Object.entries(JUZGADOS).map(([id, j]) => [id, j.name, j.url]) },
+    ruts:       { header: RUTS_HEADER,        rows: [[rutDemandante, nombreDemandante]] },
+    causas:     { header: CAUSAS_HEADER,      rows: causas },
     demandados: { header: DEMANDADOS_HEADER,  rows: demandados },
     tramites:   { header: TRAMITES_HEADER,    rows: tramites },
     documentos: { header: DOCUMENTOS_HEADER,  rows: documentos },

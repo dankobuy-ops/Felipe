@@ -180,6 +180,39 @@ button.danger {
 }
 button.danger:hover { background: #fecaca; }
 
+/* Juzgado selector */
+.juzgado-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+  margin-bottom: 1.5rem;
+}
+.juzgado-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem .75rem;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: .95rem;
+  font-weight: 600;
+  color: #374151;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.juzgado-btn:hover { border-color: #a5b4fc; background: #eef2ff; color: #1e1b4b; }
+.juzgado-btn.active { border-color: #4f46e5; background: #eef2ff; color: #3730a3; }
+.jb-name { font-size: .95rem; }
+.hi-juzgado {
+  font-size: .74rem;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: .1rem .45rem;
+  border-radius: 4px;
+}
+
 /* Job history (previous jobs) */
 .history-block { margin-top: 1.5rem; border-top: 1px solid #e5e7eb; padding-top: 1rem; }
 .history-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }

@@ -21,6 +21,10 @@ on:
         description: "Filtrar por año (ej: 2025). Vacío = todos los años."
         required: false
         default: ""
+      juzgado:
+        description: "Juzgado a consultar (vitacura / lobarnechea)"
+        required: false
+        default: "vitacura"
 
 env:
   MAX_RESUME_ATTEMPTS: "50"
@@ -86,13 +90,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+          JUZGADO: ${{ github.event.inputs.juzgado }}
         run: |
           cd felipe/scraper && python run.py \
             --job-id "$JOB_ID" \
             --search-code "$SEARCH_CODE" \
             --target-url "$TARGET_URL" \
             --max-seconds "$MAX_RUNTIME_SECONDS" \
-            --year "${{ github.event.inputs.year }}"
+            --year "${{ github.event.inputs.year }}" \
+            --juzgado "$JUZGADO"
 
       - name: Re-dispatch if not complete
         if: ${{ !cancelled() && steps.cap.outputs.capped != 'true' }}
@@ -110,7 +116,8 @@ jobs:
               --field search_code="${{ github.event.inputs.search_code }}" \
               --field target_url="${{ github.event.inputs.target_url }}" \
               --field resume_attempt="$next_attempt" \
-              --field year="${{ github.event.inputs.year }}"
+              --field year="${{ github.event.inputs.year }}" \
+              --field juzgado="${{ github.event.inputs.juzgado }}"
           else
             echo "Trabajo $status — sin re-despacho."
           fi
