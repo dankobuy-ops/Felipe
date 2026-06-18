@@ -5,14 +5,14 @@ const JUZGADOS = {
 };
 
 const RUTS = [
-  { name: "Autopista Central",        rut: "96.945.440-8" },
-  { name: "Costanera Norte",          rut: "76.496.130-7" },
-  { name: "Vespucio Norte",           rut: "96.992.030-1" },
-  { name: "Vespucio Sur",             rut: "76.052.927-3" },
-  { name: "Vespucio Oriente (AVO 1)", rut: "76.376.061-8" },
-  { name: "Vespucio Oriente (AVO 2)", rut: "76.870.948-3" },
-  { name: "Autopista Nororiente",     rut: "99.548.570-2" },
-  { name: "Acceso Vial AMB",          rut: "76.706.496-9" },
+  { name: "Autopista Central",        rut: "96945440-8" },
+  { name: "Costanera Norte",          rut: "76496130-7" },
+  { name: "Vespucio Norte",           rut: "96992030-1" },
+  { name: "Vespucio Sur",             rut: "76052927-3" },
+  { name: "Vespucio Oriente (AVO 1)", rut: "76376061-8" },
+  { name: "Vespucio Oriente (AVO 2)", rut: "76870948-3" },
+  { name: "Autopista Nororiente",     rut: "99548570-2" },
+  { name: "Acceso Vial AMB",          rut: "76706496-9" },
 ];
 
 function normR(r) { return String(r || "").replace(/[.\s]/g, "").toLowerCase(); }
