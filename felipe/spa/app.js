@@ -239,6 +239,15 @@ function showResultsScreen(jobId, rut, year = "", juzgado = "") {
   document.getElementById("stop-btn").classList.remove("hidden");
   document.getElementById("stop-btn").disabled = false;
   document.getElementById("stop-btn").textContent = "Detener";
+  // Reset enrichment buttons to clean state
+  const enrichBtn = document.getElementById("enrich-btn");
+  enrichBtn.disabled = false; enrichBtn.textContent = "Buscar Emails"; enrichBtn.className = "secondary";
+  document.getElementById("stop-enrich-btn").classList.add("hidden");
+  setEnrichStatus("");
+  const patenteBtn = document.getElementById("patente-btn");
+  patenteBtn.disabled = false; patenteBtn.textContent = "Buscar Patentes"; patenteBtn.className = "secondary";
+  document.getElementById("stop-patente-btn").classList.add("hidden");
+  setPatenteStatus("");
   _allData = [];
   setSpinner(true);
   showScreen("screen-results");
