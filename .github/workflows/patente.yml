@@ -1,0 +1,60 @@
+name: Buscar Patentes
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Job ID cuyas patentes enriquecer"
+        required: true
+      dry_run:
+        description: "Dry run — imprimir sin guardar"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  patentes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: felipe/scraper/requirements.txt
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('felipe/scraper/requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r felipe/scraper/requirements.txt
+
+      - name: Install Playwright browser
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: playwright install chromium --with-deps
+
+      - name: Install Playwright OS deps (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            fonts-freefont-ttf fonts-liberation libfontconfig1 xvfb 2>/dev/null || true
+
+      - name: Buscar patentes
+        working-directory: ${{ github.workspace }}/felipe
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python scraper/enrich_patentes.py \
+            --job-id "${{ github.event.inputs.job_id }}" \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}

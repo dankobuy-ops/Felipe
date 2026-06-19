@@ -39,8 +39,9 @@ const SUPABASE_URL     = "https://xjlpsgchgfxryvhhrklx.supabase.co";
 const SUPABASE_ANON    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqbHBzZ2NoZ2Z4cnl2aGhya2x4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDU2NzAsImV4cCI6MjA5NjA4MTY3MH0.LVxF3eX8S8FqcLHHHr7l_LkM1R3fJ7SSbg0ZNM1hM-g";
 const GH_REPO          = "dankobuy-ops/Felipe";
 const WORKFLOW_FILE    = "scrape.yml";
-const ENRICH_WORKFLOW  = "enrich.yml";
-const POLL_INTERVAL_MS = 8000;
+const ENRICH_WORKFLOW   = "enrich.yml";
+const PATENTE_WORKFLOW  = "patente.yml";
+const POLL_INTERVAL_MS  = 8000;
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 const getPAT = ()  => localStorage.getItem("gh_pat") || "";
@@ -218,8 +219,10 @@ document.getElementById("stop-btn").addEventListener("click", async () => {
 });
 
 // ── Results screen ────────────────────────────────────────────────────────────
-let pollTimer = null;
-let _allData  = [];
+let pollTimer      = null;
+let _allData       = [];
+let _patentesData  = {};   // patente string → enriched row from `patentes` table
+let _patenteCancelled = false;
 
 function showResultsScreen(jobId, rut, year = "", juzgado = "") {
   _currentJuzgado = juzgado || _currentJuzgado;
@@ -544,6 +547,139 @@ async function pollEnrich(btn, jobId, dispatchedAt, attempt = 0) {
   }
 }
 
+// ── Patente enrichment ────────────────────────────────────────────────────────
+
+function setPatenteStatus(text) {
+  const el = document.getElementById("patente-status");
+  el.textContent = text;
+  el.classList.toggle("hidden", !text);
+}
+
+function _patenteDone(btn) {
+  document.getElementById("stop-patente-btn").classList.add("hidden");
+  setPatenteStatus("");
+}
+
+document.getElementById("stop-patente-btn").addEventListener("click", async () => {
+  const stopBtn = document.getElementById("stop-patente-btn");
+  stopBtn.disabled = true;
+  stopBtn.textContent = "Deteniendo…";
+  _patenteCancelled = true;
+  try {
+    await cancelWorkflowRuns(PATENTE_WORKFLOW);
+  } catch (_) {}
+  stopBtn.classList.add("hidden");
+  stopBtn.disabled = false;
+  stopBtn.textContent = "Detener patentes";
+  const btn = document.getElementById("patente-btn");
+  btn.disabled = false;
+  btn.textContent = "Buscar Patentes";
+  btn.className = "secondary";
+  setPatenteStatus("");
+});
+
+document.getElementById("patente-btn").addEventListener("click", async () => {
+  const jobId = document.getElementById("job-id-display").textContent.trim();
+  if (!jobId) return;
+  const btn = document.getElementById("patente-btn");
+  btn.disabled = true;
+  btn.textContent = "Iniciando…";
+  setPatenteStatus("");
+
+  try {
+    const dispatchedAt = new Date().toISOString();
+    const r = await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${PATENTE_WORKFLOW}/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getPAT()}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        body: JSON.stringify({ ref: "main", inputs: { job_id: jobId } }),
+      }
+    );
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      throw new Error(`GitHub ${r.status}: ${body || "sin detalle"}`);
+    }
+    btn.textContent = "Buscando…";
+    _patenteCancelled = false;
+    document.getElementById("stop-patente-btn").classList.remove("hidden");
+    pollPatente(btn, jobId, dispatchedAt);
+  } catch (ex) {
+    btn.disabled = false;
+    btn.textContent = "Error — reintentar";
+    btn.title = ex.message;
+  }
+});
+
+async function pollPatente(btn, jobId, dispatchedAt, attempt = 0) {
+  if (_patenteCancelled) return;
+  if (attempt > 60) {
+    _patenteDone(btn);
+    btn.disabled = false;
+    btn.textContent = "Timeout — reintentar";
+    return;
+  }
+
+  const progress = await countPatentesProgress(jobId);
+  if (progress) {
+    const { total, found } = progress;
+    btn.textContent = total ? `Buscando… ${found}/${total}` : "Buscando…";
+  }
+
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${PATENTE_WORKFLOW}/runs?per_page=5&event=workflow_dispatch`,
+      { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
+    );
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    const { workflow_runs = [] } = await r.json();
+    const run = workflow_runs.find((w) => w.created_at >= dispatchedAt);
+    if (!run) {
+      setTimeout(() => pollPatente(btn, jobId, dispatchedAt, attempt + 1), 8_000);
+      return;
+    }
+    if (!run.conclusion) {
+      setTimeout(() => pollPatente(btn, jobId, dispatchedAt, attempt + 1), 10_000);
+      return;
+    }
+    // Workflow finished — refresh vehicle data then show final count
+    await fetchPatentesForJob();
+    const final = await countPatentesProgress(jobId);
+    if (run.conclusion === "success") {
+      btn.textContent = final ? `✓ ${final.found}/${final.total} patentes` : "✓ Listo";
+      btn.className = "btn-done";
+      btn.disabled = false;
+    } else {
+      btn.textContent = "Falló — reintentar";
+      btn.disabled = false;
+      btn.className = "secondary";
+    }
+    _patenteDone(btn);
+  } catch (_) {
+    setTimeout(() => pollPatente(btn, jobId, dispatchedAt, attempt + 1), 10_000);
+  }
+}
+
+async function cancelWorkflowRuns(workflow) {
+  const r = await fetch(
+    `https://api.github.com/repos/${GH_REPO}/actions/workflows/${workflow}/runs?per_page=5&status=in_progress`,
+    { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
+  );
+  if (!r.ok) throw new Error(`GitHub ${r.status}`);
+  const { workflow_runs = [] } = await r.json();
+  await Promise.all(workflow_runs.map((w) =>
+    fetch(`https://api.github.com/repos/${GH_REPO}/actions/runs/${w.id}/cancel`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" },
+    })
+  ));
+}
+
 async function pollResults(jobId) {
   try {
     const rows = await fetchCheckpoints(jobId);
@@ -566,15 +702,64 @@ async function pollResults(jobId) {
 async function fetchCheckpoints(jobId) {
   const r = await fetch(
     `${SUPABASE_URL}/rest/v1/checkpoints?job_id=eq.${encodeURIComponent(jobId)}&select=record_id,status,text,pdf_url`,
-    {
-      headers: {
-        apikey: SUPABASE_ANON,
-        Authorization: `Bearer ${SUPABASE_ANON}`,
-      },
-    }
+    { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
   );
   if (!r.ok) throw new Error(`Supabase ${r.status}`);
   return r.json();
+}
+
+function _extractPlates(text) {
+  return (text || "").split("\n").map(s => s.trim().toUpperCase()).filter(s => /^[A-Z]{2,4}\d{2,4}$/.test(s));
+}
+
+function _allPlatesFromData(data) {
+  const plates = new Set();
+  for (const row of data) {
+    const causa = row._data?.causa || {};
+    _extractPlates(causa.placa_patente || "").forEach(p => plates.add(p));
+    for (const dem of row._data?.demandados || [])
+      _extractPlates(dem.patente || dem.placa_patente || "").forEach(p => plates.add(p));
+  }
+  return plates;
+}
+
+async function fetchPatentesForJob() {
+  if (!_allData.length) return;
+  const plates = _allPlatesFromData(_allData);
+  if (!plates.size) return;
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/patentes?patente=in.(${[...plates].join(",")})&select=*`,
+      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
+    );
+    if (!r.ok) return;
+    const rows = await r.json();
+    _patentesData = {};
+    for (const row of rows) _patentesData[row.patente] = row;
+  } catch (_) {}
+}
+
+async function countPatentesProgress(jobId) {
+  try {
+    const rows = await fetchCheckpoints(jobId);
+    const plates = new Set();
+    for (const row of rows) {
+      if (row.record_id?.startsWith("__")) continue;
+      try {
+        const d = JSON.parse(row.text || "{}");
+        _extractPlates((d.causa?.placa_patente || d.placa_patente || "")).forEach(p => plates.add(p));
+        for (const dem of d.demandados || [])
+          _extractPlates(dem.patente || dem.placa_patente || "").forEach(p => plates.add(p));
+      } catch (_) {}
+    }
+    if (!plates.size) return { total: 0, found: 0 };
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/patentes?patente=in.(${[...plates].join(",")})&select=patente`,
+      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
+    );
+    if (!r.ok) return null;
+    return { total: plates.size, found: (await r.json()).length };
+  } catch (_) { return null; }
 }
 
 function renderResults(rows) {
@@ -615,12 +800,15 @@ function renderResults(rows) {
 
   document.getElementById("results-empty").classList.toggle("hidden", dataRows.length > 0);
 
-  // Parse and store for CSV
+  // Parse and store for CSV/export
   _allData = dataRows.map((row) => {
     let data = {};
     try { data = JSON.parse(row.text || "{}"); } catch (_) {}
     return { ...row, _data: data };
   });
+
+  // Refresh vehicle data in background (non-blocking)
+  fetchPatentesForJob().catch(() => {});
 
   const tbody = document.getElementById("results-body");
   tbody.innerHTML = "";
@@ -702,6 +890,28 @@ function buildDetail(data, causa) {
   sections.push(renderParties(data.demandados,  "Demandados"));
   sections.push(renderParties(data.demandantes, "Demandantes"));
 
+  // Vehículos — enriched data from patentes table
+  const plates = _extractPlates(causa.placa_patente || "");
+  const enriched = plates.map(p => _patentesData[p]).filter(Boolean);
+  if (enriched.length) {
+    const vrows = enriched.map((v) => `
+      <div class="party-row">
+        <strong>${esc(v.patente)}</strong>
+        ${[v.marca, v.modelo, v.anio].filter(Boolean).map(s => `<span class="pl">${esc(s)}</span>`).join("")}
+        ${v.color       ? `<span class="pl">Color: ${esc(v.color)}</span>` : ""}
+        ${v.tipo        ? `<span class="pl">Tipo: ${esc(v.tipo)}</span>` : ""}
+        ${v.combustible ? `<span class="pl">Combustible: ${esc(v.combustible)}</span>` : ""}
+        ${v.rut         ? `<span class="pl">RUT prop.: ${esc(v.rut)}</span>` : ""}
+        ${v.num_motor   ? `<span class="pl">Motor: ${esc(v.num_motor)}</span>` : ""}
+        ${v.num_chasis  ? `<span class="pl">Chasis: ${esc(v.num_chasis)}</span>` : ""}
+      </div>`).join("");
+    sections.push(`
+      <div class="detail-section">
+        <div class="detail-title">Vehículos (${enriched.length})</div>
+        ${vrows}
+      </div>`);
+  }
+
   // Trámites (Sección C)
   const tramites = data.tramites || [];
   if (tramites.length) {
@@ -767,8 +977,9 @@ const DEMANDADOS_HEADER = [
   "RUT", "Email", "Teléfono", "Domicilio",
   "Marca", "Modelo", "Año", "Patente", "Uso",
 ];
-const TRAMITES_HEADER  = ["Caso ID", "ROL", "Fecha", "Descripción", "Link PDF"];
+const TRAMITES_HEADER   = ["Caso ID", "ROL", "Fecha", "Descripción", "Link PDF"];
 const DOCUMENTOS_HEADER = ["Caso ID", "ROL", "Descripción", "Link PDF"];
+const PATENTES_HEADER   = ["Patente", "RUT Propietario", "Tipo", "Marca", "Modelo", "Año", "Color", "N° Motor", "N° Chasis", "Combustible"];
 
 function buildSheetsPayload(jobId, allData) {
   const rutDemandante = document.getElementById("rut-display").textContent;
@@ -904,6 +1115,23 @@ function buildSheetsPayload(jobId, allData) {
     }
   }
 
+  // Collect unique patentes from this job (enriched data from _patentesData)
+  const seenPlates = new Set();
+  const patentesRows = [];
+  for (const row of allData) {
+    const causa = (typeof row._data.causa === "object" && row._data.causa) ? row._data.causa : {};
+    for (const p of _extractPlates(causa.placa_patente || "")) {
+      if (seenPlates.has(p)) continue;
+      seenPlates.add(p);
+      const v = _patentesData[p] || {};
+      patentesRows.push([
+        p,
+        v.rut || "", v.tipo || "", v.marca || "", v.modelo || "",
+        v.anio || "", v.color || "", v.num_motor || "", v.num_chasis || "", v.combustible || "",
+      ]);
+    }
+  }
+
   return {
     juzgados:   { header: JUZGADOS_HEADER,   rows: Object.entries(JUZGADOS).map(([id, j]) => [id, j.name, j.url]) },
     ruts:       { header: RUTS_HEADER,        rows: [[rutDemandante, nombreDemandante]] },
@@ -911,6 +1139,7 @@ function buildSheetsPayload(jobId, allData) {
     demandados: { header: DEMANDADOS_HEADER,  rows: demandados },
     tramites:   { header: TRAMITES_HEADER,    rows: tramites },
     documentos: { header: DOCUMENTOS_HEADER,  rows: documentos },
+    patentes:   { header: PATENTES_HEADER,    rows: patentesRows },
   };
 }
 
