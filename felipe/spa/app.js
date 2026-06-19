@@ -1,4 +1,7 @@
 // ── Config ────────────────────────────────────────────────────────────────────
+const SHEETS_WEBHOOK = "https://script.google.com/macros/s/AKfycbzjJK-QoDiyDygjaDy6Dt7dk8a8c5WD_gnV1u1fixug2VqbIUcg1nEGMycNmkmApJCy/exec";
+const SHEET_ID       = "1qWNiprgWcYOC4MPQ8VeqOqZebn4GXxdRzhNADNQFGKY";
+
 const JUZGADOS = {
   vitacura:    { name: "Vitacura",     url: "https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/" },
   lobarnechea: { name: "Lo Barnechea", url: "https://mlobarnechea.custhelp.com/app/answers/detail/a_id/83/incidents.c$tipo_atencion/221" },
@@ -40,12 +43,8 @@ const ENRICH_WORKFLOW  = "enrich.yml";
 const POLL_INTERVAL_MS = 8000;
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
-const getPAT            = ()  => localStorage.getItem("gh_pat") || "";
-const setPAT            = (v) => localStorage.setItem("gh_pat", v);
-const getSheetsWebhook  = ()  => localStorage.getItem("sheets_webhook") || "";
-const setSheetsWebhook  = (v) => localStorage.setItem("sheets_webhook", v);
-const getSheetId        = ()  => localStorage.getItem("sheets_id") || "";
-const setSheetId        = (v) => localStorage.setItem("sheets_id", v);
+const getPAT = ()  => localStorage.getItem("gh_pat") || "";
+const setPAT = (v) => localStorage.setItem("gh_pat", v);
 
 // Local job history (rut/year/date per job triggered from this browser).
 const HISTORY_KEY    = "job_history";
@@ -94,10 +93,8 @@ function init() {
 // ── Setup screen ──────────────────────────────────────────────────────────────
 document.getElementById("setup-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const pat     = document.getElementById("pat-input").value.trim();
-  const webhook = document.getElementById("webhook-input").value.trim();
-  const sheetId = document.getElementById("sheet-id-input").value.trim();
-  const err     = document.getElementById("setup-error");
+  const pat = document.getElementById("pat-input").value.trim();
+  const err = document.getElementById("setup-error");
   err.classList.add("hidden");
   try {
     const r = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows`, {
@@ -105,20 +102,12 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
     });
     if (!r.ok) throw new Error(`GitHub rechazó el token (${r.status})`);
     setPAT(pat);
-    if (webhook) setSheetsWebhook(webhook);
-    if (sheetId) setSheetId(sheetId);
     showScreen("screen-trigger");
+    renderJobHistory();
   } catch (ex) {
     err.textContent = ex.message;
     err.classList.remove("hidden");
   }
-});
-
-document.getElementById("settings-btn").addEventListener("click", () => {
-  document.getElementById("pat-input").value       = getPAT();
-  document.getElementById("sheet-id-input").value  = getSheetId();
-  document.getElementById("webhook-input").value   = getSheetsWebhook();
-  showScreen("screen-setup");
 });
 
 // ── Trigger screen ────────────────────────────────────────────────────────────
@@ -926,12 +915,6 @@ function buildSheetsPayload(jobId, allData) {
 }
 
 document.getElementById("sheets-btn").addEventListener("click", async () => {
-  const webhook = getSheetsWebhook();
-  const sheetId = getSheetId();
-  if (!webhook || !sheetId) {
-    alert("Configura el ID de la hoja y la URL del Apps Script en Configuración (⚙).");
-    return;
-  }
   if (!_allData.length) return;
 
   const btn = document.getElementById("sheets-btn");
@@ -939,11 +922,11 @@ document.getElementById("sheets-btn").addEventListener("click", async () => {
   btn.textContent = "Enviando…";
 
   const jobId   = document.getElementById("job-id-display").textContent;
-  const payload = { spreadsheet_id: sheetId, ...buildSheetsPayload(jobId, _allData) };
+  const payload = { spreadsheet_id: SHEET_ID, ...buildSheetsPayload(jobId, _allData) };
 
   try {
     // no-cors: Apps Script receives body as plain text; response is opaque but script runs.
-    await fetch(webhook, {
+    await fetch(SHEETS_WEBHOOK, {
       method:  "POST",
       mode:    "no-cors",
       headers: { "Content-Type": "text/plain" },

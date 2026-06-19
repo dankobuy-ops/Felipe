@@ -12,21 +12,11 @@
   <div id="screen-setup" class="screen hidden">
     <div class="card">
       <h1>Configuración inicial</h1>
-      <p class="hint">Para usar esta herramienta necesitas un token de acceso de GitHub con permiso <code>workflow</code>. Se guarda solo en tu navegador.</p>
+      <p class="hint">Pega tu GitHub Personal Access Token con permiso <code>workflow</code>. Solo se pide una vez por dispositivo.</p>
       <form id="setup-form">
         <label>
           GitHub Personal Access Token
           <input type="password" id="pat-input" required placeholder="ghp_..." autocomplete="off" />
-        </label>
-        <label>
-          ID de Google Sheet
-          <input type="text" id="sheet-id-input" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74Og..." autocomplete="off" />
-          <span class="hint-small">ID en la URL de tu hoja: …/spreadsheets/d/<strong>[ID]</strong>/edit</span>
-        </label>
-        <label>
-          URL Apps Script (webhook)
-          <input type="url" id="webhook-input" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" />
-          <span class="hint-small">Configuración única — despliega <code>sheets_webapp.gs</code> como Web app y pega el /exec URL aquí.</span>
         </label>
         <button type="submit">Guardar y continuar</button>
       </form>
@@ -39,7 +29,6 @@
     <div class="card">
       <div class="top-bar">
         <h1>Consulta JPL</h1>
-        <button id="settings-btn" class="icon-btn" title="Configuración">⚙</button>
       </div>
       <div class="juzgado-selector">
         <button type="button" class="juzgado-btn" data-juzgado="vitacura">
@@ -111,6 +100,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>
