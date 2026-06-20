@@ -169,42 +169,99 @@ def _is_cf_challenge(r) -> bool:
     return "Just a moment" in r.text and "challenge-platform" in r.text
 
 
-def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
-    # Try multiple URL patterns; the /patente/ slug is JS-rendered so
-    # the server redirects headless requests to the homepage. The WP
-    # search route (?s=) and /buscar/ slug are server-side alternatives.
-    urls = [
-        f"{_BASE}/?s={patente}",
-        f"{_BASE}/buscar/{patente}/",
-        f"{_BASE}/patente/{patente}/",
-    ]
+def _try_wp_rest(session, patente: str) -> dict | None:
+    """Try the WordPress REST API for a custom post type named 'patente'."""
+    for endpoint in [
+        f"{_BASE}/wp-json/wp/v2/patente?slug={patente.lower()}",
+        f"{_BASE}/wp-json/wp/v2/search?search={patente}&type=post&subtype=patente",
+        f"{_BASE}/wp-json/wp/v2/posts?search={patente}&per_page=1",
+    ]:
+        try:
+            r = session.get(endpoint, timeout=15)
+            print(f"  [REST] {endpoint} -> {r.status_code}")
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            if not data:
+                continue
+            # data is a list; grab first item content
+            item = data[0] if isinstance(data, list) else data
+            content_html = (
+                item.get("content", {}).get("rendered", "")
+                or item.get("excerpt", {}).get("rendered", "")
+            )
+            if content_html:
+                result = _extract_html(content_html, patente)
+                useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
+                if any(k in result for k in useful):
+                    print(f"  [REST] got data from {endpoint}")
+                    return result
+        except Exception as e:
+            print(f"  [REST] {endpoint} error: {e}")
+    return None
+
+
+def _try_rss(session, patente: str) -> dict | None:
+    """Try the WordPress RSS feed for the search — often has post content."""
+    url = f"{_BASE}/search/{patente}/feed/rss2/"
     try:
-        for url in urls:
-            r = session.get(url, timeout=30)
-            print(f"  [{patente}] {url} -> HTTP {r.status_code} final={r.url}")
+        r = session.get(url, timeout=15)
+        print(f"  [RSS] {url} -> {r.status_code}")
+        if r.status_code != 200:
+            return None
+        # Parse RSS content:encoded or description
+        soup = BeautifulSoup(r.text, "xml")
+        for tag in ["content:encoded", "description"]:
+            content = soup.find(tag)
+            if content and content.text.strip():
+                result = _extract_html(content.text, patente)
+                useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
+                if any(k in result for k in useful):
+                    print(f"  [RSS] got data")
+                    return result
+    except Exception as e:
+        print(f"  [RSS] error: {e}")
+    return None
 
-            if r.status_code != 200 or _is_cf_challenge(r):
-                continue
 
-            final_url = str(r.url)
-            # Skip if still on homepage with no plate in URL
-            if final_url.rstrip("/") == _BASE and patente.upper() not in r.text.upper():
-                print(f"  [{patente}] redirected to homepage, skipping")
-                continue
+def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
+    try:
+        # 1. Try WP REST API (structured JSON)
+        result = _try_wp_rest(session, patente)
+        if result:
+            return result
 
+        # 2. Try RSS feed for search results
+        result = _try_rss(session, patente)
+        if result:
+            return result
+
+        # 3. Try search page and look for a link to the actual plate post
+        r = session.get(f"{_BASE}/?s={patente}", timeout=30)
+        print(f"  [{patente}] search page HTTP {r.status_code}")
+        if r.status_code == 200 and not _is_cf_challenge(r):
             if diag:
-                print(f"  [DIAG] url={r.url}")
-                print(f"  [DIAG] html={r.text[:3000]}")
+                print(f"  [DIAG] search html={r.text[:2000]}")
+            # Look for a link to the plate article
+            soup = BeautifulSoup(r.text, "html.parser")
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if patente.lower() in href.lower() and _BASE in href:
+                    print(f"  [{patente}] following link: {href}")
+                    r2 = session.get(href, timeout=30)
+                    if r2.status_code == 200 and "/patente" not in str(r2.url).replace(_BASE, ""):
+                        result = _extract_html(r2.text, patente)
+                        useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
+                        if any(k in result for k in useful):
+                            return result
 
+            # Try extracting directly from search page (data might be inline)
             result = _extract_html(r.text, patente)
             useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
             if any(k in result for k in useful):
                 return result
 
-            print(f"  [{patente}] no data in {url}")
-            if diag:
-                print(f"  HTML snippet: {r.text[:800]}")
-
+        print(f"  [{patente}] no data found across all strategies")
         return None
 
     except Exception as e:

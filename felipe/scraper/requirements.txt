@@ -2,3 +2,4 @@ playwright
 requests
 cloudscraper
 beautifulsoup4
+lxml
