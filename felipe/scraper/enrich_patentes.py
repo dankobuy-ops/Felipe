@@ -170,53 +170,42 @@ def _is_cf_challenge(r) -> bool:
 
 
 def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
-    plate_url = f"{_BASE}/patente/{patente}"
+    # Try multiple URL patterns; the /patente/ slug is JS-rendered so
+    # the server redirects headless requests to the homepage. The WP
+    # search route (?s=) and /buscar/ slug are server-side alternatives.
+    urls = [
+        f"{_BASE}/?s={patente}",
+        f"{_BASE}/buscar/{patente}/",
+        f"{_BASE}/patente/{patente}/",
+    ]
     try:
-        # Hit the plate URL directly
-        r = session.get(plate_url, timeout=30)
-        print(f"  [{patente}] HTTP {r.status_code} url={r.url}")
+        for url in urls:
+            r = session.get(url, timeout=30)
+            print(f"  [{patente}] {url} -> HTTP {r.status_code} final={r.url}")
 
-        if r.status_code != 200:
-            print(f"  [{patente}] non-200 response")
-            return None
+            if r.status_code != 200 or _is_cf_challenge(r):
+                continue
 
-        if _is_cf_challenge(r):
-            print(f"  [{patente}] Cloudflare challenge not bypassed")
-            return None
+            final_url = str(r.url)
+            # Skip if still on homepage with no plate in URL
+            if final_url.rstrip("/") == _BASE and patente.upper() not in r.text.upper():
+                print(f"  [{patente}] redirected to homepage, skipping")
+                continue
 
-        # If redirected to homepage the site needs a session — warm it up first
-        final_url = str(r.url)
-        if "/patente/" not in final_url:
-            print(f"  [{patente}] redirected to homepage, warming session…")
-            session.get(_BASE, timeout=30)
-            r = session.get(plate_url, timeout=30)
-            print(f"  [{patente}] retry HTTP {r.status_code} url={r.url}")
-            if _is_cf_challenge(r) or "/patente/" not in str(r.url):
-                # Try the search form as last resort
-                soup = BeautifulSoup(r.text, "html.parser")
-                form = soup.find("form")
-                if form:
-                    action = form.get("action") or _BASE
-                    inp = form.find("input", {"type": lambda t: t in (None, "text", "search")})
-                    if inp:
-                        name = inp.get("name", "patente")
-                        r = session.post(action, data={name: patente}, timeout=30)
-                        print(f"  [{patente}] form POST HTTP {r.status_code} url={r.url}")
+            if diag:
+                print(f"  [DIAG] url={r.url}")
+                print(f"  [DIAG] html={r.text[:3000]}")
 
-        if diag:
-            print(f"  [DIAG] url={r.url}")
-            print(f"  [DIAG] html={r.text[:3000]}")
+            result = _extract_html(r.text, patente)
+            useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
+            if any(k in result for k in useful):
+                return result
 
-        result = _extract_html(r.text, patente)
-
-        useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
-        if not any(k in result for k in useful):
-            print(f"  [{patente}] no data extracted (url={r.url})")
-            if not diag:
+            print(f"  [{patente}] no data in {url}")
+            if diag:
                 print(f"  HTML snippet: {r.text[:800]}")
-            return None
 
-        return result
+        return None
 
     except Exception as e:
         print(f"  [{patente}] ERROR: {e}")
