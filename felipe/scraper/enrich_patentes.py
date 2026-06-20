@@ -162,33 +162,58 @@ def _extract_html(html: str, patente: str) -> dict:
 
 # ── Scraper ────────────────────────────────────────────────────────────────────
 
+_BASE = "https://www.patentechile.com"
+
+
+def _is_cf_challenge(r) -> bool:
+    return "Just a moment" in r.text and "challenge-platform" in r.text
+
+
 def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
-    url = f"https://www.patentechile.com/patente/{patente}"
+    plate_url = f"{_BASE}/patente/{patente}"
     try:
-        r = session.get(url, timeout=30)
+        # Hit the plate URL directly
+        r = session.get(plate_url, timeout=30)
         print(f"  [{patente}] HTTP {r.status_code} url={r.url}")
 
         if r.status_code != 200:
             print(f"  [{patente}] non-200 response")
             return None
 
-        # Cloudflare challenge still present?
-        if "Just a moment" in r.text or "challenge-platform" in r.text:
+        if _is_cf_challenge(r):
             print(f"  [{patente}] Cloudflare challenge not bypassed")
-            if diag:
-                print(f"  HTML: {r.text[:1000]}")
             return None
 
+        # If redirected to homepage the site needs a session — warm it up first
+        final_url = str(r.url)
+        if "/patente/" not in final_url:
+            print(f"  [{patente}] redirected to homepage, warming session…")
+            session.get(_BASE, timeout=30)
+            r = session.get(plate_url, timeout=30)
+            print(f"  [{patente}] retry HTTP {r.status_code} url={r.url}")
+            if _is_cf_challenge(r) or "/patente/" not in str(r.url):
+                # Try the search form as last resort
+                soup = BeautifulSoup(r.text, "html.parser")
+                form = soup.find("form")
+                if form:
+                    action = form.get("action") or _BASE
+                    inp = form.find("input", {"type": lambda t: t in (None, "text", "search")})
+                    if inp:
+                        name = inp.get("name", "patente")
+                        r = session.post(action, data={name: patente}, timeout=30)
+                        print(f"  [{patente}] form POST HTTP {r.status_code} url={r.url}")
+
         if diag:
-            print(f"  [DIAG] html={r.text[:2000]}")
+            print(f"  [DIAG] url={r.url}")
+            print(f"  [DIAG] html={r.text[:3000]}")
 
         result = _extract_html(r.text, patente)
 
         useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
         if not any(k in result for k in useful):
-            print(f"  [{patente}] no data extracted")
+            print(f"  [{patente}] no data extracted (url={r.url})")
             if not diag:
-                print(f"  HTML: {r.text[:1000]}")
+                print(f"  HTML snippet: {r.text[:800]}")
             return None
 
         return result
