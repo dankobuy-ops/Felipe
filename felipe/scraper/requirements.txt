@@ -1,5 +1,4 @@
 playwright
+playwright-stealth
 requests
-cloudscraper
 beautifulsoup4
-lxml

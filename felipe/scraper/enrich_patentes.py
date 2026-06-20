@@ -1,8 +1,6 @@
 """Look up vehicle info for patentes found in job checkpoints.
 
-For each unique placa_patente (newline-separated) extracted from the
-checkpoints of a job, query patentechile.com and write the result to
-the `patentes` table in Supabase. Already-enriched plates are skipped.
+Uses Playwright + stealth mode to bypass Cloudflare on patentechile.com.
 
 Usage:
   python enrich_patentes.py --job-id <UUID>
@@ -15,14 +13,14 @@ import re
 import sys
 import time
 
-import cloudscraper
 import requests
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+from playwright_stealth import stealth_sync
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
-# Chilean plate formats: 2-letter+4-digit (old) or 4-letter+2-digit (new)
 PLATE_RE = re.compile(r'^[A-Z]{2,4}\d{2,4}$')
 
 _FIELDS = {
@@ -110,7 +108,7 @@ def collect_plates(rows) -> set:
     return plates
 
 
-# ── HTML extraction ────────────────────────────────────────────────────────────
+# ── HTML data extraction ───────────────────────────────────────────────────────
 
 def _classify(raw: str) -> str | None:
     label = re.sub(r"[:\-°]", "", (raw or "")).lower().strip()
@@ -131,7 +129,6 @@ def _extract_html(html: str, patente: str) -> dict:
             if v and len(v) < 200:
                 out[key] = v
 
-    # Strategy 1: table rows (td/th pairs)
     for tr in soup.find_all("tr"):
         cells = tr.find_all(["td", "th"])
         if len(cells) >= 2:
@@ -139,17 +136,12 @@ def _extract_html(html: str, patente: str) -> dict:
             if key:
                 set_val(key, cells[-1].get_text())
 
-    # Strategy 2: definition lists
     for dt in soup.find_all("dt"):
         dd = dt.find_next_sibling("dd")
         if dd:
             set_val(_classify(dt.get_text()), dd.get_text())
 
-    # Strategy 3: label-like elements + sibling
-    for el in soup.find_all(["strong", "b", "span", "label"]):
-        classes = " ".join(el.get("class", []))
-        if "label" not in classes and el.name not in ("strong", "b"):
-            continue
+    for el in soup.find_all(["strong", "b", "span", "label", "th", "td"]):
         key = _classify(el.get_text())
         if not key or key in out:
             continue
@@ -160,109 +152,48 @@ def _extract_html(html: str, patente: str) -> dict:
     return out
 
 
-# ── Scraper ────────────────────────────────────────────────────────────────────
+# ── Playwright stealth scraper ─────────────────────────────────────────────────
 
-_BASE = "https://www.patentechile.com"
+def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
+    url = f"https://www.patentechile.com/patente/{patente}"
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
 
-
-def _is_cf_challenge(r) -> bool:
-    return "Just a moment" in r.text and "challenge-platform" in r.text
-
-
-def _try_wp_rest(session, patente: str) -> dict | None:
-    """Try the WordPress REST API for a custom post type named 'patente'."""
-    for endpoint in [
-        f"{_BASE}/wp-json/wp/v2/patente?slug={patente.lower()}",
-        f"{_BASE}/wp-json/wp/v2/search?search={patente}&type=post&subtype=patente",
-        f"{_BASE}/wp-json/wp/v2/posts?search={patente}&per_page=1",
-    ]:
+        # Wait for Cloudflare challenge to resolve (if any)
         try:
-            r = session.get(endpoint, timeout=15)
-            print(f"  [REST] {endpoint} -> {r.status_code}")
-            if r.status_code != 200:
-                continue
-            data = r.json()
-            if not data:
-                continue
-            # data is a list; grab first item content
-            item = data[0] if isinstance(data, list) else data
-            content_html = (
-                item.get("content", {}).get("rendered", "")
-                or item.get("excerpt", {}).get("rendered", "")
+            page.wait_for_function(
+                "() => !document.title.includes('Just a moment')",
+                timeout=20_000,
             )
-            if content_html:
-                result = _extract_html(content_html, patente)
-                useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
-                if any(k in result for k in useful):
-                    print(f"  [REST] got data from {endpoint}")
-                    return result
-        except Exception as e:
-            print(f"  [REST] {endpoint} error: {e}")
-    return None
-
-
-def _try_rss(session, patente: str) -> dict | None:
-    """Try the WordPress RSS feed for the search — often has post content."""
-    url = f"{_BASE}/search/{patente}/feed/rss2/"
-    try:
-        r = session.get(url, timeout=15)
-        print(f"  [RSS] {url} -> {r.status_code}")
-        if r.status_code != 200:
+        except PWTimeout:
+            print(f"  [{patente}] Cloudflare challenge timed out")
             return None
-        # Parse RSS content:encoded or description
-        soup = BeautifulSoup(r.text, "xml")
-        for tag in ["content:encoded", "description"]:
-            content = soup.find(tag)
-            if content and content.text.strip():
-                result = _extract_html(content.text, patente)
-                useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
-                if any(k in result for k in useful):
-                    print(f"  [RSS] got data")
-                    return result
-    except Exception as e:
-        print(f"  [RSS] error: {e}")
-    return None
 
+        # Wait for content to load
+        page.wait_for_timeout(2_000)
 
-def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
-    try:
-        # 1. Try WP REST API (structured JSON)
-        result = _try_wp_rest(session, patente)
-        if result:
-            return result
+        final_url = page.url
+        print(f"  [{patente}] url={final_url}")
 
-        # 2. Try RSS feed for search results
-        result = _try_rss(session, patente)
-        if result:
-            return result
+        # If still on homepage, the plate wasn't found
+        if "patente" not in final_url.lower() and patente.upper() not in page.content().upper():
+            print(f"  [{patente}] redirected away — plate not found on site")
+            return None
 
-        # 3. Try search page and look for a link to the actual plate post
-        r = session.get(f"{_BASE}/?s={patente}", timeout=30)
-        print(f"  [{patente}] search page HTTP {r.status_code}")
-        if r.status_code == 200 and not _is_cf_challenge(r):
-            if diag:
-                print(f"  [DIAG] search html={r.text[:2000]}")
-            # Look for a link to the plate article
-            soup = BeautifulSoup(r.text, "html.parser")
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if patente.lower() in href.lower() and _BASE in href:
-                    print(f"  [{patente}] following link: {href}")
-                    r2 = session.get(href, timeout=30)
-                    if r2.status_code == 200 and "/patente" not in str(r2.url).replace(_BASE, ""):
-                        result = _extract_html(r2.text, patente)
-                        useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
-                        if any(k in result for k in useful):
-                            return result
+        html = page.content()
 
-            # Try extracting directly from search page (data might be inline)
-            result = _extract_html(r.text, patente)
-            useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
-            if any(k in result for k in useful):
-                return result
+        if diag:
+            print(f"  [DIAG] html={html[:3000]}")
 
-        print(f"  [{patente}] no data found across all strategies")
-        return None
+        result = _extract_html(html, patente)
+        useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
+        if not any(k in result for k in useful):
+            print(f"  [{patente}] no data extracted")
+            if not diag:
+                print(f"  HTML: {html[:800]}")
+            return None
+
+        return result
 
     except Exception as e:
         print(f"  [{patente}] ERROR: {e}")
@@ -292,31 +223,58 @@ def main():
         print("[patentes] Nothing to do")
         return
 
-    session = cloudscraper.create_scraper(
-        browser={"browser": "chrome", "platform": "linux", "desktop": True}
-    )
+    SESSION_FILE = "/tmp/patente_session.json"
 
     found = 0
-    for i, patente in enumerate(sorted(to_enrich)):
-        print(f"\n[patentes] {patente} ({i+1}/{len(to_enrich)})")
-        result = scrape_patente(session, patente, diag=(i == 0))
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx_kwargs = dict(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
+            locale="es-CL",
+            timezone_id="America/Santiago",
+            viewport={"width": 1280, "height": 800},
+        )
+        # Reuse saved session cookies if available (skips re-solving CF challenge)
+        if os.path.exists(SESSION_FILE):
+            ctx_kwargs["storage_state"] = SESSION_FILE
+            print(f"[patentes] reusing saved session from {SESSION_FILE}")
+        ctx = browser.new_context(**ctx_kwargs)
+        page = ctx.new_page()
+        stealth_sync(page)
 
-        if not result:
-            print("  -> not found")
-            continue
+        for i, patente in enumerate(sorted(to_enrich)):
+            print(f"\n[patentes] {patente} ({i+1}/{len(to_enrich)})")
+            result = scrape_patente(page, patente, diag=(i == 0))
 
-        found += 1
-        if args.dry_run:
-            print(f"  -> DRY RUN: {result}")
-            continue
+            if not result:
+                print("  -> not found")
+                continue
 
+            found += 1
+            if args.dry_run:
+                print(f"  -> DRY RUN: {result}")
+                continue
+
+            try:
+                upsert(result)
+                print(f"  -> saved: {result}")
+            except Exception as e:
+                print(f"  -> ERROR saving: {e}")
+
+            time.sleep(1)
+
+        # Save session cookies so retries skip the CF challenge
         try:
-            upsert(result)
-            print(f"  -> saved: {result}")
+            ctx.storage_state(path=SESSION_FILE)
+            print(f"[patentes] session saved to {SESSION_FILE}")
         except Exception as e:
-            print(f"  -> ERROR saving: {e}")
+            print(f"[patentes] could not save session: {e}")
 
-        time.sleep(1)
+        browser.close()
 
     print(f"\n[patentes] Done -- {found}/{len(to_enrich)} enriched")
 
