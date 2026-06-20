@@ -223,7 +223,8 @@ def main():
         print("[patentes] Nothing to do")
         return
 
-    SESSION_FILE = "/tmp/patente_session.json"
+    SESSION_FILE = os.path.expanduser("~/.cache/patente-session/session.json")
+    os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
 
     found = 0
     with sync_playwright() as pw:
