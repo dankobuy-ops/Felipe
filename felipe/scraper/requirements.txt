@@ -1,2 +1,4 @@
 playwright
 requests
+cloudscraper
+beautifulsoup4
