@@ -89,6 +89,73 @@ def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
         return None
 
 
+def open_context(pw):
+    """Open the persistent, visible browser context used for scraping."""
+    os.makedirs(PROFILE_DIR, exist_ok=True)
+    kwargs = dict(
+        headless=False,
+        args=["--disable-blink-features=AutomationControlled"],
+        user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+        locale="es-CL", timezone_id="America/Santiago",
+        viewport={"width": 1280, "height": 900},
+    )
+    try:
+        # Real Chrome has the best chance against Cloudflare's fingerprinting.
+        return pw.chromium.launch_persistent_context(PROFILE_DIR, channel="chrome", **kwargs)
+    except Exception:
+        print("[patentes] real Chrome not found; using bundled Chromium")
+        return pw.chromium.launch_persistent_context(PROFILE_DIR, **kwargs)
+
+
+def enrich_plates(page, plates, dry_run=False):
+    """Scrape (and unless dry_run, upsert) each plate on an already-open page.
+
+    Paces between plates to avoid Cloudflare's rate limiter. Stops early if the
+    browser is closed or a session error hits (usually a rate-limit ban).
+    Returns (found, total)."""
+    plates = list(plates)
+    found = 0
+    for i, patente in enumerate(plates):
+        if i:
+            delay = random.uniform(5, 11)
+            print(f"  (waiting {delay:.0f}s before next plate…)")
+            time.sleep(delay)
+        if page.is_closed():
+            print("[patentes] browser/page closed — stopping early")
+            break
+        print(f"[patentes] {patente} ({i+1}/{len(plates)})")
+        try:
+            result = scrape_patente(page, patente, diag=(i == 0))
+        except Exception as e:
+            print(f"  [{patente}] session error ({e}); stopping — likely rate-limited.")
+            break
+        if not result:
+            print("  -> not found")
+            continue
+        found += 1
+        if dry_run:
+            print(f"  -> DRY RUN: {result}")
+            continue
+        try:
+            upsert(result)
+            print(f"  -> saved: {result}")
+        except Exception as e:
+            print(f"  -> ERROR saving: {e}")
+    return found, len(plates)
+
+
+def job_to_enrich(job_id):
+    """Return the sorted list of plates in a job that aren't yet in the DB."""
+    rows = fetch_checkpoints(job_id)
+    all_plates = collect_plates(rows)
+    existing = fetch_existing(all_plates)
+    to_enrich = sorted(all_plates - existing)
+    print(f"[patentes] {len(all_plates)} in job, {len(existing)} in DB, "
+          f"{len(to_enrich)} to enrich")
+    return to_enrich
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--job-id")
@@ -103,75 +170,21 @@ def main():
             sys.exit("ERROR: pass --job-id or --plates")
         if not (SUPABASE_URL and SUPABASE_KEY):
             sys.exit("ERROR: set SUPABASE_URL and SUPABASE_SERVICE_KEY")
-        rows = fetch_checkpoints(args.job_id)
-        all_plates = collect_plates(rows)
-        existing = fetch_existing(all_plates)
-        to_enrich = sorted(all_plates - existing)
-        print(f"[patentes] {len(all_plates)} in job, {len(existing)} in DB, "
-              f"{len(to_enrich)} to enrich")
+        to_enrich = job_to_enrich(args.job_id)
 
     if not to_enrich:
         print("[patentes] Nothing to do")
         return
 
-    os.makedirs(PROFILE_DIR, exist_ok=True)
-    found = 0
     with sync_playwright() as pw:
-        kwargs = dict(
-            headless=False,
-            args=["--disable-blink-features=AutomationControlled"],
-            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
-            locale="es-CL", timezone_id="America/Santiago",
-            viewport={"width": 1280, "height": 900},
-        )
-        try:
-            # Real Chrome has the best chance against Cloudflare's fingerprinting.
-            ctx = pw.chromium.launch_persistent_context(PROFILE_DIR, channel="chrome", **kwargs)
-        except Exception:
-            print("[patentes] real Chrome not found; using bundled Chromium")
-            ctx = pw.chromium.launch_persistent_context(PROFILE_DIR, **kwargs)
+        ctx = open_context(pw)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-
-        for i, patente in enumerate(to_enrich):
-            # Human-like pacing between EVERY plate — firing requests back-to-back
-            # trips Cloudflare's rate limiter and gets the IP temporarily banned.
-            if i:
-                delay = random.uniform(5, 11)
-                print(f"  (waiting {delay:.0f}s before next plate…)")
-                time.sleep(delay)
-
-            if page.is_closed():
-                print("[patentes] browser/page closed — stopping early")
-                break
-
-            print(f"[patentes] {patente} ({i+1}/{len(to_enrich)})")
-            try:
-                result = scrape_patente(page, patente, diag=(i == 0))
-            except Exception as e:
-                print(f"  [{patente}] session error ({e}); stopping — likely "
-                      f"rate-limited. Wait ~20 min and re-run; done plates are skipped.")
-                break
-
-            if not result:
-                print("  -> not found")
-                continue
-            found += 1
-            if args.dry_run:
-                print(f"  -> DRY RUN: {result}")
-                continue
-            try:
-                upsert(result)
-                print(f"  -> saved: {result}")
-            except Exception as e:
-                print(f"  -> ERROR saving: {e}")
-
+        found, total = enrich_plates(page, to_enrich, dry_run=args.dry_run)
         try:
             ctx.close()
         except Exception:
             pass
-
-    print(f"\n[patentes] Done -- {found}/{len(to_enrich)} enriched")
+    print(f"\n[patentes] Done -- {found}/{total} enriched")
 
 
 if __name__ == "__main__":

@@ -569,17 +569,11 @@ function _patenteDone(btn) {
   setPatenteStatus("");
 }
 
-document.getElementById("stop-patente-btn").addEventListener("click", async () => {
-  const stopBtn = document.getElementById("stop-patente-btn");
-  stopBtn.disabled = true;
-  stopBtn.textContent = "Deteniendo…";
+document.getElementById("stop-patente-btn").addEventListener("click", () => {
+  // The search runs on your PC via the watcher; "stop" just stops the app from
+  // following along (the watcher finishes whatever plate it's mid-way through).
   _patenteCancelled = true;
-  try {
-    await cancelWorkflowRuns(PATENTE_WORKFLOW);
-  } catch (_) {}
-  stopBtn.classList.add("hidden");
-  stopBtn.disabled = false;
-  stopBtn.textContent = "Detener patentes";
+  document.getElementById("stop-patente-btn").classList.add("hidden");
   const btn = document.getElementById("patente-btn");
   btn.disabled = false;
   btn.textContent = "Buscar Patentes";
@@ -596,28 +590,29 @@ document.getElementById("patente-btn").addEventListener("click", async () => {
   setPatenteStatus("");
 
   try {
-    const dispatchedAt = new Date().toISOString();
-    const r = await fetch(
-      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${PATENTE_WORKFLOW}/dispatches`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${getPAT()}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        body: JSON.stringify({ ref: "main", inputs: { job_id: jobId } }),
-      }
-    );
+    // patentechile.com is behind Cloudflare, so the scrape can't run in the cloud.
+    // Instead we queue a request row; the local watcher (running on your PC) picks
+    // it up, does the search in a real browser, and saves results to Supabase.
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/patente_requests`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON,
+        Authorization: `Bearer ${SUPABASE_ANON}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ job_id: jobId }),
+    });
     if (!r.ok) {
       const body = await r.text().catch(() => "");
-      throw new Error(`GitHub ${r.status}: ${body || "sin detalle"}`);
+      throw new Error(`Supabase ${r.status}: ${body || "sin detalle"}`);
     }
-    btn.textContent = "Buscando…";
+    const [req] = await r.json();
+    btn.textContent = "En cola…";
     _patenteCancelled = false;
+    setPatenteStatus("Solicitud en cola — el watcher debe estar corriendo en tu PC.");
     document.getElementById("stop-patente-btn").classList.remove("hidden");
-    pollPatente(btn, jobId, dispatchedAt);
+    pollPatente(btn, jobId, req.id);
   } catch (ex) {
     btn.disabled = false;
     btn.textContent = "Error — reintentar";
@@ -625,53 +620,50 @@ document.getElementById("patente-btn").addEventListener("click", async () => {
   }
 });
 
-async function pollPatente(btn, jobId, dispatchedAt, attempt = 0) {
+async function pollPatente(btn, jobId, reqId, attempt = 0) {
   if (_patenteCancelled) return;
-  if (attempt > 60) {
+  if (attempt > 120) {  // ~20 min at 10s/poll
     _patenteDone(btn);
     btn.disabled = false;
-    btn.textContent = "Timeout — reintentar";
+    btn.textContent = "Timeout — ¿watcher corriendo?";
     return;
   }
 
-  const progress = await countPatentesProgress(jobId);
-  if (progress) {
-    const { total, found } = progress;
-    btn.textContent = total ? `Buscando… ${found}/${total}` : "Buscando…";
-  }
-
+  // Read the request's status (set by the local watcher) + live progress.
+  let req = null;
   try {
     const r = await fetch(
-      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${PATENTE_WORKFLOW}/runs?per_page=5&event=workflow_dispatch`,
-      { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
+      `${SUPABASE_URL}/rest/v1/patente_requests?id=eq.${reqId}&select=status,message`,
+      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
     );
-    if (!r.ok) throw new Error(`GitHub ${r.status}`);
-    const { workflow_runs = [] } = await r.json();
-    const run = workflow_runs.find((w) => w.created_at >= dispatchedAt);
-    if (!run) {
-      setTimeout(() => pollPatente(btn, jobId, dispatchedAt, attempt + 1), 8_000);
-      return;
-    }
-    if (!run.conclusion) {
-      setTimeout(() => pollPatente(btn, jobId, dispatchedAt, attempt + 1), 10_000);
-      return;
-    }
-    // Workflow finished — refresh vehicle data then show final count
+    if (r.ok) req = (await r.json())[0];
+  } catch (_) {}
+
+  const status = req?.status || "pending";
+  if (status === "done" || status === "error") {
     await fetchPatentesForJob();
     const final = await countPatentesProgress(jobId);
-    if (run.conclusion === "success") {
+    if (status === "done") {
       btn.textContent = final ? `✓ ${final.found}/${final.total} patentes` : "✓ Listo";
       btn.className = "btn-done";
-      btn.disabled = false;
     } else {
       btn.textContent = "Falló — reintentar";
-      btn.disabled = false;
       btn.className = "secondary";
+      btn.title = req?.message || "";
     }
+    btn.disabled = false;
     _patenteDone(btn);
-  } catch (_) {
-    setTimeout(() => pollPatente(btn, jobId, dispatchedAt, attempt + 1), 10_000);
+    return;
   }
+
+  if (status === "running") {
+    const progress = await countPatentesProgress(jobId);
+    btn.textContent = progress && progress.total
+      ? `Buscando… ${progress.found}/${progress.total}` : "Buscando…";
+  } else {
+    btn.textContent = "En cola…";
+  }
+  setTimeout(() => pollPatente(btn, jobId, reqId, attempt + 1), 10_000);
 }
 
 async function cancelWorkflowRuns(workflow) {
