@@ -190,21 +190,27 @@ def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
             print(f"  [{patente}] Cloudflare challenge timed out")
             return None
 
-        # Fill the search input and submit. The web-app uses #txtTerm + #btnVehiculo;
-        # the homepage uses #inputTerm. Try the web-app form first.
+        # Fill the search input and submit. The "Buscar vehículos" tab (#btnVehiculo)
+        # is active by default; the actual submit button is #btnConsultar.
         try:
             page.fill("#txtTerm", patente, timeout=8_000)
-            page.click("#btnVehiculo", timeout=5_000)
+            page.click("#btnConsultar", timeout=5_000)
         except PWTimeout:
             page.fill("#inputTerm", patente, timeout=8_000)
             page.press("#inputTerm", "Enter")
 
-        # Wait for the encrypted AJAX round-trip + DOM render to settle.
+        # Wait for the encrypted AJAX round-trip + DOM render. The bare form body
+        # is ~45 chars; results (or a "no encontramos" message) grow it past that.
         try:
-            page.wait_for_load_state("networkidle", timeout=20_000)
+            page.wait_for_function(
+                "() => { const t = document.body.innerText.toLowerCase();"
+                " return t.length > 120 || t.includes('no encontr')"
+                " || t.includes('sin resultado'); }",
+                timeout=20_000,
+            )
         except PWTimeout:
             pass
-        page.wait_for_timeout(3_000)
+        page.wait_for_timeout(1_500)
 
         html = page.content()
         body_txt = (page.inner_text("body") or "").lower()
