@@ -1,37 +1,19 @@
-"""Look up vehicle info for patentes found in job checkpoints.
+"""Shared helpers for patente enrichment (Supabase I/O + HTML field extraction).
 
-Uses Playwright + stealth mode to bypass Cloudflare on patentechile.com.
-
-Usage:
-  python enrich_patentes.py --job-id <UUID>
-  python enrich_patentes.py --job-id <UUID> --dry-run
+NOTE: patentechile.com gates its results endpoint behind a Cloudflare *managed
+challenge* that automated/headless browsers and datacenter IPs (GitHub Actions)
+cannot pass. The actual scraping therefore runs locally in a real browser —
+see enrich_patentes_local.py. This module only holds the reusable pieces it
+imports; running it directly just points you there.
 """
 import argparse
 import json
 import os
 import re
 import sys
-import time
 
 import requests
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-
-# playwright-stealth API differs across versions (v1: stealth_sync(page);
-# v2: Stealth().apply_stealth_sync(page)). Stay resilient so an unpinned
-# install can't hard-fail the run before any plate is scraped.
-def _apply_stealth(page):
-    try:
-        from playwright_stealth import stealth_sync  # v1
-        stealth_sync(page)
-        return
-    except Exception:
-        pass
-    try:
-        from playwright_stealth import Stealth  # v2
-        Stealth().apply_stealth_sync(page)
-    except Exception as e:
-        print(f"[patentes] stealth unavailable ({e}); continuing without it")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
@@ -167,157 +149,22 @@ def _extract_html(html: str, patente: str) -> dict:
     return out
 
 
-# ── Playwright stealth scraper ─────────────────────────────────────────────────
-
-SEARCH_URL = "https://www.patentechile.com/web-app/"
-# The plate lookup is a JS app: it encrypts the term (crypto-js) and POSTs to
-# admin-ajax.php, then renders results into the DOM. There is no static URL
-# (/patente/<plate> 301s to home; ?s=<plate> is WP search with no plate data).
-# So we drive the real form and read the rendered results.
-
-
-def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
-    try:
-        page.goto(SEARCH_URL, wait_until="domcontentloaded", timeout=30_000)
-
-        # Wait for Cloudflare challenge to resolve (if any)
-        try:
-            page.wait_for_function(
-                "() => !document.title.includes('Just a moment')",
-                timeout=20_000,
-            )
-        except PWTimeout:
-            print(f"  [{patente}] Cloudflare challenge timed out")
-            return None
-
-        # Fill the search input and submit. The "Buscar vehículos" tab (#btnVehiculo)
-        # is active by default; the actual submit button is #btnConsultar.
-        try:
-            page.fill("#txtTerm", patente, timeout=8_000)
-            page.click("#btnConsultar", timeout=5_000)
-        except PWTimeout:
-            page.fill("#inputTerm", patente, timeout=8_000)
-            page.press("#inputTerm", "Enter")
-
-        # Wait for the encrypted AJAX round-trip + DOM render. The bare form body
-        # is ~45 chars; results (or a "no encontramos" message) grow it past that.
-        try:
-            page.wait_for_function(
-                "() => { const t = document.body.innerText.toLowerCase();"
-                " return t.length > 120 || t.includes('no encontr')"
-                " || t.includes('sin resultado'); }",
-                timeout=20_000,
-            )
-        except PWTimeout:
-            pass
-        page.wait_for_timeout(1_500)
-
-        html = page.content()
-        body_txt = (page.inner_text("body") or "").lower()
-
-        if diag:
-            print(f"  [DIAG] url={page.url}")
-            print(f"  [DIAG] body_txt[:2000]={body_txt[:2000]}")
-            print(f"  [DIAG] html[:4000]={html[:4000]}")
-
-        # Explicit "not found" message from the app.
-        if "no encontr" in body_txt or "sin resultado" in body_txt:
-            print(f"  [{patente}] app reports no results")
-            return None
-
-        result = _extract_html(html, patente)
-        useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
-        if not any(k in result for k in useful):
-            print(f"  [{patente}] no data extracted from rendered results")
-            if not diag:
-                print(f"  body_txt[:800]={body_txt[:800]}")
-            return None
-
-        return result
-
-    except Exception as e:
-        print(f"  [{patente}] ERROR: {e}")
-        return None
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
+# ── Entry point ─────────────────────────────────────────────────────────────────
+# Scraping moved to enrich_patentes_local.py (real browser, run locally) because
+# patentechile.com's results endpoint is behind a Cloudflare managed challenge
+# that headless/CI cannot pass. This module is now import-only helpers.
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--job-id", required=True)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--job-id")
     ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
-
-    if not (SUPABASE_URL and SUPABASE_KEY):
-        sys.exit("ERROR: set SUPABASE_URL and SUPABASE_SERVICE_KEY")
-
-    rows = fetch_checkpoints(args.job_id)
-    all_plates = collect_plates(rows)
-    existing   = fetch_existing(all_plates)
-    to_enrich  = all_plates - existing
-
-    print(f"[patentes] {len(all_plates)} plates in job, "
-          f"{len(existing)} already in DB, {len(to_enrich)} to enrich")
-
-    if not to_enrich:
-        print("[patentes] Nothing to do")
-        return
-
-    SESSION_FILE = os.path.expanduser("~/.cache/patente-session/session.json")
-    os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
-
-    found = 0
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        ctx_kwargs = dict(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            ),
-            locale="es-CL",
-            timezone_id="America/Santiago",
-            viewport={"width": 1280, "height": 800},
-        )
-        # Reuse saved session cookies if available (skips re-solving CF challenge)
-        if os.path.exists(SESSION_FILE):
-            ctx_kwargs["storage_state"] = SESSION_FILE
-            print(f"[patentes] reusing saved session from {SESSION_FILE}")
-        ctx = browser.new_context(**ctx_kwargs)
-        page = ctx.new_page()
-        _apply_stealth(page)
-
-        for i, patente in enumerate(sorted(to_enrich)):
-            print(f"\n[patentes] {patente} ({i+1}/{len(to_enrich)})")
-            result = scrape_patente(page, patente, diag=(i == 0))
-
-            if not result:
-                print("  -> not found")
-                continue
-
-            found += 1
-            if args.dry_run:
-                print(f"  -> DRY RUN: {result}")
-                continue
-
-            try:
-                upsert(result)
-                print(f"  -> saved: {result}")
-            except Exception as e:
-                print(f"  -> ERROR saving: {e}")
-
-            time.sleep(1)
-
-        # Save session cookies so retries skip the CF challenge
-        try:
-            ctx.storage_state(path=SESSION_FILE)
-            print(f"[patentes] session saved to {SESSION_FILE}")
-        except Exception as e:
-            print(f"[patentes] could not save session: {e}")
-
-        browser.close()
-
-    print(f"\n[patentes] Done -- {found}/{len(to_enrich)} enriched")
+    ap.parse_args()
+    sys.exit(
+        "patente enrichment runs locally now — patentechile.com is behind a "
+        "Cloudflare managed challenge that CI/headless can't pass.\n"
+        "Run on your own machine:\n"
+        "  python enrich_patentes_local.py --job-id <UUID>"
+    )
 
 
 if __name__ == "__main__":
