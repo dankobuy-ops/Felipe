@@ -16,7 +16,22 @@ import time
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-from playwright_stealth import stealth_sync
+
+# playwright-stealth API differs across versions (v1: stealth_sync(page);
+# v2: Stealth().apply_stealth_sync(page)). Stay resilient so an unpinned
+# install can't hard-fail the run before any plate is scraped.
+def _apply_stealth(page):
+    try:
+        from playwright_stealth import stealth_sync  # v1
+        stealth_sync(page)
+        return
+    except Exception:
+        pass
+    try:
+        from playwright_stealth import Stealth  # v2
+        Stealth().apply_stealth_sync(page)
+    except Exception as e:
+        print(f"[patentes] stealth unavailable ({e}); continuing without it")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
@@ -154,10 +169,16 @@ def _extract_html(html: str, patente: str) -> dict:
 
 # ── Playwright stealth scraper ─────────────────────────────────────────────────
 
+SEARCH_URL = "https://www.patentechile.com/web-app/"
+# The plate lookup is a JS app: it encrypts the term (crypto-js) and POSTs to
+# admin-ajax.php, then renders results into the DOM. There is no static URL
+# (/patente/<plate> 301s to home; ?s=<plate> is WP search with no plate data).
+# So we drive the real form and read the rendered results.
+
+
 def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
-    url = f"https://www.patentechile.com/patente/{patente}"
     try:
-        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        page.goto(SEARCH_URL, wait_until="domcontentloaded", timeout=30_000)
 
         # Wait for Cloudflare challenge to resolve (if any)
         try:
@@ -169,28 +190,41 @@ def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
             print(f"  [{patente}] Cloudflare challenge timed out")
             return None
 
-        # Wait for content to load
-        page.wait_for_timeout(2_000)
+        # Fill the search input and submit. The web-app uses #txtTerm + #btnVehiculo;
+        # the homepage uses #inputTerm. Try the web-app form first.
+        try:
+            page.fill("#txtTerm", patente, timeout=8_000)
+            page.click("#btnVehiculo", timeout=5_000)
+        except PWTimeout:
+            page.fill("#inputTerm", patente, timeout=8_000)
+            page.press("#inputTerm", "Enter")
 
-        final_url = page.url
-        print(f"  [{patente}] url={final_url}")
-
-        # If still on homepage, the plate wasn't found
-        if "patente" not in final_url.lower() and patente.upper() not in page.content().upper():
-            print(f"  [{patente}] redirected away — plate not found on site")
-            return None
+        # Wait for the encrypted AJAX round-trip + DOM render to settle.
+        try:
+            page.wait_for_load_state("networkidle", timeout=20_000)
+        except PWTimeout:
+            pass
+        page.wait_for_timeout(3_000)
 
         html = page.content()
+        body_txt = (page.inner_text("body") or "").lower()
 
         if diag:
-            print(f"  [DIAG] html={html[:3000]}")
+            print(f"  [DIAG] url={page.url}")
+            print(f"  [DIAG] body_txt[:2000]={body_txt[:2000]}")
+            print(f"  [DIAG] html[:4000]={html[:4000]}")
+
+        # Explicit "not found" message from the app.
+        if "no encontr" in body_txt or "sin resultado" in body_txt:
+            print(f"  [{patente}] app reports no results")
+            return None
 
         result = _extract_html(html, patente)
         useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
         if not any(k in result for k in useful):
-            print(f"  [{patente}] no data extracted")
+            print(f"  [{patente}] no data extracted from rendered results")
             if not diag:
-                print(f"  HTML: {html[:800]}")
+                print(f"  body_txt[:800]={body_txt[:800]}")
             return None
 
         return result
@@ -245,7 +279,7 @@ def main():
             print(f"[patentes] reusing saved session from {SESSION_FILE}")
         ctx = browser.new_context(**ctx_kwargs)
         page = ctx.new_page()
-        stealth_sync(page)
+        _apply_stealth(page)
 
         for i, patente in enumerate(sorted(to_enrich)):
             print(f"\n[patentes] {patente} ({i+1}/{len(to_enrich)})")
