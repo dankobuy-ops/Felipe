@@ -107,11 +107,21 @@ def collect_plates(rows) -> set:
 
 # ── HTML data extraction ───────────────────────────────────────────────────────
 
+def _norm(s: str) -> str:
+    # Drop punctuation that varies between label and candidate (e.g. "N° Motor"),
+    # collapse whitespace, lowercase. Both label and candidates go through this so
+    # "N° Motor" and "n° motor" both become "n motor" and match.
+    return re.sub(r"\s+", " ", re.sub(r"[:\-°.]", "", (s or "")).lower()).strip()
+
+
 def _classify(raw: str) -> str | None:
-    label = re.sub(r"[:\-°]", "", (raw or "")).lower().strip()
+    label = _norm(raw)
+    if not label:
+        return None
     for key, candidates in _FIELDS.items():
         for c in candidates:
-            if label == c or label.startswith(c):
+            cn = _norm(c)
+            if label == cn or label.startswith(cn):
                 return key
     return None
 
