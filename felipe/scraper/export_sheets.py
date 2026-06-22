@@ -1,12 +1,23 @@
 """Export scraped JPL data from Supabase to a Google Sheet (standalone command).
 
-Produces four linked tabs and POSTs them to a Google Apps Script web app bound
+Produces linked tabs and POSTs them to a Google Apps Script web app bound
 to the target sheet (see sheets_webapp.gs for the script + setup):
 
-  Causas      — one row per causa (case header + remisor info)
-  Demandados  — one row per demandado per causa (party + vehicle details)
-  Trámites    — one row per trámite from Sección C (linked by Caso ID)
-  Documentos  — one row per adjunto from Sección D (linked by Caso ID)
+  Causas          — one row per causa (case header + remisor info)
+  Demandados      — one row per UNIQUE party, keyed by RUT (clean entity table,
+                    deduped across every causa/job; enrichment fields merged)
+  Causa-Demandado — junction: one row per (causa, party) link, carrying the
+                    case-specific vehicle details (marca/modelo/año/patente/uso)
+  Trámites        — one row per trámite from Sección C (linked by Caso ID)
+  Documentos      — one row per adjunto from Sección D (linked by Caso ID)
+
+A party who is a defendant in several causas appears once in Demandados and
+once per causa in Causa-Demandado, so personal data is never duplicated.
+
+The same normalized entities are also mirrored into Supabase relational tables
+(demandados, causa_demandado, patente_demandado — see export_tables.sql) on each
+run, unless --no-db is passed. The checkpoints JSON store remains the scrape
+source of truth; these tables are a derived, queryable layer.
 
 Usage:
   python export_sheets.py --webhook <APPS_SCRIPT_EXEC_URL> --all
@@ -17,9 +28,13 @@ Env fallbacks: SHEETS_WEBHOOK_URL, SUPABASE_URL, SUPABASE_SERVICE_KEY
 import argparse
 import json
 import os
+import re
 import sys
 
 import requests
+
+# A plate field may list several plates (newline / comma / slash separated).
+_PLATE_RE = re.compile(r"^[A-Z]{2,4}\d{2,4}$")
 
 JUZGADOS_HEADER = ["Juzgado ID", "Nombre", "URL"]
 JUZGADOS_ROWS = [
@@ -41,12 +56,33 @@ CAUSAS_HEADER = [
     "Monto Demandado",
 ]
 
+# Clean entity table — one row per unique party, keyed by RUT (col A).
 DEMANDADOS_HEADER = [
-    "Caso ID", "ROL",
+    "RUT",
     "Nombre", "Segundo Nombre", "Ap. Paterno", "Ap. Materno",
-    "RUT", "Email", "Fuente Email", "Teléfono", "Domicilio",
-    "Marca", "Modelo", "Año", "Patente", "Uso",
+    "Email", "Fuente Email", "Teléfono", "Domicilio",
 ]
+
+# Junction — links a causa to a party. Col A ("Vínculo ID") is the unique
+# upsert key: "<Caso ID>::<RUT>".
+CAUSA_DEMANDADO_HEADER = [
+    "Vínculo ID", "Caso ID", "ROL", "RUT",
+]
+
+# Junction — links a plate to the demandado's RUT within a causa. A ROL may
+# carry several plates, so there can be many rows per Caso ID. Col A
+# ("Vínculo ID") is the unique upsert key: "<Caso ID>::<RUT>::<Patente>".
+# Plate attributes (marca/modelo/año…) live in the Patentes entity tab.
+PATENTE_DEMANDADO_HEADER = [
+    "Vínculo ID", "Caso ID", "ROL", "RUT", "Patente",
+]
+
+# Supabase column names, positionally parallel to the *_HEADER lists above.
+# Used to mirror the reshaped rows into the relational tables (export_tables.sql).
+DEMANDADOS_COLS        = ["rut", "nombre", "segundo_nombre", "ap_paterno",
+                          "ap_materno", "email", "email_source", "telefono", "domicilio"]
+CAUSA_DEMANDADO_COLS   = ["vinculo_id", "caso_id", "rol", "rut"]
+PATENTE_DEMANDADO_COLS = ["vinculo_id", "caso_id", "rol", "rut", "patente"]
 
 TRAMITES_HEADER = [
     "Caso ID", "ROL", "Fecha", "Descripción", "Link PDF",
@@ -72,6 +108,30 @@ def fetch_rows(sb_url, sb_key, job_id=None):
     )
     r.raise_for_status()
     return r.json()
+
+
+def upsert_table(sb_url, sb_key, table, conflict_col, cols, rows, batch_size=200):
+    """Upsert reshaped rows into a Supabase relational table (export_tables.sql).
+
+    `rows` are positional lists parallel to `cols`. Uses the service key, which
+    bypasses RLS. Returns the number of rows written.
+    """
+    if not rows:
+        return 0
+    url = f"{sb_url}/rest/v1/{table}?on_conflict={conflict_col}"
+    headers = {
+        "apikey": sb_key,
+        "Authorization": f"Bearer {sb_key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal",
+    }
+    written = 0
+    for i in range(0, len(rows), batch_size):
+        chunk = [dict(zip(cols, r)) for r in rows[i : i + batch_size]]
+        r = requests.post(url, headers=headers, json=chunk, timeout=60)
+        r.raise_for_status()
+        written += len(chunk)
+    return written
 
 
 def _split_name(nombre):
@@ -112,6 +172,34 @@ def _split_name(nombre):
     return nombre1, segundo, ap_paterno, ap_materno
 
 
+def _plates(*fields):
+    """Extract distinct, normalized plates from one or more raw fields.
+
+    Each field may list several plates separated by newlines/commas/slashes.
+    Falls back to keeping a cleaned single token when nothing matches the
+    canonical plate shape, so unusual formats are not silently dropped.
+    """
+    out, seen = [], set()
+    for field in fields:
+        for tok in re.split(r"[\n,;/]+", field or ""):
+            p = re.sub(r"[\s\-.]", "", tok).strip().upper()
+            if not p:
+                continue
+            if _PLATE_RE.match(p) and p not in seen:
+                seen.add(p)
+                out.append(p)
+    return out
+
+
+def _merge_person(existing, new):
+    """Merge two person rows field-by-field: existing wins, new fills blanks.
+
+    Lets enrichment captured in one causa (e.g. an email) populate a party
+    even when another appearance left that field empty.
+    """
+    return [e or n for e, n in zip(existing, new)]
+
+
 def _domicilio(party):
     parts = [party.get("direccion", ""), party.get("comuna", "")]
     return ", ".join(p for p in parts if p)
@@ -135,7 +223,11 @@ def build_tables(rows):
             except Exception:
                 pass
 
-    causas, demandados, tramites, documentos = [], [], [], []
+    causas, tramites, documentos = [], [], []
+    causa_demandado, patente_demandado = [], []
+    # Demandados is deduped by party key (RUT) while preserving first-seen order.
+    person_index = {}
+    person_order = []
 
     for row in rows:
         rid = row.get("record_id", "")
@@ -171,36 +263,40 @@ def build_tables(rows):
             _first_match(causa, "monto", "monto_demandado", "cuantia", "cuantía", "monto_multa"),
         ])
 
-        # ── Table 2: Demandados ───────────────────────────────────────────────
-        # Vehicle fallback from Section B if not captured per demandado
-        veh = {
-            "marca":   _first_match(causa, "marca", "marca_vehiculo", "marca_vehículo"),
-            "modelo":  _first_match(causa, "modelo", "modelo_vehiculo", "modelo_vehículo"),
-            "año":     _first_match(causa, "año", "ano", "año_vehiculo", "año_vehículo"),
-            "patente": _first_match(causa, "placa_patente"),
-            "uso":     _first_match(causa, "uso", "uso_vehiculo", "uso_vehículo"),
-        }
+        # ── Demandados (clean) + Causa-Demandado + Patente-Demandado ──────────
+        # Causa-level plates are the fallback when a party lists none of its own.
+        causa_plates = _plates(causa.get("placa_patente"), d.get("placa_patente"))
         dem_list = d.get("demandados") or []
+
         if not dem_list:
-            demandados.append([f"{cid}/d1", rol, "", "", "", "", "", "", "", "", "",
-                               veh["marca"], veh["modelo"], veh["año"], veh["patente"], veh["uso"]])
+            # No identified party — preserve any causa plates with a blank RUT
+            # so the plate↔causa link is not lost.
+            for plate in causa_plates:
+                patente_demandado.append([f"{cid}::::{plate}", cid, rol, "", plate])
         else:
-            for di, dem in enumerate(dem_list, 1):
+            for dem in dem_list:
+                rut = dem.get("rut", "")
                 nombre, segundo, ap_paterno, ap_materno = _split_name(dem.get("nombre", ""))
-                demandados.append([
-                    f"{cid}/d{di}", rol,
-                    nombre, segundo, ap_paterno, ap_materno,
-                    dem.get("rut", ""),
-                    dem.get("email", ""),
-                    dem.get("email_source", ""),
-                    dem.get("telefono", ""),
-                    _domicilio(dem),
-                    dem.get("marca") or veh["marca"],
-                    dem.get("modelo") or veh["modelo"],
-                    dem.get("año") or veh["año"],
-                    dem.get("patente") or veh["patente"],
-                    dem.get("uso") or veh["uso"],
-                ])
+                person = [
+                    rut, nombre, segundo, ap_paterno, ap_materno,
+                    dem.get("email", ""), dem.get("email_source", ""),
+                    dem.get("telefono", ""), _domicilio(dem),
+                ]
+                # Dedup people by RUT (name fallback guards a rare empty RUT).
+                pkey = rut or f"sinrut::{(nombre + ap_paterno + ap_materno).lower()}"
+                if pkey in person_index:
+                    person_index[pkey] = _merge_person(person_index[pkey], person)
+                else:
+                    person_index[pkey] = person
+                    person_order.append(pkey)
+
+                # Causa ↔ party link.
+                causa_demandado.append([f"{cid}::{rut}", cid, rol, rut])
+
+                # Plate ↔ party links (a party may list several plates).
+                plates = _plates(dem.get("patente"), dem.get("placa_patente")) or causa_plates
+                for plate in plates:
+                    patente_demandado.append([f"{cid}::{rut}::{plate}", cid, rol, rut, plate])
 
         # ── Table 3: Trámites (Sección C) ─────────────────────────────────────
         for ti, t in enumerate(d.get("tramites") or [], 1):
@@ -219,7 +315,8 @@ def build_tables(rows):
                 a.get("pdf_url", ""),
             ])
 
-    return causas, demandados, tramites, documentos
+    demandados = [person_index[k] for k in person_order]
+    return causas, demandados, causa_demandado, patente_demandado, tramites, documentos
 
 
 def main():
@@ -229,6 +326,8 @@ def main():
     ap.add_argument("--all", action="store_true", help="Export every job in the table.")
     ap.add_argument("--supabase-url", default=os.environ.get("SUPABASE_URL", ""))
     ap.add_argument("--supabase-key", default=os.environ.get("SUPABASE_SERVICE_KEY", ""))
+    ap.add_argument("--no-db", action="store_true",
+                    help="Skip mirroring into the Supabase relational tables (export_tables.sql).")
     args = ap.parse_args()
 
     if not args.webhook:
@@ -240,21 +339,40 @@ def main():
 
     rows = fetch_rows(args.supabase_url, args.supabase_key,
                       None if args.all else args.job_id)
-    causas, demandados, tramites, documentos = build_tables(rows)
+    causas, demandados, causa_demandado, patente_demandado, tramites, documentos = \
+        build_tables(rows)
 
     payload = {
-        "juzgados":   {"header": JUZGADOS_HEADER,    "rows": JUZGADOS_ROWS},
-        "causas":     {"header": CAUSAS_HEADER,       "rows": causas},
-        "demandados": {"header": DEMANDADOS_HEADER,   "rows": demandados},
-        "tramites":   {"header": TRAMITES_HEADER,     "rows": tramites},
-        "documentos": {"header": DOCUMENTOS_HEADER,   "rows": documentos},
+        "juzgados":          {"header": JUZGADOS_HEADER,           "rows": JUZGADOS_ROWS},
+        "causas":            {"header": CAUSAS_HEADER,             "rows": causas},
+        "demandados":        {"header": DEMANDADOS_HEADER,         "rows": demandados},
+        "causa_demandado":   {"header": CAUSA_DEMANDADO_HEADER,    "rows": causa_demandado},
+        "patente_demandado": {"header": PATENTE_DEMANDADO_HEADER,  "rows": patente_demandado},
+        "tramites":          {"header": TRAMITES_HEADER,           "rows": tramites},
+        "documentos":        {"header": DOCUMENTOS_HEADER,         "rows": documentos},
     }
     r = requests.post(args.webhook, json=payload, timeout=120)
     r.raise_for_status()
     print(
         f"Exported {len(causas)} causas, {len(demandados)} demandados, "
+        f"{len(causa_demandado)} causa-demandado, {len(patente_demandado)} patente-demandado, "
         f"{len(tramites)} trámites, {len(documentos)} documentos → {r.text[:300]}"
     )
+
+    # Mirror the normalized entities into Supabase relational tables. Demandados
+    # are upserted first so causa_demandado.rut always references an existing
+    # party. Rows without a usable key are skipped (rut for the entity/causa link).
+    if not args.no_db:
+        nd = upsert_table(args.supabase_url, args.supabase_key,
+                          "demandados", "rut", DEMANDADOS_COLS,
+                          [row for row in demandados if row[0]])
+        ncd = upsert_table(args.supabase_url, args.supabase_key,
+                           "causa_demandado", "vinculo_id", CAUSA_DEMANDADO_COLS,
+                           [row for row in causa_demandado if row[3]])
+        npd = upsert_table(args.supabase_url, args.supabase_key,
+                           "patente_demandado", "vinculo_id", PATENTE_DEMANDADO_COLS,
+                           patente_demandado)
+        print(f"Supabase sync: {nd} demandados, {ncd} causa_demandado, {npd} patente_demandado")
 
 
 if __name__ == "__main__":
