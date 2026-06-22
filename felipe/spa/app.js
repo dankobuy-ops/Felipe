@@ -43,6 +43,21 @@ const POLL_INTERVAL_MS  = 8000;
 const getPAT = ()  => localStorage.getItem("gh_pat") || "";
 const setPAT = (v) => localStorage.setItem("gh_pat", v);
 
+// Bounce back to the token screen when GitHub rejects the saved PAT (401), so a
+// stale/expired token can be replaced from any device (incl. the phone).
+function reauth(msg) {
+  localStorage.removeItem("gh_pat");
+  showScreen("screen-setup");
+  const err = document.getElementById("setup-error");
+  if (err) {
+    err.textContent = msg || "Token de GitHub inválido o expirado. Ingresa uno nuevo.";
+    err.classList.remove("hidden");
+  }
+}
+
+document.getElementById("change-token").addEventListener("click",
+  () => reauth("Ingresa un nuevo token de GitHub."));
+
 // Local job history (rut/year/date per job triggered from this browser).
 const HISTORY_KEY    = "job_history";
 const CLEARED_AT_KEY = "history_cleared_at";
@@ -173,6 +188,7 @@ async function triggerWorkflow(jobId, rut, targetUrl, year = "", juzgado = "") {
   );
   if (!r.ok) {
     const body = await r.text().catch(() => "");
+    if (r.status === 401) reauth();
     throw new Error(`GitHub error ${r.status}: ${body || "sin detalle"}`);
   }
 }
@@ -982,7 +998,11 @@ document.getElementById("sheets-btn").addEventListener("click", async () => {
         body: JSON.stringify({ ref: "main", inputs: { job_id: jobId || "" } }),
       }
     );
-    if (!r.ok) throw new Error(`GitHub ${r.status}: ${(await r.text().catch(() => "")) || "sin detalle"}`);
+    if (!r.ok) {
+      const b = (await r.text().catch(() => "")) || "sin detalle";
+      if (r.status === 401) reauth();
+      throw new Error(`GitHub ${r.status}: ${b}`);
+    }
     btn.textContent = "Exportando…";
     pollExport(btn, dispatchedAt);
   } catch (ex) {
