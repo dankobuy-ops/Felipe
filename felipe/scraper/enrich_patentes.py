@@ -21,7 +21,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 PLATE_RE = re.compile(r'^[A-Z]{2,4}\d{2,4}$')
 
 _FIELDS = {
-    "rut":         ["rut propietario", "rut del propietario", "propietario", "rut"],
+    "rut_propietario": ["rut propietario", "rut del propietario", "propietario", "rut"],
     "tipo":        ["tipo vehículo", "tipo vehiculo", "tipo"],
     "marca":       ["marca"],
     "modelo":      ["modelo"],

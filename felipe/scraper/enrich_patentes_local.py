@@ -113,7 +113,7 @@ def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
         print(f"  [DIAG] html[:4000]={html[:4000]}")
 
     result = _extract_html(html, patente)
-    useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
+    useful = {"rut_propietario", "marca", "modelo", "tipo", "color", "combustible"}
     if not any(k in result for k in useful):
         print(f"  [{patente}] data page loaded but no fields extracted")
         if not diag:

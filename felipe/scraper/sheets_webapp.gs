@@ -1,11 +1,11 @@
 /**
  * Google Apps Script web app — upsert scraped JPL data into tabs:
- *   Causas, Demandados, Causa-Demandado, Patente-Demandado,
- *   Trámites, Documentos, Patentes
+ *   Juzgados, RUTs, Causas, Trámites, Documentos, Patentes,
+ *   Causa-RUT, Causa-Patente
  *
- * Keyed by "Caso ID" (col A). Each export upserts by Caso ID:
- *   - existing rows with matching Caso ID are overwritten
- *   - new Caso IDs are appended
+ * Keyed by the unique ID in column A of each tab. Each export upserts by that ID:
+ *   - existing rows with a matching col-A id are overwritten
+ *   - new ids are appended
  * This lets you export multiple RUTs into the same sheet without duplicates.
  *
  * SETUP (one time, ~2 min):
@@ -23,18 +23,16 @@ function doPost(e) {
     var ss   = body.spreadsheet_id
       ? SpreadsheetApp.openById(body.spreadsheet_id)
       : SpreadsheetApp.getActiveSpreadsheet();
-    var j  = upsertTab_(ss, "Juzgados",   body.juzgados);
-    var ru = upsertTab_(ss, "RUTs",       body.ruts);
-    var c  = upsertTab_(ss, "Causas",     body.causas);
-    var d  = upsertTab_(ss, "Demandados", body.demandados);
-    var cd = upsertTab_(ss, "Causa-Demandado",   body.causa_demandado);
-    var pd = upsertTab_(ss, "Patente-Demandado", body.patente_demandado);
-    var t  = upsertTab_(ss, "Trámites",   body.tramites);
-    var x  = upsertTab_(ss, "Documentos", body.documentos);
-    var p  = upsertTab_(ss, "Patentes",   body.patentes);
-    return json_({ ok: true, juzgados: j, ruts: ru, causas: c, demandados: d,
-                   causa_demandado: cd, patente_demandado: pd,
-                   tramites: t, documentos: x, patentes: p });
+    var j  = upsertTab_(ss, "Juzgados",      body.juzgados);
+    var ru = upsertTab_(ss, "RUTs",          body.ruts);
+    var c  = upsertTab_(ss, "Causas",        body.causas);
+    var t  = upsertTab_(ss, "Trámites",      body.tramites);
+    var x  = upsertTab_(ss, "Documentos",    body.documentos);
+    var p  = upsertTab_(ss, "Patentes",      body.patentes);
+    var cr = upsertTab_(ss, "Causa-RUT",     body.causa_rut);
+    var cp = upsertTab_(ss, "Causa-Patente", body.causa_patente);
+    return json_({ ok: true, juzgados: j, ruts: ru, causas: c, tramites: t,
+                   documentos: x, patentes: p, causa_rut: cr, causa_patente: cp });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
