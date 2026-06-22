@@ -966,7 +966,9 @@ document.getElementById("sheets-btn").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "Iniciando…";
   try {
-    const dispatchedAt = new Date().toISOString();
+    // 60s back-buffer so a client clock running ahead of GitHub's still matches
+    // the run we're about to create in pollExport().
+    const dispatchedAt = new Date(Date.now() - 60_000).toISOString();
     const r = await fetch(
       `https://api.github.com/repos/${GH_REPO}/actions/workflows/${EXPORT_WORKFLOW}/dispatches`,
       {
