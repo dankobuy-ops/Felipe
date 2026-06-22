@@ -70,6 +70,7 @@ create index if not exists documentos_caso_idx on documentos (caso_id);
 -- Preserve existing enriched rows: rename rut->rut_propietario, drop enriched_at.
 alter table patentes rename column rut to rut_propietario;
 alter table patentes drop column if exists enriched_at;
+alter table patentes add column if not exists nombre_propietario text not null default '';
 -- Link the plate to its owner as a ruts entity. NOT VALID so the migration does
 -- not fail on existing owner RUTs that aren't in `ruts` yet — the next export
 -- upserts owners into `ruts`, and new writes are checked from here on.

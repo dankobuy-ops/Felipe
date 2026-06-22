@@ -57,10 +57,12 @@ TRAMITES_COLS   = ["tramite_id", "caso_id", "fecha", "descripcion", "pdf_url"]
 DOCUMENTOS_HEADER = ["Documento ID", "Caso ID", "Descripción", "Link PDF"]
 DOCUMENTOS_COLS   = ["documento_id", "caso_id", "descripcion", "pdf_url"]
 
-PATENTES_HEADER = ["Patente", "RUT Propietario", "Tipo", "Marca", "Modelo",
-                   "Año", "Color", "N° Motor", "N° Chasis", "Combustible"]
-PATENTES_COLS   = ["patente", "rut_propietario", "tipo", "marca", "modelo",
-                   "anio", "color", "num_motor", "num_chasis", "combustible"]
+PATENTES_HEADER = ["Patente", "RUT Propietario", "Nombre Propietario", "Tipo",
+                   "Marca", "Modelo", "Año", "Color", "N° Motor", "N° Chasis",
+                   "Combustible"]
+PATENTES_COLS   = ["patente", "rut_propietario", "nombre_propietario", "tipo",
+                   "marca", "modelo", "anio", "color", "num_motor", "num_chasis",
+                   "combustible"]
 
 CAUSA_RUT_HEADER = ["Vínculo ID", "Caso ID", "RUT", "Rol Parte"]
 CAUSA_RUT_COLS   = ["vinculo_id", "caso_id", "rut", "rol_parte"]
@@ -288,11 +290,13 @@ def build_tables(rows, patentes_by_plate):
             documentos.append([f"{cid}/x{xi}", cid, a.get("descripcion", ""),
                                a.get("pdf_url", "")])
 
-    # Vehicle owners (from enriched patentes) → ruts
+    # Vehicle owners (from enriched patentes) → ruts, with name when scraped.
     for plate, prow in patentes_by_plate.items():
         owner = prow.get("rut_propietario") or ""
         if owner:
-            add_rut([owner, _tipo_for(owner), "", "", "", "", "", "", "", ""])
+            nombre, segundo, ap_pat, ap_mat = _split_name(prow.get("nombre_propietario", ""))
+            add_rut([owner, _tipo_for(owner, nombre=nombre), nombre, segundo,
+                     ap_pat, ap_mat, "", "", "", ""])
 
     # Patentes for the sheet: every plate, enriched where available
     all_plates.update(patentes_by_plate.keys())

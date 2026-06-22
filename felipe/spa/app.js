@@ -1172,48 +1172,6 @@ document.getElementById("sheets-btn").addEventListener("click", async () => {
 });
 
 // ── CSV export ────────────────────────────────────────────────────────────────
-document.getElementById("csv-btn").addEventListener("click", () => {
-  if (!_allData.length) return;
-  const headers = [
-    "rol", "carátula", "fecha_proceso", "juzgado", "estado", "fecha_estado",
-    "placa_patente", "actuario", "remisor", "fecha_citacion",
-    "boleta_numero", "boleta_fecha", "demandados", "demandantes", "tramites", "pdf_url",
-  ];
-  const csvRows = [headers.join(",")];
-  _allData.forEach(({ _data: data, record_id, pdf_url }) => {
-    const causa     = (typeof data.causa === "object" && data.causa) ? data.causa : {};
-    const demandados  = (data.demandados  || []).map((p) => p.nombre).join("; ");
-    const demandantes = (data.demandantes || []).map((p) => p.nombre).join("; ");
-    const tramites    = (data.tramites    || []).map((t) => t.descripcion).join("; ");
-    const values = [
-      data.rol || record_id,
-      data.descripcion || causa.descripcion || "",
-      data.fecha_proceso || causa.fecha_causa || "",
-      data.juzgado || "",
-      causa.estado || "",
-      causa.fecha_estado || "",
-      causa.placa_patente || "",
-      causa.actuario || "",
-      causa.remisor || "",
-      causa.fecha_citacion || causa["fecha_citación"] || "",
-      causa.boleta_numero || "",
-      causa.boleta_fecha || "",
-      demandados,
-      demandantes,
-      tramites,
-      pdf_url || "",
-    ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`);
-    csvRows.push(values.join(","));
-  });
-  const blob = new Blob(["﻿" + csvRows.join("\r\n")], { type: "text/csv;charset=utf-8;" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href = url;
-  a.download = `causas_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function setSpinner(on) {
   document.getElementById("spinner").classList.toggle("hidden", !on);
