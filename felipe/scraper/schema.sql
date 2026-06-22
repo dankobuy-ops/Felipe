@@ -80,28 +80,29 @@ alter table patentes
 
 -- ── Junction: Causa ↔ Rut (the demandante/demandado relationship) ────────────
 -- One row per party in a causa. vinculo_id = "<caso_id>::<rut>".
-create table if not exists causa_rut (
+-- Name is quoted to preserve the capital X (matches the Sheet tab CausaXRut).
+create table if not exists "causaXrut" (
   vinculo_id text primary key,
   caso_id    text not null references causas(caso_id),
   rut        text not null references ruts(rut),
   rol_parte  text not null default '',   -- demandante | demandado
   updated_at timestamptz not null default now()
 );
-create index if not exists causa_rut_caso_idx on causa_rut (caso_id);
-create index if not exists causa_rut_rut_idx  on causa_rut (rut);
+create index if not exists causaxrut_caso_idx on "causaXrut" (caso_id);
+create index if not exists causaxrut_rut_idx  on "causaXrut" (rut);
 
 -- ── Junction: Causa ↔ Patente (plate in a causa, tied to the party) ──────────
 -- vinculo_id = "<caso_id>::<rut>::<patente>". rut NULL when no party identified.
-create table if not exists causa_patente (
+create table if not exists "causaXpatente" (
   vinculo_id text primary key,
   caso_id    text not null references causas(caso_id),
   rut        text references ruts(rut),
   patente    text not null references patentes(patente),
   updated_at timestamptz not null default now()
 );
-create index if not exists causa_patente_caso_idx    on causa_patente (caso_id);
-create index if not exists causa_patente_rut_idx     on causa_patente (rut);
-create index if not exists causa_patente_patente_idx on causa_patente (patente);
+create index if not exists causaxpatente_caso_idx    on "causaXpatente" (caso_id);
+create index if not exists causaxpatente_rut_idx     on "causaXpatente" (rut);
+create index if not exists causaxpatente_patente_idx on "causaXpatente" (patente);
 
 -- ── Drop the old derived tables (replaced by ruts / causa_rut / causa_patente)─
 drop table if exists patente_demandado;
@@ -113,7 +114,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['juzgados','ruts','causas','tramites','documentos',
-                           'causa_rut','causa_patente'] loop
+                           'causaXrut','causaXpatente'] loop
     execute format('alter table %I enable row level security;', t);
     execute format('drop policy if exists "anon read %1$s" on %1$s;', t);
     execute format('create policy "anon read %1$s" on %1$s for select to anon using (true);', t);

@@ -359,8 +359,8 @@ def run_export(sb_url, sb_key, webhook="", sheet_id="", job_id=None,
         n["patentes"] = upsert_table(sb_url, sb_key, "patentes", "patente", ["patente"], plate_rows)
         n["tramites"]   = upsert_table(sb_url, sb_key, "tramites", "tramite_id", TRAMITES_COLS, t["tramites"])
         n["documentos"] = upsert_table(sb_url, sb_key, "documentos", "documento_id", DOCUMENTOS_COLS, t["documentos"])
-        n["causa_rut"]  = upsert_table(sb_url, sb_key, "causa_rut", "vinculo_id", CAUSA_RUT_COLS, t["causa_rut"])
-        n["causa_patente"] = upsert_table(sb_url, sb_key, "causa_patente", "vinculo_id",
+        n["causaXrut"]  = upsert_table(sb_url, sb_key, "causaXrut", "vinculo_id", CAUSA_RUT_COLS, t["causa_rut"])
+        n["causaXpatente"] = upsert_table(sb_url, sb_key, "causaXpatente", "vinculo_id",
                                           CAUSA_PATENTE_COLS, t["causa_patente"], null_cols={"rut"})
         print("Supabase:", ", ".join(f"{v} {kk}" for kk, v in n.items()))
 
