@@ -17,7 +17,6 @@ import sys
 import time
 
 import requests
-from playwright.sync_api import sync_playwright
 
 # Load scraper/.env (simple parser; no extra dependency) before importing config.
 def _load_env():
@@ -34,7 +33,11 @@ def _load_env():
 _load_env()
 
 from enrich_patentes import SUPABASE_URL, SUPABASE_KEY  # read after .env load
-from enrich_patentes_local import open_context, enrich_plates, job_to_enrich
+# sync_playwright comes from enrich_patentes_local so the watcher uses the same
+# driver it picks (patchright if available).
+from enrich_patentes_local import (
+    open_context, enrich_plates, job_to_enrich, sync_playwright,
+)
 
 POLL_SECONDS = 10
 REQ = f"{SUPABASE_URL}/rest/v1/patente_requests"

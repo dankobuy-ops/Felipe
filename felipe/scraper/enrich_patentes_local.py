@@ -20,7 +20,14 @@ import random
 import sys
 import time
 
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+# Prefer patchright (patched Playwright that hides the CDP/automation fingerprint
+# Cloudflare uses to loop its managed challenge). Falls back to plain Playwright.
+try:
+    from patchright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    _DRIVER = "patchright"
+except ImportError:
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    _DRIVER = "playwright"
 
 # Reuse the Supabase + extraction helpers from the CI module.
 from enrich_patentes import (
@@ -43,82 +50,112 @@ def _has_data(txt: str) -> bool:
     return sum(m in txt for m in DATA_MARKERS) >= 2
 
 
-def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
-    try:
-        page.goto("https://www.patentechile.com/", wait_until="domcontentloaded",
-                  timeout=30_000)
-        page.fill("#inputTerm", patente, timeout=10_000)
-        page.click("#searchBtn", timeout=8_000)
+class CFChallenge(Exception):
+    """A Cloudflare challenge blocked this lookup — retryable, NOT a real 'no data'.
+    Critically distinct from a genuine 'no encontramos' so the caller retries
+    instead of silently recording the plate as missing."""
 
-        # Wait up to 2 min for results — long enough for you to solve a Cloudflare
-        # challenge the first time. Polls until real data appears or "no results".
-        deadline = time.monotonic() + 120
-        warned = False
-        while time.monotonic() < deadline:
-            page.wait_for_timeout(1_500)
+
+def _wait_for_form(page, patente, timeout=150):
+    """Wait for the homepage search box, tolerating a Cloudflare captcha.
+
+    When CF challenges the homepage, #inputTerm doesn't exist — the old code
+    failed fill() in 10s and recorded the plate as not-found. Now we wait for the
+    box (auto-clear or you solve the captcha once). Returns False if it never came."""
+    deadline = time.monotonic() + timeout
+    warned = False
+    while time.monotonic() < deadline:
+        if page.locator("#inputTerm").count():
+            return True
+        if not warned:
             txt = (page.inner_text("body") or "").lower()
-            if "no encontr" in txt or "sin resultado" in txt:
-                print(f"  [{patente}] no results on site")
-                return None
-            if _has_data(txt):
-                break
-            if _is_challenge(txt) and not warned:
-                print(f"  [{patente}] ⚠ Cloudflare challenge — solve it in the "
-                      f"browser window; I'll continue automatically once it clears…")
+            if _is_challenge(txt):
+                print(f"  [{patente}] ⚠ Cloudflare captcha on the homepage — solve it "
+                      f"in the browser window; I'll continue once it clears…")
                 warned = True
-        else:
-            print(f"  [{patente}] timed out waiting for results/challenge")
+        page.wait_for_timeout(1_500)
+    return False
+
+
+def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
+    page.goto("https://www.patentechile.com/", wait_until="domcontentloaded",
+              timeout=30_000)
+    if not _wait_for_form(page, patente):
+        raise CFChallenge("homepage search form never appeared")
+
+    page.fill("#inputTerm", patente, timeout=10_000)
+    page.click("#searchBtn", timeout=8_000)
+
+    # Wait for results. A challenge here is retryable; "no encontramos" is final.
+    deadline = time.monotonic() + 120
+    warned = saw_challenge = False
+    while time.monotonic() < deadline:
+        page.wait_for_timeout(1_500)
+        txt = (page.inner_text("body") or "").lower()
+        if "no encontr" in txt or "sin resultado" in txt:
+            print(f"  [{patente}] no results on site")
             return None
+        if _has_data(txt):
+            break
+        if _is_challenge(txt):
+            saw_challenge = True
+            if not warned:
+                print(f"  [{patente}] ⚠ Cloudflare challenge on results — solve it…")
+                warned = True
+    else:
+        if saw_challenge:
+            raise CFChallenge("results challenge did not clear")
+        raise CFChallenge(f"timed out waiting for results")
 
-        html = page.content()
-        if diag:
-            print(f"  [DIAG] url={page.url}")
-            print(f"  [DIAG] html[:4000]={html[:4000]}")
+    html = page.content()
+    if diag:
+        print(f"  [DIAG] url={page.url}")
+        print(f"  [DIAG] html[:4000]={html[:4000]}")
 
-        result = _extract_html(html, patente)
-        useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
-        if not any(k in result for k in useful):
-            print(f"  [{patente}] data page loaded but no fields extracted")
-            if not diag:
-                print(f"  html[:1200]={html[:1200]}")
-            return None
-        return result
-
-    except Exception as e:
-        print(f"  [{patente}] ERROR: {e}")
+    result = _extract_html(html, patente)
+    useful = {"rut", "marca", "modelo", "tipo", "color", "combustible"}
+    if not any(k in result for k in useful):
+        print(f"  [{patente}] data page loaded but no fields extracted")
+        if not diag:
+            print(f"  html[:1200]={html[:1200]}")
         return None
+    return result
 
 
 def open_context(pw):
-    """Open the persistent, visible browser context used for scraping."""
+    """Open the persistent, visible browser context used for scraping.
+
+    Under patchright we follow its stealth guidance: real Chrome channel, persistent
+    context, no_viewport, and NO --disable-blink-features flag (patchright handles
+    the automation-detection surface itself; that flag is itself a tell)."""
     os.makedirs(PROFILE_DIR, exist_ok=True)
+    print(f"[patentes] browser driver: {_DRIVER}")
     kwargs = dict(
         headless=False,
-        args=["--disable-blink-features=AutomationControlled"],
-        user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+        no_viewport=True,
         locale="es-CL", timezone_id="America/Santiago",
-        viewport={"width": 1280, "height": 900},
     )
     try:
-        # Real Chrome has the best chance against Cloudflare's fingerprinting.
+        # Real Chrome + patchright is the strongest combo against CF fingerprinting.
         return pw.chromium.launch_persistent_context(PROFILE_DIR, channel="chrome", **kwargs)
     except Exception:
         print("[patentes] real Chrome not found; using bundled Chromium")
         return pw.chromium.launch_persistent_context(PROFILE_DIR, **kwargs)
 
 
-def enrich_plates(page, plates, dry_run=False):
+def enrich_plates(page, plates, dry_run=False, _is_retry=False):
     """Scrape (and unless dry_run, upsert) each plate on an already-open page.
 
-    Paces between plates to avoid Cloudflare's rate limiter. Stops early if the
-    browser is closed or a session error hits (usually a rate-limit ban).
-    Returns (found, total)."""
+    Paces between plates to avoid Cloudflare. Plates blocked by a CF challenge are
+    collected and retried in a second pass (the captcha usually clears after one
+    solve / a wait), so an intermittent challenge no longer drops a plate as
+    'not found'. Returns (found, total)."""
     plates = list(plates)
     found = 0
+    challenged = []
     for i, patente in enumerate(plates):
         if i:
-            delay = random.uniform(5, 11)
+            delay = random.uniform(7, 14)  # slower than before — fewer CF challenges
             print(f"  (waiting {delay:.0f}s before next plate…)")
             time.sleep(delay)
         if page.is_closed():
@@ -126,10 +163,15 @@ def enrich_plates(page, plates, dry_run=False):
             break
         print(f"[patentes] {patente} ({i+1}/{len(plates)})")
         try:
-            result = scrape_patente(page, patente, diag=(i == 0))
+            result = scrape_patente(page, patente, diag=(i == 0 and not _is_retry))
+        except CFChallenge as e:
+            print(f"  [{patente}] cloudflare blocked ({e}); will retry")
+            challenged.append(patente)
+            continue
         except Exception as e:
-            print(f"  [{patente}] session error ({e}); stopping — likely rate-limited.")
-            break
+            print(f"  [{patente}] error ({e}); will retry")
+            challenged.append(patente)
+            continue
         if not result:
             print("  -> not found")
             continue
@@ -142,6 +184,16 @@ def enrich_plates(page, plates, dry_run=False):
             print(f"  -> saved: {result}")
         except Exception as e:
             print(f"  -> ERROR saving: {e}")
+
+    # Second pass for plates the CF challenge blocked (only once).
+    if challenged and not _is_retry:
+        print(f"\n[patentes] retrying {len(challenged)} plate(s) blocked by Cloudflare…")
+        time.sleep(random.uniform(10, 20))
+        f2, _ = enrich_plates(page, challenged, dry_run=dry_run, _is_retry=True)
+        found += f2
+    elif challenged:
+        print(f"[patentes] {len(challenged)} still blocked after retry: {challenged}")
+
     return found, len(plates)
 
 
