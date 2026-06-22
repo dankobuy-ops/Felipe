@@ -1,7 +1,7 @@
 /**
  * Google Apps Script web app — upsert scraped JPL data into tabs:
  *   Juzgados, RUTs, Causas, Trámites, Documentos, Patentes,
- *   Causa-RUT, Causa-Patente
+ *   CausaXRut, CausaXPatente
  *
  * Keyed by the unique ID in column A of each tab. Each export upserts by that ID:
  *   - existing rows with a matching col-A id are overwritten
@@ -29,8 +29,8 @@ function doPost(e) {
     var t  = upsertTab_(ss, "Trámites",      body.tramites);
     var x  = upsertTab_(ss, "Documentos",    body.documentos);
     var p  = upsertTab_(ss, "Patentes",      body.patentes);
-    var cr = upsertTab_(ss, "Causa-RUT",     body.causa_rut);
-    var cp = upsertTab_(ss, "Causa-Patente", body.causa_patente);
+    var cr = upsertTab_(ss, "CausaXRut",     body.causa_rut);
+    var cp = upsertTab_(ss, "CausaXPatente", body.causa_patente);
     return json_({ ok: true, juzgados: j, ruts: ru, causas: c, tramites: t,
                    documentos: x, patentes: p, causa_rut: cr, causa_patente: cp });
   } catch (err) {

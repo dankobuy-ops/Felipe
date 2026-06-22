@@ -1144,29 +1144,34 @@ function buildSheetsPayload(jobId, allData) {
   };
 }
 
-// Export runs server-side in the local watcher (it has the service key needed to
-// write the Supabase relational tables; the browser's anon key can't). The button
-// queues an export request and polls until the watcher finishes.
+// Export runs in a GitHub Action (no browser, just the service key) so it can be
+// triggered from any device — including the phone. The button dispatches the
+// workflow and polls the run until it finishes.
+const EXPORT_WORKFLOW = "export.yml";
+
 document.getElementById("sheets-btn").addEventListener("click", async () => {
   const jobId = document.getElementById("job-id-display").textContent.trim();
-  if (!jobId) return;
   const btn = document.getElementById("sheets-btn");
   btn.disabled = true;
-  btn.textContent = "En cola…";
+  btn.textContent = "Iniciando…";
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/patente_requests`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON,
-        Authorization: `Bearer ${SUPABASE_ANON}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({ job_id: jobId, kind: "export" }),
-    });
-    if (!r.ok) throw new Error(`Supabase ${r.status}: ${(await r.text().catch(() => "")) || "sin detalle"}`);
-    const [req] = await r.json();
-    pollExport(btn, req.id);
+    const dispatchedAt = new Date().toISOString();
+    const r = await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${EXPORT_WORKFLOW}/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getPAT()}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        body: JSON.stringify({ ref: "main", inputs: { job_id: jobId || "" } }),
+      }
+    );
+    if (!r.ok) throw new Error(`GitHub ${r.status}: ${(await r.text().catch(() => "")) || "sin detalle"}`);
+    btn.textContent = "Exportando…";
+    pollExport(btn, dispatchedAt);
   } catch (ex) {
     btn.disabled = false;
     btn.textContent = "Error — reintentar";
@@ -1174,38 +1179,38 @@ document.getElementById("sheets-btn").addEventListener("click", async () => {
   }
 });
 
-async function pollExport(btn, reqId, attempt = 0) {
-  if (attempt > 120) {
+async function pollExport(btn, dispatchedAt, attempt = 0) {
+  if (attempt > 40) {
     btn.disabled = false;
-    btn.textContent = "Timeout — ¿watcher corriendo?";
+    btn.textContent = "Timeout — reintentar";
     return;
   }
-  let req = null;
   try {
     const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/patente_requests?id=eq.${reqId}&select=status,message`,
-      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${EXPORT_WORKFLOW}/runs?per_page=5&event=workflow_dispatch`,
+      { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
     );
-    if (r.ok) req = (await r.json())[0];
-  } catch (_) {}
-  const status = req?.status || "pending";
-  if (status === "done") {
-    btn.textContent = "✓ Exportado";
-    btn.className = "btn-done";
-    setTimeout(() => { btn.textContent = "Exportar a Sheets"; btn.className = "secondary"; btn.disabled = false; }, 4000);
-    return;
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    const { workflow_runs = [] } = await r.json();
+    const run = workflow_runs.find((w) => w.created_at >= dispatchedAt);
+    if (!run || !run.conclusion) {
+      setTimeout(() => pollExport(btn, dispatchedAt, attempt + 1), 8_000);
+      return;
+    }
+    if (run.conclusion === "success") {
+      btn.textContent = "✓ Exportado";
+      btn.className = "btn-done";
+      setTimeout(() => { btn.textContent = "Exportar a Sheets"; btn.className = "secondary"; btn.disabled = false; }, 4000);
+    } else {
+      btn.textContent = "Falló — reintentar";
+      btn.className = "secondary";
+      btn.disabled = false;
+    }
+  } catch (_) {
+    setTimeout(() => pollExport(btn, dispatchedAt, attempt + 1), 10_000);
   }
-  if (status === "error") {
-    btn.textContent = "Falló — reintentar";
-    btn.title = req?.message || "";
-    btn.disabled = false;
-    return;
-  }
-  btn.textContent = status === "running" ? "Exportando…" : "En cola…";
-  setTimeout(() => pollExport(btn, reqId, attempt + 1), 10_000);
 }
 
-// ── CSV export ────────────────────────────────────────────────────────────────
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function setSpinner(on) {
   document.getElementById("spinner").classList.toggle("hidden", !on);
