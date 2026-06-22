@@ -318,6 +318,56 @@ def build_tables(rows, patentes_by_plate):
     }
 
 
+# ── Run (reusable: called by the CLI and by the watcher) ──────────────────────
+
+def run_export(sb_url, sb_key, webhook="", sheet_id="", job_id=None,
+               do_sheet=True, do_db=True):
+    """Build the relational model and push it to the Sheet and/or Supabase.
+
+    Returns the totals dict. Used by main() (CLI) and patente_watcher (the
+    'Exportar a Sheets' button). job_id=None exports everything.
+    """
+    rows = fetch_rows(sb_url, sb_key, job_id)
+    patentes_by_plate = fetch_patentes(sb_url, sb_key)
+    t = build_tables(rows, patentes_by_plate)
+
+    if do_sheet and webhook:
+        payload = {
+            "spreadsheet_id": sheet_id,   # falls back to getActiveSpreadsheet() if ""
+            "juzgados":      {"header": JUZGADOS_HEADER,      "rows": t["juzgados"]},
+            "ruts":          {"header": RUTS_HEADER,          "rows": t["ruts"]},
+            "causas":        {"header": CAUSAS_HEADER,        "rows": t["causas"]},
+            "tramites":      {"header": TRAMITES_HEADER,      "rows": t["tramites"]},
+            "documentos":    {"header": DOCUMENTOS_HEADER,    "rows": t["documentos"]},
+            "patentes":      {"header": PATENTES_HEADER,      "rows": t["patentes"]},
+            "causa_rut":     {"header": CAUSA_RUT_HEADER,     "rows": t["causa_rut"]},
+            "causa_patente": {"header": CAUSA_PATENTE_HEADER, "rows": t["causa_patente"]},
+        }
+        r = requests.post(webhook, json=payload, timeout=120)
+        r.raise_for_status()
+        print(f"Sheet: {r.text[:200]}")
+
+    if do_db:
+        # FK-safe order: entities before junctions; ruts/causas/patentes before links.
+        n = {}
+        n["juzgados"] = upsert_table(sb_url, sb_key, "juzgados", "juzgado_id", JUZGADOS_COLS, t["juzgados"])
+        n["ruts"]     = upsert_table(sb_url, sb_key, "ruts", "rut", RUTS_COLS, t["ruts"])
+        n["causas"]   = upsert_table(sb_url, sb_key, "causas", "caso_id", CAUSAS_COLS, t["causas"],
+                                     null_cols={"juzgado_id"})
+        # Ensure every referenced plate exists (patente-only, so enrichment is kept).
+        plate_rows = [[p[0]] for p in t["patentes"]]
+        n["patentes"] = upsert_table(sb_url, sb_key, "patentes", "patente", ["patente"], plate_rows)
+        n["tramites"]   = upsert_table(sb_url, sb_key, "tramites", "tramite_id", TRAMITES_COLS, t["tramites"])
+        n["documentos"] = upsert_table(sb_url, sb_key, "documentos", "documento_id", DOCUMENTOS_COLS, t["documentos"])
+        n["causa_rut"]  = upsert_table(sb_url, sb_key, "causa_rut", "vinculo_id", CAUSA_RUT_COLS, t["causa_rut"])
+        n["causa_patente"] = upsert_table(sb_url, sb_key, "causa_patente", "vinculo_id",
+                                          CAUSA_PATENTE_COLS, t["causa_patente"], null_cols={"rut"})
+        print("Supabase:", ", ".join(f"{v} {kk}" for kk, v in n.items()))
+
+    print("Totals:", ", ".join(f"{len(v)} {kk}" for kk, v in t.items()))
+    return t
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -341,46 +391,9 @@ def main():
     if not (args.job_id or args.all):
         sys.exit("ERROR: pass --job-id <JOB> or --all")
 
-    rows = fetch_rows(args.supabase_url, args.supabase_key,
-                      None if args.all else args.job_id)
-    patentes_by_plate = fetch_patentes(args.supabase_url, args.supabase_key)
-    t = build_tables(rows, patentes_by_plate)
-
-    if not args.no_sheet:
-        payload = {
-            "spreadsheet_id": args.sheet_id,   # falls back to getActiveSpreadsheet() if ""
-            "juzgados":      {"header": JUZGADOS_HEADER,      "rows": t["juzgados"]},
-            "ruts":          {"header": RUTS_HEADER,          "rows": t["ruts"]},
-            "causas":        {"header": CAUSAS_HEADER,        "rows": t["causas"]},
-            "tramites":      {"header": TRAMITES_HEADER,      "rows": t["tramites"]},
-            "documentos":    {"header": DOCUMENTOS_HEADER,    "rows": t["documentos"]},
-            "patentes":      {"header": PATENTES_HEADER,      "rows": t["patentes"]},
-            "causa_rut":     {"header": CAUSA_RUT_HEADER,     "rows": t["causa_rut"]},
-            "causa_patente": {"header": CAUSA_PATENTE_HEADER, "rows": t["causa_patente"]},
-        }
-        r = requests.post(args.webhook, json=payload, timeout=120)
-        r.raise_for_status()
-        print(f"Sheet: {r.text[:200]}")
-
-    if not args.no_db:
-        u, k = args.supabase_url, args.supabase_key
-        # FK-safe order: entities before junctions; ruts/causas/patentes before links.
-        n = {}
-        n["juzgados"] = upsert_table(u, k, "juzgados", "juzgado_id", JUZGADOS_COLS, t["juzgados"])
-        n["ruts"]     = upsert_table(u, k, "ruts", "rut", RUTS_COLS, t["ruts"])
-        n["causas"]   = upsert_table(u, k, "causas", "caso_id", CAUSAS_COLS, t["causas"],
-                                     null_cols={"juzgado_id"})
-        # Ensure every referenced plate exists (patente-only, so enrichment is kept).
-        plate_rows = [[p[0]] for p in t["patentes"]]
-        n["patentes"] = upsert_table(u, k, "patentes", "patente", ["patente"], plate_rows)
-        n["tramites"]   = upsert_table(u, k, "tramites", "tramite_id", TRAMITES_COLS, t["tramites"])
-        n["documentos"] = upsert_table(u, k, "documentos", "documento_id", DOCUMENTOS_COLS, t["documentos"])
-        n["causa_rut"]  = upsert_table(u, k, "causa_rut", "vinculo_id", CAUSA_RUT_COLS, t["causa_rut"])
-        n["causa_patente"] = upsert_table(u, k, "causa_patente", "vinculo_id",
-                                          CAUSA_PATENTE_COLS, t["causa_patente"], null_cols={"rut"})
-        print("Supabase:", ", ".join(f"{v} {kk}" for kk, v in n.items()))
-
-    print("Totals:", ", ".join(f"{len(v)} {kk}" for kk, v in t.items()))
+    run_export(args.supabase_url, args.supabase_key, webhook=args.webhook,
+               sheet_id=args.sheet_id, job_id=None if args.all else args.job_id,
+               do_sheet=not args.no_sheet, do_db=not args.no_db)
 
 
 if __name__ == "__main__":

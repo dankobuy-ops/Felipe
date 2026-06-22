@@ -4,11 +4,14 @@
 create table if not exists patente_requests (
   id         uuid primary key default gen_random_uuid(),
   job_id     text not null,
+  kind       text not null default 'enrich',   -- enrich | export
   status     text not null default 'pending',  -- pending | running | done | error
   message    text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- If the table already exists from before, add the column:
+alter table patente_requests add column if not exists kind text not null default 'enrich';
 
 alter table patente_requests enable row level security;
 

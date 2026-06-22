@@ -601,7 +601,7 @@ document.getElementById("patente-btn").addEventListener("click", async () => {
         "Content-Type": "application/json",
         Prefer: "return=representation",
       },
-      body: JSON.stringify({ job_id: jobId }),
+      body: JSON.stringify({ job_id: jobId, kind: "enrich" }),
     });
     if (!r.ok) {
       const body = await r.text().catch(() => "");
@@ -1144,32 +1144,66 @@ function buildSheetsPayload(jobId, allData) {
   };
 }
 
+// Export runs server-side in the local watcher (it has the service key needed to
+// write the Supabase relational tables; the browser's anon key can't). The button
+// queues an export request and polls until the watcher finishes.
 document.getElementById("sheets-btn").addEventListener("click", async () => {
-  if (!_allData.length) return;
-
+  const jobId = document.getElementById("job-id-display").textContent.trim();
+  if (!jobId) return;
   const btn = document.getElementById("sheets-btn");
   btn.disabled = true;
-  btn.textContent = "Enviando…";
-
-  const jobId   = document.getElementById("job-id-display").textContent;
-  const payload = { spreadsheet_id: SHEET_ID, ...buildSheetsPayload(jobId, _allData) };
-
+  btn.textContent = "En cola…";
   try {
-    // no-cors: Apps Script receives body as plain text; response is opaque but script runs.
-    await fetch(SHEETS_WEBHOOK, {
-      method:  "POST",
-      mode:    "no-cors",
-      headers: { "Content-Type": "text/plain" },
-      body:    JSON.stringify(payload),
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/patente_requests`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON,
+        Authorization: `Bearer ${SUPABASE_ANON}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ job_id: jobId, kind: "export" }),
     });
-    btn.textContent = "¡Exportado!";
-    setTimeout(() => { btn.textContent = "Exportar a Sheets"; btn.disabled = false; }, 3000);
+    if (!r.ok) throw new Error(`Supabase ${r.status}: ${(await r.text().catch(() => "")) || "sin detalle"}`);
+    const [req] = await r.json();
+    pollExport(btn, req.id);
   } catch (ex) {
-    console.error("Sheets export error:", ex);
-    btn.textContent = "Error — revisar consola";
-    setTimeout(() => { btn.textContent = "Exportar a Sheets"; btn.disabled = false; }, 4000);
+    btn.disabled = false;
+    btn.textContent = "Error — reintentar";
+    btn.title = ex.message;
   }
 });
+
+async function pollExport(btn, reqId, attempt = 0) {
+  if (attempt > 120) {
+    btn.disabled = false;
+    btn.textContent = "Timeout — ¿watcher corriendo?";
+    return;
+  }
+  let req = null;
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/patente_requests?id=eq.${reqId}&select=status,message`,
+      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
+    );
+    if (r.ok) req = (await r.json())[0];
+  } catch (_) {}
+  const status = req?.status || "pending";
+  if (status === "done") {
+    btn.textContent = "✓ Exportado";
+    btn.className = "btn-done";
+    setTimeout(() => { btn.textContent = "Exportar a Sheets"; btn.className = "secondary"; btn.disabled = false; }, 4000);
+    return;
+  }
+  if (status === "error") {
+    btn.textContent = "Falló — reintentar";
+    btn.title = req?.message || "";
+    btn.disabled = false;
+    return;
+  }
+  btn.textContent = status === "running" ? "Exportando…" : "En cola…";
+  setTimeout(() => pollExport(btn, reqId, attempt + 1), 10_000);
+}
 
 // ── CSV export ────────────────────────────────────────────────────────────────
 // ── Helpers ───────────────────────────────────────────────────────────────────

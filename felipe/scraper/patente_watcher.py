@@ -38,9 +38,12 @@ from enrich_patentes import SUPABASE_URL, SUPABASE_KEY  # read after .env load
 from enrich_patentes_local import (
     open_context, enrich_plates, job_to_enrich, sync_playwright,
 )
+from export_sheets import run_export
 
 POLL_SECONDS = 10
 REQ = f"{SUPABASE_URL}/rest/v1/patente_requests"
+SHEETS_WEBHOOK = os.environ.get("SHEETS_WEBHOOK_URL", "")
+SHEETS_ID = os.environ.get("SHEETS_ID", "")
 
 
 def _hdr():
@@ -50,7 +53,7 @@ def _hdr():
 
 def fetch_pending():
     r = requests.get(REQ, headers=_hdr(),
-                     params={"select": "id,job_id,status", "status": "eq.pending",
+                     params={"select": "id,job_id,status,kind", "status": "eq.pending",
                              "order": "created_at.asc"}, timeout=30)
     r.raise_for_status()
     return r.json()
@@ -62,21 +65,36 @@ def set_status(req_id, status, message=""):
                          "updated_at": "now()"}, timeout=30)
 
 
+def _do_enrich(req, page):
+    plates = job_to_enrich(req["job_id"])
+    if not plates:
+        set_status(req["id"], "done", "nothing to enrich")
+        print("  nothing to enrich")
+        return
+    found, total = enrich_plates(page, plates)
+    set_status(req["id"], "done", f"{found}/{total} enriched")
+    print(f"  done: {found}/{total}")
+
+
+def _do_export(req):
+    # Export everything so the Sheet + relational tables stay fully in sync.
+    run_export(SUPABASE_URL, SUPABASE_KEY, webhook=SHEETS_WEBHOOK,
+               sheet_id=SHEETS_ID, job_id=None, do_sheet=bool(SHEETS_WEBHOOK), do_db=True)
+    set_status(req["id"], "done", "exported")
+    print("  exported")
+
+
 def process(req, page):
-    rid, job_id = req["id"], req["job_id"]
-    print(f"\n=== request {rid[:8]} job {job_id} ===")
-    set_status(rid, "running")
+    kind = req.get("kind") or "enrich"
+    print(f"\n=== request {req['id'][:8]} job {req['job_id']} kind={kind} ===")
+    set_status(req["id"], "running")
     try:
-        plates = job_to_enrich(job_id)
-        if not plates:
-            set_status(rid, "done", "nothing to enrich")
-            print("  nothing to enrich")
-            return
-        found, total = enrich_plates(page, plates)
-        set_status(rid, "done", f"{found}/{total} enriched")
-        print(f"  done: {found}/{total}")
+        if kind == "export":
+            _do_export(req)
+        else:
+            _do_enrich(req, page)
     except Exception as e:
-        set_status(rid, "error", str(e))
+        set_status(req["id"], "error", str(e))
         print(f"  ERROR: {e}")
 
 
