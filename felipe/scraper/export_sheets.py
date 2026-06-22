@@ -323,6 +323,9 @@ def main():
     ap.add_argument("--all", action="store_true", help="Export every job in the table.")
     ap.add_argument("--supabase-url", default=os.environ.get("SUPABASE_URL", ""))
     ap.add_argument("--supabase-key", default=os.environ.get("SUPABASE_SERVICE_KEY", ""))
+    ap.add_argument("--sheet-id", default=os.environ.get("SHEETS_ID", ""),
+                    help="Target spreadsheet ID (from its URL). Needed if the Apps "
+                         "Script isn't container-bound to the sheet.")
     ap.add_argument("--no-db", action="store_true", help="Skip the Supabase relational mirror.")
     ap.add_argument("--no-sheet", action="store_true", help="Skip the Google Sheet push.")
     args = ap.parse_args()
@@ -341,6 +344,7 @@ def main():
 
     if not args.no_sheet:
         payload = {
+            "spreadsheet_id": args.sheet_id,   # falls back to getActiveSpreadsheet() if ""
             "juzgados":      {"header": JUZGADOS_HEADER,      "rows": t["juzgados"]},
             "ruts":          {"header": RUTS_HEADER,          "rows": t["ruts"]},
             "causas":        {"header": CAUSAS_HEADER,        "rows": t["causas"]},
