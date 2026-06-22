@@ -58,7 +58,12 @@ def fetch_existing(plates: set) -> set:
     r = requests.get(
         f"{SUPABASE_URL}/rest/v1/patentes",
         headers=_sb(),
-        params={"select": "patente", "patente": f"in.({in_val})"},
+        # Only count a plate as already-enriched if it actually has data — the
+        # export creates empty placeholder rows (one per plate, for the FK), and
+        # those must NOT be treated as done or they'd never get enriched.
+        params={"select": "patente",
+                "or": "(marca.not.is.null,rut_propietario.not.is.null,modelo.not.is.null)",
+                "patente": f"in.({in_val})"},
         timeout=30,
     )
     r.raise_for_status()

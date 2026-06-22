@@ -175,15 +175,16 @@ def enrich_plates(page, plates, dry_run=False, _is_retry=False):
         if not result:
             print("  -> not found")
             continue
-        found += 1
         if dry_run:
+            found += 1
             print(f"  -> DRY RUN: {result}")
             continue
         try:
             upsert(result)
+            found += 1                       # count only after a successful save
             print(f"  -> saved: {result}")
         except Exception as e:
-            print(f"  -> ERROR saving: {e}")
+            print(f"  -> ERROR saving: {e}")  # do NOT count — surfaces real failures
 
     # Second pass for plates the CF challenge blocked (only once).
     if challenged and not _is_retry:
