@@ -91,17 +91,15 @@ create table if not exists "causaXrut" (
 create index if not exists causaxrut_caso_idx on "causaXrut" (caso_id);
 create index if not exists causaxrut_rut_idx  on "causaXrut" (rut);
 
--- ── Junction: Causa ↔ Patente (plate in a causa, tied to the party) ──────────
--- vinculo_id = "<caso_id>::<rut>::<patente>". rut NULL when no party identified.
+-- ── Junction: Causa ↔ Patente (which plates appear in a causa) ───────────────
+-- vinculo_id = "<caso_id>::<patente>".
 create table if not exists "causaXpatente" (
   vinculo_id text primary key,
   caso_id    text not null references causas(caso_id),
-  rut        text references ruts(rut),
   patente    text not null references patentes(patente),
   updated_at timestamptz not null default now()
 );
 create index if not exists causaxpatente_caso_idx    on "causaXpatente" (caso_id);
-create index if not exists causaxpatente_rut_idx     on "causaXpatente" (rut);
 create index if not exists causaxpatente_patente_idx on "causaXpatente" (patente);
 
 -- ── Drop the old derived tables (replaced by ruts / causa_rut / causa_patente)─

@@ -67,8 +67,8 @@ PATENTES_COLS   = ["patente", "rut_propietario", "nombre_propietario", "tipo",
 CAUSA_RUT_HEADER = ["Vínculo ID", "Caso ID", "RUT", "Rol Parte"]
 CAUSA_RUT_COLS   = ["vinculo_id", "caso_id", "rut", "rol_parte"]
 
-CAUSA_PATENTE_HEADER = ["Vínculo ID", "Caso ID", "RUT", "Patente"]
-CAUSA_PATENTE_COLS   = ["vinculo_id", "caso_id", "rut", "patente"]
+CAUSA_PATENTE_HEADER = ["Vínculo ID", "Caso ID", "Patente"]
+CAUSA_PATENTE_COLS   = ["vinculo_id", "caso_id", "patente"]
 
 
 # ── Supabase I/O ──────────────────────────────────────────────────────────────
@@ -208,7 +208,8 @@ def build_tables(rows, patentes_by_plate):
                 pass
 
     causas, tramites, documentos = [], [], []
-    causa_rut, causa_patente = [], []
+    causa_rut = []
+    cp_pairs = set()                         # (caso_id, patente) — deduped, rut dropped
     ruts_index, ruts_order = {}, []          # rut -> positional row
     all_plates = set()
 
@@ -268,7 +269,7 @@ def build_tables(rows, patentes_by_plate):
 
         if not dem_list:
             for plate in causa_plates:
-                causa_patente.append([f"{cid}::::{plate}", cid, "", plate])
+                cp_pairs.add((cid, plate))
         else:
             for dem in dem_list:
                 rut = dem.get("rut", "")
@@ -280,7 +281,7 @@ def build_tables(rows, patentes_by_plate):
                 plates = _plates(dem.get("patente"), dem.get("placa_patente")) or causa_plates
                 all_plates.update(plates)
                 for plate in plates:
-                    causa_patente.append([f"{cid}::{rut}::{plate}", cid, rut, plate])
+                    cp_pairs.add((cid, plate))
 
         # Trámites / Documentos
         for ti, t in enumerate(d.get("tramites") or [], 1):
@@ -306,6 +307,7 @@ def build_tables(rows, patentes_by_plate):
         patentes.append([plate] + [p.get(c, "") or "" for c in PATENTES_COLS[1:]])
 
     ruts = [ruts_index[k] for k in ruts_order]
+    causa_patente = [[f"{cid}::{p}", cid, p] for (cid, p) in sorted(cp_pairs)]
     return {
         "juzgados":      JUZGADOS_ROWS,
         "ruts":          ruts,
@@ -361,7 +363,7 @@ def run_export(sb_url, sb_key, webhook="", sheet_id="", job_id=None,
         n["documentos"] = upsert_table(sb_url, sb_key, "documentos", "documento_id", DOCUMENTOS_COLS, t["documentos"])
         n["causaXrut"]  = upsert_table(sb_url, sb_key, "causaXrut", "vinculo_id", CAUSA_RUT_COLS, t["causa_rut"])
         n["causaXpatente"] = upsert_table(sb_url, sb_key, "causaXpatente", "vinculo_id",
-                                          CAUSA_PATENTE_COLS, t["causa_patente"], null_cols={"rut"})
+                                          CAUSA_PATENTE_COLS, t["causa_patente"])
         print("Supabase:", ", ".join(f"{v} {kk}" for kk, v in n.items()))
 
     print("Totals:", ", ".join(f"{len(v)} {kk}" for kk, v in t.items()))
