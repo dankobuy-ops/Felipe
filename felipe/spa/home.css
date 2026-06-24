@@ -1,0 +1,45 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, sans-serif;
+  background: #f4f5f7;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.home-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,.08);
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 520px;
+}
+
+h1 { font-size: 1.6rem; color: #1a1a2e; }
+.sub { color: #6b7280; margin-top: .3rem; font-size: .95rem; }
+
+.tools { display: flex; flex-direction: column; gap: 1rem; margin-top: 1.8rem; }
+
+.tool {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: 1.2rem 1.4rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  text-decoration: none;
+  background: #fff;
+  transition: border-color .15s, box-shadow .15s, transform .05s;
+}
+.tool:hover {
+  border-color: #4f46e5;
+  box-shadow: 0 4px 14px rgba(79,70,229,.12);
+}
+.tool:active { transform: translateY(1px); }
+
+.tool-name { font-size: 1.15rem; font-weight: 700; color: #1a1a2e; }
+.tool-desc { font-size: .85rem; color: #6b7280; }

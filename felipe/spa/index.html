@@ -3,106 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Consulta JPL</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>Scrapers</title>
+  <link rel="stylesheet" href="home.css?v=1" />
 </head>
 <body>
+  <main class="home-card">
+    <h1>Scrapers</h1>
+    <p class="sub">Selecciona una herramienta</p>
 
-  <!-- Screen: First-time setup (PAT required) -->
-  <div id="screen-setup" class="screen hidden">
-    <div class="card">
-      <h1>Configuración inicial</h1>
-      <p class="hint">Pega tu GitHub Personal Access Token con permiso <code>workflow</code>. Solo se pide una vez por dispositivo.</p>
-      <form id="setup-form">
-        <label>
-          GitHub Personal Access Token
-          <input type="password" id="pat-input" required placeholder="ghp_..." autocomplete="off" />
-        </label>
-        <button type="submit">Guardar y continuar</button>
-      </form>
-      <p id="setup-error" class="error hidden"></p>
-    </div>
-  </div>
-
-  <!-- Screen 1: Trigger -->
-  <div id="screen-trigger" class="screen hidden">
-    <div class="card">
-      <div class="top-bar">
-        <h1>Consulta JPL</h1>
-        <button id="change-token" class="link-btn" title="Cambiar token de GitHub">🔑</button>
-      </div>
-      <div class="juzgado-selector">
-        <button type="button" class="juzgado-btn" data-juzgado="vitacura">
-          <span class="jb-name">Vitacura</span>
-        </button>
-        <button type="button" class="juzgado-btn" data-juzgado="lobarnechea">
-          <span class="jb-name">Lo Barnechea</span>
-        </button>
-      </div>
-      <form id="trigger-form">
-        <label>
-          RUT
-          <select id="search-code" required disabled>
-            <option value="">— Selecciona un juzgado primero —</option>
-          </select>
-        </label>
-        <label>
-          Año (opcional — deja vacío para todos)
-          <input type="number" id="year-filter" placeholder="Ej: 2024" min="2000" max="2099" />
-        </label>
-        <button type="submit" id="submit-btn">Consultar</button>
-      </form>
-      <p id="trigger-error" class="error hidden"></p>
-
-      <div id="history-block" class="history-block hidden">
-        <div class="history-head">
-          <h2>Consultas anteriores</h2>
-          <button id="history-refresh" class="link-btn" title="Actualizar">↻</button>
-          <button id="history-clear" class="link-btn" title="Borrar historial local">🗑</button>
-          <button id="supabase-wipe" class="link-btn" title="Limpiar Supabase">🧹</button>
-        </div>
-        <ul id="history-list" class="history-list"></ul>
-      </div>
-    </div>
-  </div>
-
-  <!-- Screen 2: Results -->
-  <div id="screen-results" class="screen hidden">
-    <div class="card wide">
-      <div class="results-header">
-        <h1>Resultados</h1>
-        <span id="job-status-badge" class="badge">ejecutando</span>
-        <div id="spinner" class="spinner hidden"></div>
-        <button id="stop-btn" class="danger hidden">Detener</button>
-        <button id="enrich-btn" class="secondary">Buscar Emails</button>
-        <button id="stop-enrich-btn" class="danger hidden">Detener búsqueda</button>
-        <span id="enrich-status" class="enrich-status hidden"></span>
-        <button id="patente-btn" class="secondary">Buscar Patentes</button>
-        <button id="stop-patente-btn" class="danger hidden">Detener patentes</button>
-        <span id="patente-status" class="enrich-status hidden"></span>
-        <button id="sheets-btn" class="secondary">Exportar a Sheets</button>
-        <button id="back-btn" class="secondary">Nueva consulta</button>
-      </div>
-      <p class="job-meta">RUT: <strong id="rut-display"></strong> &nbsp;·&nbsp; Año: <strong id="year-display">todos</strong> &nbsp;·&nbsp; Job: <code id="job-id-display"></code></p>
-      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-      <p id="progress-label">Iniciando…</p>
-      <table id="results-table">
-        <thead>
-          <tr>
-            <th>N° Causa</th>
-            <th>Materia</th>
-            <th>Fecha ingreso</th>
-            <th>Estado</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="results-body"></tbody>
-      </table>
-      <p id="results-empty" class="hint hidden">Sin resultados aún — esperando al scraper…</p>
-      <p id="results-error" class="error hidden"></p>
-    </div>
-  </div>
-
-  <script src="app.js?v=34"></script>
+    <nav class="tools">
+      <a class="tool" href="jpl/">
+        <span class="tool-name">Consulta JPL</span>
+        <span class="tool-desc">Juzgados de Policía Local — causas, patentes, export</span>
+      </a>
+      <a class="tool" href="pjud/">
+        <span class="tool-name">Poder Judicial Virtual</span>
+        <span class="tool-desc">Oficina Judicial Virtual del Poder Judicial</span>
+      </a>
+    </nav>
+  </main>
 </body>
 </html>
