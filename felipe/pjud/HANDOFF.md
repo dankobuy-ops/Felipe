@@ -102,12 +102,78 @@ python pjud/scraper/_inspect_modal.py    # open modal: cuaderno opts, doc links,
 ```
 Connect URL is `http://127.0.0.1:9222` (not `localhost` — IPv6 hiccup).
 
-## Next steps (in order)
-1. Write `pjud/schema.sql` (8 `pjud_*` tables + RLS anon-read + Storage bucket) → user runs once in Supabase.
-2. Write `pjud/scraper/run.py`: the flow above, Arica/Tribunal-1, C- only; for each causa →
-   header → iterate cuadernos → historia rows (+ download docs) → litigantes → escritos → anexos.
-   Build to **run locally first**, verify against live, then wire CI.
-3. Export-to-sheet (`pjud` Apps Script + exporter) and the SPA `pjud/` UI + button.
+## Architecture pivot (2026-06-24) — DROP SUPABASE, use Google Sheet + Drive
+Decision: PJUD will **not** use Supabase. Data store = an auto-provisioned **Google Sheet**
+(8 tabs from the schema); PDFs = a **Google Drive** folder. The SPA reads the Sheet as CSV.
+The separate exporter / Apps Script is gone — **`run.py` writes straight to Sheet + Drive.**
+`pjud/schema.sql` + the `pjud-docs` bucket are now **unused** (kept in the tree, not deleted).
+
+Approved design details:
+- **Write strategy = incremental upsert** by the column-A ID, via the **Sheets API directly from
+  Python** (batched) — NOT Apps Script (its 6-min limit would bite; ~40k Cuadernos rows/yr expected).
+- **One-time `run.py --setup`**: creates Drive folder **"Poder Judicial Virtual"**, a Google Sheet
+  inside it (the DB, 8 tabs + headers from the schema), and a subfolder **"Documentos"** for PDFs.
+  Saves the created IDs to a gitignored config. Idempotent — never re-provisions.
+- **Auth must live backend-side** (token/ADC), NOT in the browser, so it "never asks again even
+  from another phone/browser/account". Scope of work: all Chilean banks, **current year onwards**.
+- **Bank list**: a `BANKS` config seeded with Banco de Chile; scraper auto-verifies each RUT by
+  checking the returned Caratulado matches the bank name (user supplies bank *names*).
+- PDFs → Drive `Documentos`, store `=HYPERLINK()` links in the Sheet; skip re-upload if present.
+
+## ⛔ WHERE WE LEFT OFF — auth blocker (pick up here)
+Chose the "zero-console" path: install gcloud + `gcloud auth application-default login`. **Done so
+far**: gcloud SDK installed (winget `Google.CloudSDK`, at
+`%LOCALAPPDATA%\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd`); Python libs installed
+(`google-auth`, `google-auth-oauthlib`, `google-api-python-client`); `pjud/scraper/gauth.py` written
+(loads ADC, builds Drive/Sheets clients). **BLOCKER**: gcloud ADC login **does not work for our
+scopes** —
+  - it forces `cloud-platform` into the scope list, and
+  - Google now **blocks the `spreadsheets` scope for gcloud's default client ID** ("will be blocked
+    soon… you must provide your own client ID or use service account impersonation").
+The browser opened but the login is effectively dead-ended for Sheets. **gcloud ADC is NOT viable.**
+
+### Next step (decided direction): bring our own OAuth client
+Switch to a **user-owned OAuth Desktop client** (the ~5-min Google Cloud Console path we deferred):
+  1. console.cloud.google.com → new project → enable **Google Drive API** + **Google Sheets API**.
+  2. OAuth consent screen: **External**, add `bcldeals@gmail.com` as a test user (or **Publish** so
+     the refresh token doesn't expire after 7 days).
+  3. Credentials → Create **OAuth client ID → Desktop app** → download `client_secret.json` into
+     `pjud/scraper/` (gitignored).
+  4. `run.py --setup` runs `InstalledAppFlow.run_local_server()` with scopes `drive.file` +
+     `spreadsheets` → opens the *real* default browser → user consents → save refresh token to
+     `pjud/scraper/token.json` (gitignored; for CI it becomes a GitHub secret).
+  (Alt considered: service-account impersonation — heavier; skip for personal Gmail.)
+Note: a Playwright/CDP-driven Chromium can't be used for Google login (Google blocks automated
+browsers). Must open the user's real browser.
+
+### Still TODO after auth (in order)
+1. `run.py --setup` provisioner (folder + Sheet + Documentos; save config).  [task #5]
+2. Swap `run.py` write layer Supabase → Sheets+Drive incremental upsert.     [task #6]
+3. Bank list config + RUT auto-verify.                                        [task #7]
+4. SPA `felipe/spa/pjud/` reads the Sheet CSV + an Export/run button.         [task #3]
+
+## Build log — verified live 2026-06-24 (corrections to the recon spec)
+- **Entry is JS, not a click**: the home "Consulta causas" `<button>` calls
+  `accesoConsultaCausas()` which `$.post`s `includes/sesion-invitado.php` (guest session) then
+  **same-tab** `location.href = indexN.php`. run.py calls the function and waits for `indexN.php`.
+  No AVISO-close needed. No popup/new tab.
+- **Search form (indexN.php), Rut-Jurídica tab `#BusJuridica`**: `#rutJur` `#dvJur` `#eraJur`
+  (**año is required** — one search per year; `--era 2024` or range `--era 2018-2026`),
+  `#jurCompetencia`=**3** Civil → `#corteJur`=**10** Arica → `#jurTribunal`=**2** (1º Letras Arica),
+  Buscar = **`#btnConConsultaJur`**. The reCAPTCHA iframe is the invisible badge — non-blocking.
+- **Results table = `#dtaTableDetalleJuridica`** (cols 🔍|Rol|Fecha|Caratulado|Tribunal); AJAX takes
+  >5 s so wait on `tbody tr`. Banco de Chile ≈ 65 rows/yr, ~49 are C-.
+- **Modal `#modalDetalleCivil`** header is tab/newline-delimited (`ROL: … F. Ing.: … Est. Adm.: …
+  Proc.: … Ubicación: … Estado Proc.: … Etapa: … Tribunal: …`) — parsed by label regex.
+- **Cuaderno switch by INDEX, not value**: `#selCuaderno` option `value` JWTs regenerate per AJAX
+  load, so `select_option(value=…)` fails — use `select_option(index=i)`.
+- **Docs**: each Historia Doc cell `<form action="ADIR_871/civil/documentos/docuS.php"><input
+  name="dtaDoc" value="JWT">`; GET `OJV/<action>?dtaDoc=JWT` via `context.request` (shares cookies)
+  → real PDFs. `--skip-docs` for fast metadata-only runs (one causa ≈ 74 PDFs).
+- **TODO still open**: (a) **ebook** header form `newebookcivil.php?dtaEbook=` returns HTML/0B on a
+  plain GET — generated server-side on form submit; left empty (every doc is downloaded anyway).
+  (b) causa-level **"Anexos de la causa"** sub-modal `anexoCausaCivil(JWT)` → `#modalAnexoCausaCivil`
+  not yet mapped (need a causa that has anexos). (c) escritos parser unverified (test causa had 0).
 
 ## Open items from the JPL side (paused, FYI)
 - Patente enrichment: blocked by Cloudflare escalation; on **cooldown** (try patchright later / paid solver). The watcher fixes were committed.

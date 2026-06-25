@@ -1,6 +1,12 @@
 service-account.json
 *.json.key
 .env
+
+# PJUD Google auth + provisioned config (never commit)
+client_secret*.json
+token.json
+pjud_config.json
+application_default_credentials.json
 __pycache__/
 *.pyc
 
