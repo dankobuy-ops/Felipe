@@ -120,37 +120,55 @@ Approved design details:
   checking the returned Caratulado matches the bank name (user supplies bank *names*).
 - PDFs → Drive `Documentos`, store `=HYPERLINK()` links in the Sheet; skip re-upload if present.
 
-## ⛔ WHERE WE LEFT OFF — auth blocker (pick up here)
-Chose the "zero-console" path: install gcloud + `gcloud auth application-default login`. **Done so
-far**: gcloud SDK installed (winget `Google.CloudSDK`, at
-`%LOCALAPPDATA%\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd`); Python libs installed
-(`google-auth`, `google-auth-oauthlib`, `google-api-python-client`); `pjud/scraper/gauth.py` written
-(loads ADC, builds Drive/Sheets clients). **BLOCKER**: gcloud ADC login **does not work for our
-scopes** —
-  - it forces `cloud-platform` into the scope list, and
-  - Google now **blocks the `spreadsheets` scope for gcloud's default client ID** ("will be blocked
-    soon… you must provide your own client ID or use service account impersonation").
-The browser opened but the login is effectively dead-ended for Sheets. **gcloud ADC is NOT viable.**
+## Auth — DECIDED + CODE DONE (2026-06-25): user-owned OAuth Desktop client
+gcloud ADC was abandoned (Google blocks the `spreadsheets` scope for gcloud's default client ID).
+Service account ruled out too: on a **personal Gmail** an SA has no Drive storage quota, so it can't
+create the folder or upload PDFs (only viable with paid Workspace + Shared Drive). Chosen method:
+**a user-owned OAuth Desktop client** — files owned by the Gmail account (no quota issue), PDFs work,
+and after one browser consent it runs headlessly forever (incl. CI via a saved token).
 
-### Next step (decided direction): bring our own OAuth client
-Switch to a **user-owned OAuth Desktop client** (the ~5-min Google Cloud Console path we deferred):
-  1. console.cloud.google.com → new project → enable **Google Drive API** + **Google Sheets API**.
-  2. OAuth consent screen: **External**, add `bcldeals@gmail.com` as a test user (or **Publish** so
-     the refresh token doesn't expire after 7 days).
-  3. Credentials → Create **OAuth client ID → Desktop app** → download `client_secret.json` into
-     `pjud/scraper/` (gitignored).
-  4. `run.py --setup` runs `InstalledAppFlow.run_local_server()` with scopes `drive.file` +
-     `spreadsheets` → opens the *real* default browser → user consents → save refresh token to
-     `pjud/scraper/token.json` (gitignored; for CI it becomes a GitHub secret).
-  (Alt considered: service-account impersonation — heavier; skip for personal Gmail.)
-Note: a Playwright/CDP-driven Chromium can't be used for Google login (Google blocks automated
-browsers). Must open the user's real browser.
+**Code is built and compiles** (auth + write layer fully swapped off Supabase):
+  - `gauth.py` — `InstalledAppFlow` with our own `client_secret.json` → `token.json`; loads/refreshes
+    headlessly after. CI: `PJUD_CLIENT_SECRET` + `PJUD_TOKEN_JSON` env vars. Scopes `drive.file` +
+    `spreadsheets`. `credentials(allow_login=True)` only prompts during `--setup`.
+  - `gstore.py` — the data layer. `provision()` (idempotent) creates Drive folder
+    "Poder Judicial Virtual" + a Sheet "PJUD — Base de datos" (8 tabs + headers from schema) +
+    "Documentos" subfolder, makes them anyone-with-link readable (so the SPA can read CSV/PDFs), and
+    saves IDs to `pjud_config.json` (gitignored). `Store` does incremental **upsert keyed on column A**
+    (reads each tab's col A → update-in-place or append) and `upload_pdf` (Drive upload, skips if the
+    flattened filename already exists).
+  - `run.py` — write layer now routes through `gstore` (`upsert(table, rows)` / `upload_pdf(path,
+    bytes)`); added **`--setup`** (provision + exit). `--dry-run` still skips all writes.
 
-### Still TODO after auth (in order)
-1. `run.py --setup` provisioner (folder + Sheet + Documentos; save config).  [task #5]
-2. Swap `run.py` write layer Supabase → Sheets+Drive incremental upsert.     [task #6]
-3. Bank list config + RUT auto-verify.                                        [task #7]
-4. SPA `felipe/spa/pjud/` reads the Sheet CSV + an Export/run button.         [task #3]
+### ✅ DONE 2026-06-25 — auth + setup + first live runs verified
+- OAuth Desktop client created under **danko.buy@gmail.com** (NOT bcldeals); `client_secret.json` +
+  `token.json` + `pjud_config.json` live in `pjud/scraper/` (gitignored). Token is long-lived
+  (consent screen Published to Production). To work on another PC: copy `client_secret.json` (and
+  optionally `token.json`/`pjud_config.json`) via a private channel — repo is PUBLIC, so never commit them.
+- `python run.py --setup` provisioned the Drive folder "Poder Judicial Virtual", Sheet
+  **`1QE07C92oY6h1MKBL4PNkDLxyBXvnQuleCAGSsHOZRyQ`** (9 tabs), and the Documentos subfolder.
+- Live verified on **C-994-2026**: metadata→Sheet upsert, **Notificaciones Receptor**, and **georref
+  =HYPERLINK** all land correctly. PDF download pass (no `--skip-docs`) NOT yet run.
+
+### Schema additions implemented 2026-06-25 (match the user-edited Sheet, NOT the old spec sheet)
+- New tab **`Notificaciones Receptor`** (`ID · Cuaderno ID · Nombre · Fecha · Estado`): from the
+  causa-level `receptorCivil(JWT)` sub-modal `#modalReceptorCivil` (cols Cuaderno | Datos del Retiro |
+  Fecha Retiro | Estado). Opened once per causa. `Cuaderno ID` = `‹rol›::‹numbered-cuaderno›` (bare
+  name suffix-matched to our cuaderno txt); `ID` = `‹rol›::receptor::‹n›`. **NOTE:** this is a
+  cuaderno-level id string, it does not FK to a specific Cuadernos row — revisit if a real FK is wanted.
+- **Georref** (simple): per historia row with a `geoReferencia(JWT)` icon → modal
+  `#modalGeoReferenciaCivil`, read hidden `input[name=latitud/longitud]`, write the `georref` cell as
+  `=HYPERLINK("maps…","lat, lng")`. gstore now does a 2nd USER_ENTERED pass for any `=`-prefixed cell
+  (rest stays RAW so Chilean DD/MM/YYYY dates aren't coerced).
+- NOTE: the user's *other* spec-sheet mods (friendly headers, Ebook→Cuadernos, drop updated_at) were
+  NOT applied — the Sheet they actually edited kept the original columns. Align to the live Sheet.
+
+### Still TODO (in order)
+1. **Full doc run** (no `--skip-docs`) on one causa → confirm PDFs upload to Drive Documentos + the
+   Documentos/Anexos `url` cells populate. Then `--skip-docs` full-year, then full run.
+2. Bank list config + RUT auto-verify (Caratulado matches bank name).
+3. SPA `felipe/spa/pjud/` reads the Sheet CSV + an Export/run button.
+4. CI: `pjud-export.yml` GitHub Action (token + client_secret as secrets).
 
 ## Build log — verified live 2026-06-24 (corrections to the recon spec)
 - **Entry is JS, not a click**: the home "Consulta causas" `<button>` calls
