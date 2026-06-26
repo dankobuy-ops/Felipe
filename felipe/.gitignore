@@ -2,10 +2,11 @@ service-account.json
 *.json.key
 .env
 
-# PJUD Google auth + provisioned config (never commit)
+# Google auth + provisioned config (never commit) — PJUD + JPL share the account
 client_secret*.json
 token.json
 pjud_config.json
+jpl_config.json
 application_default_credentials.json
 __pycache__/
 *.pyc

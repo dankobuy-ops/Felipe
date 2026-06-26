@@ -32,8 +32,12 @@ function populateRutSelect(doneRuts) {
   sel.disabled = false;
 }
 
-const SUPABASE_URL     = "https://xjlpsgchgfxryvhhrklx.supabase.co";
-const SUPABASE_ANON    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqbHBzZ2NoZ2Z4cnl2aGhya2x4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDU2NzAsImV4cCI6MjA5NjA4MTY3MH0.LVxF3eX8S8FqcLHHHr7l_LkM1R3fJ7SSbg0ZNM1hM-g";
+// Data store is the public Google Sheet (read as gviz CSV). The scraper writes it
+// directly now — no Supabase. The page only reads.
+const SHEET_ID   = "1SqP0w1XjvMGoEpBnbXI16EuneJMhrrSJq3hvvw_Azuo";
+const SHEET_TABS = ["Causas", "CausaXRut", "Ruts", "Tramites", "Documentos",
+                    "CausaXPatente", "Patentes"];
+
 const GH_REPO          = "dankobuy-ops/Felipe";
 const WORKFLOW_FILE    = "scrape.yml";
 const ENRICH_WORKFLOW   = "enrich.yml";
@@ -68,6 +72,127 @@ function saveLocalJob(jobId, rut, year, juzgado) {
   const jobs = getLocalJobs().filter((j) => j.jobId !== jobId);
   jobs.unshift({ jobId, rut, year, juzgado, startedAt: new Date().toISOString() });
   localStorage.setItem(HISTORY_KEY, JSON.stringify(jobs.slice(0, 50)));
+}
+
+// ── Sheet access (gviz CSV) ─────────────────────────────────────────────────—
+function parseCSV(text) {
+  const rows = []; let row = [], field = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQ = false;
+      } else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\r") { /* skip */ }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function csvToObjects(text) {
+  const rows = parseCSV(text);
+  if (!rows.length) return [];
+  const headers = rows[0].map((h) => h.trim());
+  const out = [];
+  for (let r = 1; r < rows.length; r++) {
+    if (rows[r].length === 1 && rows[r][0] === "") continue;
+    const o = {};
+    headers.forEach((h, c) => { o[h] = rows[r][c] !== undefined ? rows[r][c] : ""; });
+    out.push(o);
+  }
+  return out;
+}
+
+async function fetchTab(tab) {
+  const cb  = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&cb=${cb}`;
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`Hoja ${tab} ${r.status}`);
+  return csvToObjects(await r.text());
+}
+
+let _sheet = {};
+async function loadSheet() {
+  const results = await Promise.all(SHEET_TABS.map((t) => fetchTab(t)));
+  const s = {};
+  SHEET_TABS.forEach((t, i) => { s[t] = results[i]; });
+  _sheet = s;
+  return s;
+}
+
+function fullName(rr) {
+  const parts = [rr.nombre, rr.ap_paterno, rr.ap_materno].filter(Boolean);
+  return parts.join(" ").trim() || rr.razon_social || "";
+}
+
+// Join the relational tabs into the per-causa object shape the renderer expects,
+// for the causas where `searchRut` is the demandante.
+async function buildRowsForRut(searchRut) {
+  const s = await loadSheet();
+  const norm = normR(searchRut);
+
+  const rutsByRut = {};
+  for (const r of s.Ruts) rutsByRut[r.rut] = r;
+  const byCaso = (arr) => {
+    const m = {};
+    for (const x of arr) (m[x.caso_id] = m[x.caso_id] || []).push(x);
+    return m;
+  };
+  const tramByCaso = byCaso(s.Tramites);
+  const docByCaso  = byCaso(s.Documentos);
+  const cxrByCaso  = byCaso(s.CausaXRut);
+  const cxpByCaso  = byCaso(s.CausaXPatente);
+
+  _patentesData = {};
+  for (const p of s.Patentes) if (p.patente) _patentesData[p.patente] = p;
+
+  const wanted = new Set(
+    s.CausaXRut
+      .filter((x) => x.rol_parte === "demandante" && normR(x.rut) === norm)
+      .map((x) => x.caso_id)
+  );
+
+  const rows = [];
+  for (const causa of s.Causas) {
+    if (!wanted.has(causa.caso_id)) continue;
+    const cid   = causa.caso_id;
+    const links = cxrByCaso[cid] || [];
+    const demandados = links.filter((l) => l.rol_parte === "demandado").map((l) => {
+      const rr = rutsByRut[l.rut] || {};
+      return { nombre: fullName(rr), rut: l.rut, direccion: rr.domicilio || "", comuna: "" };
+    });
+    const demandantes = links.filter((l) => l.rol_parte === "demandante").map((l) => {
+      const rr = rutsByRut[l.rut] || {};
+      return { nombre: rr.razon_social || fullName(rr), rut: l.rut };
+    });
+    const tramites = (tramByCaso[cid] || []).map((t) => ({
+      fecha: t.fecha, descripcion: t.descripcion, pdf_url: t.pdf_url,
+    }));
+    const adjuntos = (docByCaso[cid] || []).map((d) => ({
+      descripcion: d.descripcion, pdf_url: d.pdf_url,
+    }));
+    const plates = (cxpByCaso[cid] || []).map((x) => x.patente).filter(Boolean);
+
+    const causaObj = {
+      fecha_causa: causa.fecha_causa, placa_patente: plates.join("\n"),
+      actuario: "", remisor: "",
+      fecha_citacion: causa.fecha_citacion, fecha_estado: causa.fecha_estado,
+      boleta_numero: causa.boleta_numero, boleta_fecha: causa.boleta_fecha,
+      descripcion: causa.materia, estado: causa.estado,
+    };
+    const caseData = {
+      rol: causa.rol, descripcion: causa.materia, fecha_proceso: causa.fecha_causa,
+      causa: causaObj, demandados, demandantes, tramites, adjuntos,
+    };
+    const firstPdf = (tramites.find((t) => t.pdf_url) || adjuntos.find((a) => a.pdf_url) || {}).pdf_url || "";
+    rows.push({ record_id: causa.rol, status: "done", pdf_url: firstPdf, text: JSON.stringify(caseData) });
+  }
+  return rows;
 }
 
 // ── Juzgado selector ──────────────────────────────────────────────────────────
@@ -233,11 +358,17 @@ document.getElementById("stop-btn").addEventListener("click", async () => {
 // ── Results screen ────────────────────────────────────────────────────────────
 let pollTimer      = null;
 let _allData       = [];
-let _patentesData  = {};   // patente string → enriched row from `patentes` table
+let _patentesData  = {};   // patente string → enriched row from the Patentes tab
 let _patenteCancelled = false;
+let _resultsRut         = "";
+let _resultsDispatchedAt = "";
 
 function showResultsScreen(jobId, rut, year = "", juzgado = "") {
   _currentJuzgado = juzgado || _currentJuzgado;
+  _resultsRut = rut;
+  // 60s back-buffer so a client clock ahead of GitHub's still matches a run we
+  // just created when deciding whether a scrape is still in progress.
+  _resultsDispatchedAt = new Date(Date.now() - 60_000).toISOString();
   document.getElementById("job-id-display").textContent   = jobId;
   document.getElementById("rut-display").textContent      = rut;
   document.getElementById("year-display").textContent     = year || "todos";
@@ -263,7 +394,7 @@ function showResultsScreen(jobId, rut, year = "", juzgado = "") {
   _allData = [];
   setSpinner(true);
   showScreen("screen-results");
-  pollResults(jobId);
+  pollResults();
 }
 
 document.getElementById("back-btn").addEventListener("click", () => {
@@ -284,7 +415,7 @@ document.getElementById("history-clear").addEventListener("click", () => {
   renderJobHistory();
 });
 document.getElementById("supabase-wipe").addEventListener("click", async () => {
-  if (!confirm("¿Limpiar todos los datos de Supabase?")) return;
+  if (!confirm("¿Limpiar todos los datos?")) return;
   const btn = document.getElementById("supabase-wipe");
   btn.disabled = true;
   btn.textContent = "⏳";
@@ -324,60 +455,41 @@ async function renderJobHistory() {
   if (!_selectedJuzgado) { block.classList.add("hidden"); return; }
   const local = getLocalJobs();
 
-  // Pull every job's status + meta from Supabase (cross-device, includes jobs
-  // not started from this browser). Merge with local rut/year/date.
-  const byId = {};
-  for (const j of local) {
-    byId[j.jobId] = { jobId: j.jobId, rut: j.rut, year: j.year, juzgado: j.juzgado || "", ts: j.startedAt, status: "" };
-  }
+  // Which RUTs already have causas in the Sheet (for this juzgado) → checkmarks.
+  // caso_id = "<juzgado>/<rol>", so filter demandante links by that prefix.
+  let doneRuts = new Set();
   try {
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/checkpoints?record_id=in.(__job__,__meta__)&select=job_id,record_id,status,text`,
-      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
+    const s = await loadSheet();
+    doneRuts = new Set(
+      s.CausaXRut
+        .filter((x) => x.rol_parte === "demandante" &&
+                       String(x.caso_id).startsWith(_selectedJuzgado + "/"))
+        .map((x) => normR(x.rut))
     );
-    if (r.ok) {
-      for (const row of await r.json()) {
-        const e = byId[row.job_id] || (byId[row.job_id] = { jobId: row.job_id, rut: "", year: "", juzgado: "", ts: "", status: "" });
-        if (row.record_id === "__job__") e.status = row.status;
-        else if (row.record_id === "__meta__") {
-          let m = {}; try { m = JSON.parse(row.text || "{}"); } catch (_) {}
-          e.rut     = e.rut     || m.rut     || "";
-          e.year    = e.year    || m.year    || "";
-          e.juzgado = e.juzgado || m.juzgado || "";
-          e.ts      = e.ts      || m.ts      || "";
-        }
-      }
-    }
-  } catch (_) { /* offline / RLS — fall back to local-only list */ }
-
-  // Populate RUT select with checkmarks for RUTs that have completed jobs for this juzgado
-  const doneRuts = new Set(
-    Object.values(byId)
-      .filter(j => (j.juzgado === _selectedJuzgado || (_selectedJuzgado === "vitacura" && !j.juzgado)) && j.status === "complete")
-      .map(j => normR(j.rut))
-  );
+  } catch (_) { /* offline — fall back to empty (no checkmarks) */ }
   populateRutSelect(doneRuts);
 
   const clearedAt = localStorage.getItem(CLEARED_AT_KEY) || "";
-  const jobs = Object.values(byId)
-    .filter(j => j.juzgado === _selectedJuzgado || (_selectedJuzgado === "vitacura" && !j.juzgado))
-    .filter(j => !clearedAt || (j.ts && j.ts > clearedAt) || local.some(l => l.jobId === j.jobId))
-    .sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
+  const jobs = local
+    .filter((j) => (j.juzgado || "vitacura") === _selectedJuzgado)
+    .filter((j) => !clearedAt || (j.startedAt && j.startedAt > clearedAt))
+    .sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""));
   if (!jobs.length) { block.classList.add("hidden"); return; }
   block.classList.remove("hidden");
 
-  const labelMap = { complete: "completado", stalled: "detenido", running: "ejecutando", "": "—" };
   list.innerHTML = "";
   for (const j of jobs) {
     const li = document.createElement("li");
     li.className = "history-item";
-    const when = j.ts ? new Date(j.ts).toLocaleString() : "";
-    const st   = j.status || "running";
+    const when = j.startedAt ? new Date(j.startedAt).toLocaleString() : "";
+    const done = doneRuts.has(normR(j.rut));
+    const st   = done ? "complete" : "";
+    const lbl  = done ? "con datos" : "—";
     li.innerHTML = `
       <div class="hi-main">
         <span class="hi-rut">${esc(j.rut || j.jobId.slice(0, 8))}</span>
         ${j.year ? `<span class="hi-year">año ${esc(j.year)}</span>` : ""}
-        <span class="badge ${st === "complete" ? "complete" : st === "stalled" ? "stalled" : ""}">${esc(labelMap[j.status] || st)}</span>
+        <span class="badge ${st}">${esc(lbl)}</span>
         <button class="hi-del link-btn" title="Eliminar" data-job="${esc(j.jobId)}">🗑</button>
       </div>
       <div class="hi-sub">${esc(when)}</div>`;
@@ -385,29 +497,10 @@ async function renderJobHistory() {
       if (e.target.closest(".hi-del")) return;
       showResultsScreen(j.jobId, j.rut || "", j.year || "", j.juzgado || "");
     });
-    li.querySelector(".hi-del").addEventListener("click", async (e) => {
+    li.querySelector(".hi-del").addEventListener("click", (e) => {
       e.stopPropagation();
-      const btn = e.currentTarget;
-      btn.disabled = true;
-      btn.textContent = "⏳";
-      // Remove from localStorage
-      const updated = getLocalJobs().filter(l => l.jobId !== j.jobId);
+      const updated = getLocalJobs().filter((l) => l.jobId !== j.jobId);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-      // Dispatch wipe workflow for this job_id
-      try {
-        await fetch(
-          `https://api.github.com/repos/${GH_REPO}/actions/workflows/wipe.yml/dispatches`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${getPAT()}`,
-              Accept: "application/vnd.github+json",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ ref: "main", inputs: { job_id: j.jobId } }),
-          }
-        );
-      } catch (_) {}
       li.remove();
       if (!list.children.length) block.classList.add("hidden");
     });
@@ -453,17 +546,12 @@ document.getElementById("stop-enrich-btn").addEventListener("click", async () =>
   setEnrichStatus("");
 });
 
-async function countEnrichProgress(jobId) {
+// Email-enrichment progress from the Ruts tab: personas with vs. without email.
+async function countEnrichProgress() {
   try {
-    const rows = await fetchCheckpoints(jobId);
+    const s = await loadSheet();
     let total = 0, found = 0;
-    for (const row of rows) {
-      if (row.record_id === "__job__" || row.record_id === "__meta__") continue;
-      try {
-        const d = JSON.parse(row.text || "{}");
-        for (const dem of d.demandados || []) { total++; if (dem.email) found++; }
-      } catch (_) {}
-    }
+    for (const r of s.Ruts) if (r.tipo === "persona") { total++; if (r.email) found++; }
     return { total, found };
   } catch (_) { return null; }
 }
@@ -475,7 +563,6 @@ function setEnrichStatus(text) {
 
 document.getElementById("enrich-btn").addEventListener("click", async () => {
   const jobId = document.getElementById("job-id-display").textContent.trim();
-  if (!jobId) return;
   const btn = document.getElementById("enrich-btn");
   btn.disabled = true;
   btn.textContent = "Iniciando…";
@@ -504,7 +591,7 @@ document.getElementById("enrich-btn").addEventListener("click", async () => {
     btn.textContent = "Buscando…";
     _enrichCancelled = false;
     document.getElementById("stop-enrich-btn").classList.remove("hidden");
-    pollEnrich(btn, jobId, dispatchedAt);
+    pollEnrich(btn, dispatchedAt);
   } catch (ex) {
     btn.disabled = false;
     btn.textContent = "Error — reintentar";
@@ -517,7 +604,7 @@ function _enrichDone(btn) {
   setEnrichStatus("");
 }
 
-async function pollEnrich(btn, jobId, dispatchedAt, attempt = 0) {
+async function pollEnrich(btn, dispatchedAt, attempt = 0) {
   if (_enrichCancelled) return;
   if (attempt > 60) {
     _enrichDone(btn);
@@ -526,8 +613,7 @@ async function pollEnrich(btn, jobId, dispatchedAt, attempt = 0) {
     return;
   }
 
-  // Update live email count from Supabase on every tick
-  const progress = await countEnrichProgress(jobId);
+  const progress = await countEnrichProgress();
   if (progress) {
     const { total, found } = progress;
     btn.textContent = total ? `Buscando… ${found}/${total}` : "Buscando…";
@@ -542,18 +628,16 @@ async function pollEnrich(btn, jobId, dispatchedAt, attempt = 0) {
     const { workflow_runs = [] } = await r.json();
     const run = workflow_runs.find((w) => w.created_at >= dispatchedAt);
     if (!run) {
-      setTimeout(() => pollEnrich(btn, jobId, dispatchedAt, attempt + 1), 8_000);
+      setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 8_000);
       return;
     }
     if (!run.conclusion) {
-      setTimeout(() => pollEnrich(btn, jobId, dispatchedAt, attempt + 1), 10_000);
+      setTimeout(() => pollEnrich(btn, dispatchedAt, attempt + 1), 10_000);
       return;
     }
-    // Workflow finished — do one final count
-    const final = await countEnrichProgress(jobId);
+    const final = await countEnrichProgress();
     if (run.conclusion === "success") {
-      const label = final ? `✓ ${final.found}/${final.total} emails` : "✓ Listo";
-      btn.textContent = label;
+      btn.textContent = final ? `✓ ${final.found}/${final.total} emails` : "✓ Listo";
       btn.className = "btn-done";
       btn.disabled = false;
       _enrichDone(btn);
@@ -569,6 +653,9 @@ async function pollEnrich(btn, jobId, dispatchedAt, attempt = 0) {
 }
 
 // ── Patente enrichment ────────────────────────────────────────────────────────
+// The local watcher (patente_watcher.py on your PC) auto-fills the Patentes tab —
+// patentechile.com is behind Cloudflare and can't be scraped from the cloud. So
+// the button just re-reads the Sheet to surface whatever the watcher has filled.
 
 function setPatenteStatus(text) {
   const el = document.getElementById("patente-status");
@@ -576,14 +663,7 @@ function setPatenteStatus(text) {
   el.classList.toggle("hidden", !text);
 }
 
-function _patenteDone(btn) {
-  document.getElementById("stop-patente-btn").classList.add("hidden");
-  setPatenteStatus("");
-}
-
 document.getElementById("stop-patente-btn").addEventListener("click", () => {
-  // The search runs on your PC via the watcher; "stop" just stops the app from
-  // following along (the watcher finishes whatever plate it's mid-way through).
   _patenteCancelled = true;
   document.getElementById("stop-patente-btn").classList.add("hidden");
   const btn = document.getElementById("patente-btn");
@@ -594,113 +674,48 @@ document.getElementById("stop-patente-btn").addEventListener("click", () => {
 });
 
 document.getElementById("patente-btn").addEventListener("click", async () => {
-  const jobId = document.getElementById("job-id-display").textContent.trim();
-  if (!jobId) return;
   const btn = document.getElementById("patente-btn");
   btn.disabled = true;
-  btn.textContent = "Iniciando…";
-  setPatenteStatus("");
-
+  btn.textContent = "Actualizando…";
+  setPatenteStatus("El watcher local completa las patentes; actualizando desde la hoja…");
   try {
-    // patentechile.com is behind Cloudflare, so the scrape can't run in the cloud.
-    // Instead we queue a request row; the local watcher (running on your PC) picks
-    // it up, does the search in a real browser, and saves results to Supabase.
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/patente_requests`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON,
-        Authorization: `Bearer ${SUPABASE_ANON}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({ job_id: jobId, kind: "enrich" }),
-    });
-    if (!r.ok) {
-      const body = await r.text().catch(() => "");
-      throw new Error(`Supabase ${r.status}: ${body || "sin detalle"}`);
-    }
-    const [req] = await r.json();
-    btn.textContent = "En cola…";
-    _patenteCancelled = false;
-    setPatenteStatus("Solicitud en cola — el watcher debe estar corriendo en tu PC.");
-    document.getElementById("stop-patente-btn").classList.remove("hidden");
-    pollPatente(btn, jobId, req.id);
+    clearTimeout(pollTimer);
+    await pollResults();   // re-reads the Sheet (incl. Patentes) and re-renders
+    const n = Object.values(_patentesData)
+      .filter((p) => p.marca || p.modelo || p.rut_propietario).length;
+    setPatenteStatus(`Patentes con datos: ${n}.`);
+    btn.textContent = "Buscar Patentes";
+    btn.className = "secondary";
   } catch (ex) {
-    btn.disabled = false;
-    btn.textContent = "Error — reintentar";
-    btn.title = ex.message;
+    setPatenteStatus("Error al actualizar: " + ex.message);
+    btn.textContent = "Buscar Patentes";
   }
+  btn.disabled = false;
 });
 
-async function pollPatente(btn, jobId, reqId, attempt = 0) {
-  if (_patenteCancelled) return;
-  if (attempt > 120) {  // ~20 min at 10s/poll
-    _patenteDone(btn);
-    btn.disabled = false;
-    btn.textContent = "Timeout — ¿watcher corriendo?";
-    return;
-  }
-
-  // Read the request's status (set by the local watcher) + live progress.
-  let req = null;
+// ── Results polling (reads the Sheet; GitHub run status drives the spinner) ────
+async function scrapeRunning(dispatchedAt) {
   try {
     const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/patente_requests?id=eq.${reqId}&select=status,message`,
-      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${WORKFLOW_FILE}/runs?per_page=10`,
+      { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
     );
-    if (r.ok) req = (await r.json())[0];
-  } catch (_) {}
-
-  const status = req?.status || "pending";
-  if (status === "done" || status === "error") {
-    await fetchPatentesForJob();
-    const final = await countPatentesProgress(jobId);
-    if (status === "done") {
-      btn.textContent = final ? `✓ ${final.found}/${final.total} patentes` : "✓ Listo";
-      btn.className = "btn-done";
-    } else {
-      btn.textContent = "Falló — reintentar";
-      btn.className = "secondary";
-      btn.title = req?.message || "";
-    }
-    btn.disabled = false;
-    _patenteDone(btn);
-    return;
-  }
-
-  if (status === "running") {
-    const progress = await countPatentesProgress(jobId);
-    btn.textContent = progress && progress.total
-      ? `Buscando… ${progress.found}/${progress.total}` : "Buscando…";
-  } else {
-    btn.textContent = "En cola…";
-  }
-  setTimeout(() => pollPatente(btn, jobId, reqId, attempt + 1), 10_000);
+    if (!r.ok) return false;
+    const { workflow_runs = [] } = await r.json();
+    return workflow_runs.some((w) =>
+      (w.created_at >= dispatchedAt) &&
+      ["in_progress", "queued", "requested", "waiting", "pending"].includes(w.status)
+    );
+  } catch (_) { return false; }
 }
 
-async function cancelWorkflowRuns(workflow) {
-  const r = await fetch(
-    `https://api.github.com/repos/${GH_REPO}/actions/workflows/${workflow}/runs?per_page=5&status=in_progress`,
-    { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
-  );
-  if (!r.ok) throw new Error(`GitHub ${r.status}`);
-  const { workflow_runs = [] } = await r.json();
-  await Promise.all(workflow_runs.map((w) =>
-    fetch(`https://api.github.com/repos/${GH_REPO}/actions/runs/${w.id}/cancel`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" },
-    })
-  ));
-}
-
-async function pollResults(jobId) {
+async function pollResults() {
   try {
-    const rows = await fetchCheckpoints(jobId);
-    renderResults(rows);
-    const jobRow = rows.find((r) => r.record_id === "__job__");
-    const status = jobRow ? jobRow.status : "running";
-    if (status !== "complete" && status !== "stalled") {
-      pollTimer = setTimeout(() => pollResults(jobId), POLL_INTERVAL_MS);
+    const rows    = await buildRowsForRut(_resultsRut);
+    const running = await scrapeRunning(_resultsDispatchedAt);
+    renderResults(rows, running ? "running" : "complete");
+    if (running) {
+      pollTimer = setTimeout(pollResults, POLL_INTERVAL_MS);
     } else {
       setSpinner(false);
       document.getElementById("stop-btn").classList.add("hidden");
@@ -708,120 +723,40 @@ async function pollResults(jobId) {
   } catch (ex) {
     document.getElementById("results-error").textContent = "Error al leer resultados: " + ex.message;
     document.getElementById("results-error").classList.remove("hidden");
-    pollTimer = setTimeout(() => pollResults(jobId), POLL_INTERVAL_MS);
+    pollTimer = setTimeout(pollResults, POLL_INTERVAL_MS);
   }
-}
-
-async function fetchCheckpoints(jobId) {
-  const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/checkpoints?job_id=eq.${encodeURIComponent(jobId)}&select=record_id,status,text,pdf_url`,
-    { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
-  );
-  if (!r.ok) throw new Error(`Supabase ${r.status}`);
-  return r.json();
 }
 
 function _extractPlates(text) {
-  return (text || "").split("\n").map(s => s.trim().toUpperCase()).filter(s => /^[A-Z]{2,4}\d{2,4}$/.test(s));
+  return (text || "").split("\n").map((s) => s.trim().toUpperCase())
+    .filter((s) => /^[A-Z]{2,4}\d{2,4}$/.test(s));
 }
 
-function _allPlatesFromData(data) {
-  const plates = new Set();
-  for (const row of data) {
-    const causa = row._data?.causa || {};
-    _extractPlates(causa.placa_patente || "").forEach(p => plates.add(p));
-    for (const dem of row._data?.demandados || [])
-      _extractPlates(dem.patente || dem.placa_patente || "").forEach(p => plates.add(p));
-  }
-  return plates;
-}
-
-async function fetchPatentesForJob() {
-  if (!_allData.length) return;
-  const plates = _allPlatesFromData(_allData);
-  if (!plates.size) return;
-  try {
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/patentes?patente=in.(${[...plates].join(",")})&select=*`,
-      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
-    );
-    if (!r.ok) return;
-    const rows = await r.json();
-    _patentesData = {};
-    for (const row of rows) _patentesData[row.patente] = row;
-  } catch (_) {}
-}
-
-async function countPatentesProgress(jobId) {
-  try {
-    const rows = await fetchCheckpoints(jobId);
-    const plates = new Set();
-    for (const row of rows) {
-      if (row.record_id?.startsWith("__")) continue;
-      try {
-        const d = JSON.parse(row.text || "{}");
-        _extractPlates((d.causa?.placa_patente || d.placa_patente || "")).forEach(p => plates.add(p));
-        for (const dem of d.demandados || [])
-          _extractPlates(dem.patente || dem.placa_patente || "").forEach(p => plates.add(p));
-      } catch (_) {}
-    }
-    if (!plates.size) return { total: 0, found: 0 };
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/patentes?patente=in.(${[...plates].join(",")})&select=patente`,
-      { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } }
-    );
-    if (!r.ok) return null;
-    return { total: plates.size, found: (await r.json()).length };
-  } catch (_) { return null; }
-}
-
-function renderResults(rows) {
-  const RESERVED = new Set(["__job__", "__meta__"]);
-  const metaRow  = rows.find((r) => r.record_id === "__meta__");
-  const jobRow   = rows.find((r) => r.record_id === "__job__");
-  const dataRows = rows.filter((r) => !RESERVED.has(r.record_id));
-  const status   = jobRow ? jobRow.status : "running";
-
+function renderResults(rows, status) {
   // Badge
-  const badge     = document.getElementById("job-status-badge");
-  const labelMap  = { complete: "completado", stalled: "detenido", running: "ejecutando" };
+  const badge    = document.getElementById("job-status-badge");
+  const labelMap = { complete: "completado", stalled: "detenido", running: "ejecutando" };
   badge.textContent = labelMap[status] || status;
   badge.className   = "badge " + (status === "complete" ? "complete" : status === "stalled" ? "stalled" : "");
 
-  // Spinner — visible while running
   const isRunning = status !== "complete" && status !== "stalled";
   setSpinner(isRunning);
   if (!isRunning) document.getElementById("stop-btn").classList.add("hidden");
 
-  // Progress — use __meta__ total when available so count is accurate from the start
-  let total = 0;
-  if (metaRow) {
-    try {
-      const m = JSON.parse(metaRow.text || "{}");
-      total = m.total || 0;
-      if (m.juzgado && !_currentJuzgado) _currentJuzgado = m.juzgado;
-    } catch (_) {}
-  }
-  if (!total) total = dataRows.length;  // fallback for old jobs without __meta__
-  const done = dataRows.filter((r) => r.status === "done").length;
-  const pct  = total ? Math.round((done / total) * 100) : 0;
-  document.getElementById("progress-bar").style.width = pct + "%";
+  const done = rows.length;
+  document.getElementById("progress-bar").style.width = (isRunning ? 60 : 100) + "%";
   document.getElementById("progress-label").textContent =
-    total
-      ? `${done} / ${total} causas procesadas`
-      : "Esperando primeros resultados…";
+    done
+      ? `${done} causa${done === 1 ? "" : "s"}${isRunning ? " — buscando…" : ""}`
+      : (isRunning ? "Esperando primeros resultados…" : "Sin resultados");
 
-  document.getElementById("results-empty").classList.toggle("hidden", dataRows.length > 0);
+  document.getElementById("results-empty").classList.toggle("hidden", done > 0);
 
-  // Parse and store for CSV/export
-  _allData = dataRows.map((row) => {
+  _allData = rows.map((row) => {
     let data = {};
     try { data = JSON.parse(row.text || "{}"); } catch (_) {}
     return { ...row, _data: data };
   });
-
-  // Refresh vehicle data in background (non-blocking)
-  fetchPatentesForJob().catch(() => {});
 
   const tbody = document.getElementById("results-body");
   tbody.innerHTML = "";
@@ -830,7 +765,6 @@ function renderResults(rows) {
     const data  = row._data;
     const causa = (typeof data.causa === "object" && data.causa) ? data.causa : {};
 
-    // Main summary row (clickable)
     const tr = document.createElement("tr");
     tr.className = "row-main";
     tr.innerHTML = `
@@ -842,7 +776,6 @@ function renderResults(rows) {
     `;
     tbody.appendChild(tr);
 
-    // Detail row (hidden until clicked)
     const trDetail = document.createElement("tr");
     trDetail.className = "row-detail hidden";
     const td = document.createElement("td");
@@ -859,11 +792,9 @@ function renderResults(rows) {
 }
 
 // ── Detail panel builder ──────────────────────────────────────────────────────
-
 function buildDetail(data, causa) {
   const sections = [];
 
-  // Sección B — datos de la causa
   const causeFields = [
     ["Fecha causa",    causa.fecha_causa],
     ["Placa patente",  causa.placa_patente],
@@ -903,20 +834,20 @@ function buildDetail(data, causa) {
   sections.push(renderParties(data.demandados,  "Demandados"));
   sections.push(renderParties(data.demandantes, "Demandantes"));
 
-  // Vehículos — enriched data from patentes table
+  // Vehículos — enriched data from the Patentes tab
   const plates = _extractPlates(causa.placa_patente || "");
-  const enriched = plates.map(p => _patentesData[p]).filter(Boolean);
+  const enriched = plates.map((p) => _patentesData[p]).filter(Boolean);
   if (enriched.length) {
     const vrows = enriched.map((v) => `
       <div class="party-row">
         <strong>${esc(v.patente)}</strong>
-        ${[v.marca, v.modelo, v.anio].filter(Boolean).map(s => `<span class="pl">${esc(s)}</span>`).join("")}
-        ${v.color       ? `<span class="pl">Color: ${esc(v.color)}</span>` : ""}
-        ${v.tipo        ? `<span class="pl">Tipo: ${esc(v.tipo)}</span>` : ""}
-        ${v.combustible ? `<span class="pl">Combustible: ${esc(v.combustible)}</span>` : ""}
-        ${v.rut         ? `<span class="pl">RUT prop.: ${esc(v.rut)}</span>` : ""}
-        ${v.num_motor   ? `<span class="pl">Motor: ${esc(v.num_motor)}</span>` : ""}
-        ${v.num_chasis  ? `<span class="pl">Chasis: ${esc(v.num_chasis)}</span>` : ""}
+        ${[v.marca, v.modelo, v.anio].filter(Boolean).map((s) => `<span class="pl">${esc(s)}</span>`).join("")}
+        ${v.color           ? `<span class="pl">Color: ${esc(v.color)}</span>` : ""}
+        ${v.tipo            ? `<span class="pl">Tipo: ${esc(v.tipo)}</span>` : ""}
+        ${v.combustible     ? `<span class="pl">Combustible: ${esc(v.combustible)}</span>` : ""}
+        ${v.rut_propietario ? `<span class="pl">RUT prop.: ${esc(v.rut_propietario)}</span>` : ""}
+        ${v.num_motor       ? `<span class="pl">Motor: ${esc(v.num_motor)}</span>` : ""}
+        ${v.num_chasis      ? `<span class="pl">Chasis: ${esc(v.num_chasis)}</span>` : ""}
       </div>`).join("");
     sections.push(`
       <div class="detail-section">
@@ -929,7 +860,6 @@ function buildDetail(data, causa) {
   const tramites = data.tramites || [];
   if (tramites.length) {
     const trows = tramites.map((t) => {
-      // Link to the downloaded Supabase PDF, not the login-gated source viewer.
       const href = safeHref(t.pdf_url);
       return `<tr>
         <td>${esc(t.fecha || "")}</td>
@@ -951,7 +881,6 @@ function buildDetail(data, causa) {
   const adjuntos = data.adjuntos || [];
   if (adjuntos.length) {
     const arows = adjuntos.map((a) => {
-      // Link to the downloaded Supabase PDF, not the login-gated source viewer.
       const href = safeHref(a.pdf_url);
       return `<tr>
         <td>${esc(a.descripcion || "")}</td>
@@ -969,79 +898,6 @@ function buildDetail(data, causa) {
   }
 
   return `<div class="detail-panel">${sections.join("")}</div>`;
-}
-
-// Export runs in a GitHub Action (no browser, just the service key) so it can be
-// triggered from any device — including the phone. The button dispatches the
-// workflow and polls the run until it finishes.
-const EXPORT_WORKFLOW = "export.yml";
-
-document.getElementById("sheets-btn").addEventListener("click", async () => {
-  const jobId = document.getElementById("job-id-display").textContent.trim();
-  const btn = document.getElementById("sheets-btn");
-  btn.disabled = true;
-  btn.textContent = "Iniciando…";
-  try {
-    // 60s back-buffer so a client clock running ahead of GitHub's still matches
-    // the run we're about to create in pollExport().
-    const dispatchedAt = new Date(Date.now() - 60_000).toISOString();
-    const r = await fetch(
-      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${EXPORT_WORKFLOW}/dispatches`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${getPAT()}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        body: JSON.stringify({ ref: "main", inputs: { job_id: jobId || "" } }),
-      }
-    );
-    if (!r.ok) {
-      const b = (await r.text().catch(() => "")) || "sin detalle";
-      if (r.status === 401) reauth();
-      throw new Error(`GitHub ${r.status}: ${b}`);
-    }
-    btn.textContent = "Exportando…";
-    pollExport(btn, dispatchedAt);
-  } catch (ex) {
-    btn.disabled = false;
-    btn.textContent = "Error — reintentar";
-    btn.title = ex.message;
-  }
-});
-
-async function pollExport(btn, dispatchedAt, attempt = 0) {
-  if (attempt > 40) {
-    btn.disabled = false;
-    btn.textContent = "Timeout — reintentar";
-    return;
-  }
-  try {
-    const r = await fetch(
-      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${EXPORT_WORKFLOW}/runs?per_page=5&event=workflow_dispatch`,
-      { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
-    );
-    if (!r.ok) throw new Error(`GitHub ${r.status}`);
-    const { workflow_runs = [] } = await r.json();
-    const run = workflow_runs.find((w) => w.created_at >= dispatchedAt);
-    if (!run || !run.conclusion) {
-      setTimeout(() => pollExport(btn, dispatchedAt, attempt + 1), 8_000);
-      return;
-    }
-    if (run.conclusion === "success") {
-      btn.textContent = "✓ Exportado";
-      btn.className = "btn-done";
-      setTimeout(() => { btn.textContent = "Exportar a Sheets"; btn.className = "secondary"; btn.disabled = false; }, 4000);
-    } else {
-      btn.textContent = "Falló — reintentar";
-      btn.className = "secondary";
-      btn.disabled = false;
-    }
-  } catch (_) {
-    setTimeout(() => pollExport(btn, dispatchedAt, attempt + 1), 10_000);
-  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
