@@ -4,7 +4,7 @@ Public guest access, no captcha, no login. Locked scope (see pjud/HANDOFF.md):
   - Civil, C.A. de Arica, 1º Juzgado de Letras de Arica (tribunal id 'arica-1').
   - Search by Rut Persona Jurídica (test bank: Banco de Chile 97004000-5).
   - Keep only causas whose ROL starts with 'C'.
-  - Download docs/anexos/ebook PDFs to the public 'pjud-docs' Storage bucket.
+  - Download docs/anexos/ebook PDFs to a Google Drive "Documentos" folder.
 
 Flow (verified via CDP recon):
   1. home/index.php → close AVISO modal → "Consulta causas"
@@ -14,26 +14,26 @@ Flow (verified via CDP recon):
   4. #modalDetalleCivil → header + iterate #selCuaderno → historia / litigantes /
      escritos panes; download docs per historia row; anexos sub-modal.
 
-Writes straight into the relational pjud_* tables (PostgREST upsert). Build to run
-LOCALLY first (`python run.py --headed --limit 1`), verify against live, then CI.
+Writes incrementally into a Google Sheet (8 tabs) + Drive folder via gstore. Run
+setup once (`python run.py --setup`), then run LOCALLY (`python run.py --headed
+--limit 1`), verify against live, then CI.
 """
 
 import argparse
 import os
 import re
-import sys
 import time
 from pathlib import Path
 
-import requests
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
+
+import gstore
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 OJV       = "https://oficinajudicialvirtual.pjud.cl"
 HOME      = f"{OJV}/home/index.php"
-BUCKET    = "pjud-docs"
 TRIBUNAL  = {"id": "arica-1", "corte": "C.A. de Arica",
              "tribunal": "1º Juzgado de Letras de Arica"}
 # Select values mapped during recon (may shift — logged on mismatch).
@@ -43,7 +43,8 @@ VAL_TRIBUNAL    = "2"   # 1º Juzgado de Letras de Arica
 
 SCRATCH = Path(os.environ.get("TEMP", "/tmp")) / "pjud_pdfs"
 
-DRY = False        # --dry-run: verify live nav/parse without any Supabase I/O
+STORE = None       # gstore.Store, set in main() (None under --dry-run)
+DRY = False        # --dry-run: verify live nav/parse without any writes
 SKIP_DOCS = False  # --skip-docs: scrape metadata only, no PDF download/upload
 
 
@@ -51,84 +52,27 @@ def log(msg):
     print(msg, flush=True)
 
 
-# ── env / config ──────────────────────────────────────────────────────────────
+# ── Write layer: Google Sheet upsert + Drive PDF upload (via gstore) ──────────
 
-def load_env():
-    """Load SUPABASE_URL / SUPABASE_SERVICE_KEY from the shared JPL .env.
-
-    Order: real environment first (CI sets these inline), then the gitignored
-    felipe/scraper/.env that the JPL backend already uses.
-    """
-    env = {}
-    here = Path(__file__).resolve()
-    candidates = [
-        here.parent / ".env",                       # pjud/scraper/.env (optional)
-        here.parents[2] / "scraper" / ".env",       # felipe/scraper/.env (shared)
-    ]
-    for path in candidates:
-        if path.exists():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                env.setdefault(k.strip(), v.strip())
-    url = os.environ.get("SUPABASE_URL") or env.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_SERVICE_KEY") or env.get("SUPABASE_SERVICE_KEY")
-    if not url or not key:
-        if DRY:
-            log("[DRY] no Supabase creds — running nav/parse only, no writes.")
-            return "", ""
-        sys.exit("[FATAL] SUPABASE_URL / SUPABASE_SERVICE_KEY not found "
-                 "(set env or felipe/scraper/.env).")
-    return url.rstrip("/"), key
-
-
-# ── Supabase: relational upsert + Storage upload ──────────────────────────────
-
-def _hdr(key):
-    return {"apikey": key, "Authorization": f"Bearer {key}"}
-
-
-def upsert(sb_url, sb_key, table, conflict_col, rows, null_cols=()):
-    """Upsert dict rows by `conflict_col`. Empty `null_cols` are sent as NULL
-    (an FK can't reference '')."""
+def upsert(table, rows):
+    """Upsert dict rows into the Sheet tab for `table`, keyed on column A."""
     if not rows:
         return 0
-    if DRY:
+    if DRY or STORE is None:
         log(f"[DRY] upsert {table}: {len(rows)} row(s); sample={rows[0]}")
         return len(rows)
-    url = f"{sb_url}/rest/v1/{table}?on_conflict={conflict_col}"
-    headers = {**_hdr(sb_key), "Content-Type": "application/json",
-               "Prefer": "resolution=merge-duplicates,return=minimal"}
-    clean = []
-    for r in rows:
-        d = dict(r)
-        for c in null_cols:
-            if d.get(c) in ("", None):
-                d[c] = None
-        clean.append(d)
-    for i in range(0, len(clean), 200):
-        resp = requests.post(url, headers=headers, json=clean[i:i + 200], timeout=60)
-        if not resp.ok:
-            log(f"[ERR] upsert {table} -> {resp.status_code}: {resp.text[:300]}")
-            resp.raise_for_status()
-    return len(clean)
+    return STORE.upsert(table, rows)
 
 
-def upload_pdf(sb_url, sb_key, object_path, data):
-    """Upload bytes to the public pjud-docs bucket, return the permanent URL.
+def upload_pdf(object_path, data):
+    """Upload PDF bytes to the Drive Documentos folder, return its link.
     Guards against tiny/corrupt downloads."""
     if len(data) < 1024:
         raise RuntimeError(f"download too small ({len(data)}B) for {object_path}")
-    if DRY:
+    if DRY or STORE is None:
         log(f"[DRY] upload {object_path} ({len(data)}B)")
-        return f"DRY://{BUCKET}/{object_path}"
-    up = f"{sb_url}/storage/v1/object/{BUCKET}/{object_path}"
-    headers = {**_hdr(sb_key), "Content-Type": "application/pdf", "x-upsert": "true"}
-    r = requests.post(up, headers=headers, data=data, timeout=120)
-    r.raise_for_status()
-    return f"{sb_url}/storage/v1/object/public/{BUCKET}/{object_path}"
+        return f"DRY://{object_path}"
+    return STORE.upload_pdf(object_path, data)
 
 
 # ── RUT / name parsing ────────────────────────────────────────────────────────
@@ -320,6 +264,10 @@ def parse_historia(page):
             return { action: f.getAttribute('action') || '',
                      val: inp ? inp.value : '' };
           };
+          // Georref cell (idx 8): an <a onclick="geoReferencia('<JWT>')"> when present
+          const geoA = td[8] ? td[8].querySelector("a[onclick*='geoReferencia']") : null;
+          const gm = geoA ? (geoA.getAttribute('onclick') || '')
+                              .match(/geoReferencia\(['"]([^'"]+)['"]\)/) : null;
           return {
             folio:   cell(0),
             doc:     formInfo(docForm),
@@ -330,6 +278,7 @@ def parse_historia(page):
             fecha:   cell(6),
             foja:    cell(7),
             georref: cell(8),
+            geo:     gm ? gm[1] : '',
           };
         })""")
 
@@ -352,6 +301,90 @@ def parse_escritos(page):
           const c = i => td[i] ? td[i].innerText.trim() : '';
           return { fecha_ingreso: c(2), tipo_escrito: c(3), solicitante: c(4) };
         }).filter(r => r.tipo_escrito || r.solicitante)""")
+
+
+def close_overlay(page, sel):
+    """Close a nested sub-modal (receptor / geo) without disturbing #modalDetalleCivil."""
+    for s in (f"{sel} button.close", f"{sel} .close",
+              f"{sel} button[data-dismiss='modal']"):
+        try:
+            page.click(s, timeout=1500)
+            page.wait_for_timeout(400)
+            return
+        except Exception:
+            pass
+    try:                                # fallback: hide via the page's jQuery
+        page.evaluate("s => { if (window.jQuery) jQuery(s).modal('hide'); }", sel)
+    except Exception:
+        pass
+    page.wait_for_timeout(300)
+
+
+# ── Notificaciones Receptor (causa-level sub-modal #modalReceptorCivil) ────────
+
+def grab_receptor_jwt(page):
+    """JWT from the header <a onclick="receptorCivil('<JWT>')">; '' if absent."""
+    info = page.eval_on_selector_all(
+        "#modalDetalleCivil a[onclick*='receptorCivil']",
+        r"""els => els.slice(0,1).map(a => {
+          const m = (a.getAttribute('onclick') || '')
+                      .match(/receptorCivil\(['"]([^'"]+)['"]\)/);
+          return m ? m[1] : '';
+        })""")
+    return info[0] if info and info[0] else ""
+
+
+def open_receptor(page, jwt):
+    page.evaluate("j => receptorCivil(j)", jwt)
+    try:
+        page.wait_for_function(
+            "() => { const m = document.querySelector('#modalReceptorCivil');"
+            " return m && (m.querySelector('table tbody tr') ||"
+            " /Receptor/i.test(m.innerText)); }", timeout=10_000)
+    except PlaywrightTimeout:
+        pass
+    page.wait_for_timeout(500)
+
+
+def parse_receptor(page):
+    """Rows of #modalReceptorCivil: Cuaderno | Datos del Retiro | Fecha Retiro | Estado."""
+    return page.eval_on_selector_all(
+        "#modalReceptorCivil table tbody tr",
+        r"""els => els.map(tr => {
+          const td = Array.from(tr.querySelectorAll('td'));
+          const c = i => td[i] ? td[i].innerText.trim() : '';
+          return { cuaderno: c(0), nombre: c(1), fecha: c(2), estado: c(3) };
+        }).filter(r => r.nombre || r.cuaderno)""")
+
+
+# ── Georreferencia (per-historia-row sub-modal #modalGeoReferenciaCivil) ───────
+
+def open_geo(page, jwt):
+    page.evaluate("j => geoReferencia(j)", jwt)
+    page.wait_for_function(
+        "() => { const m = document.querySelector('#modalGeoReferenciaCivil');"
+        " const i = m && m.querySelector(\"input[name='latitud']\");"
+        " return i && i.value; }", timeout=10_000)
+    page.wait_for_timeout(300)
+
+
+def grab_geo(page):
+    """(latitud, longitud) from the geo modal's hidden inputs."""
+    vals = page.eval_on_selector_all(
+        "#modalGeoReferenciaCivil input[name='latitud'],"
+        " #modalGeoReferenciaCivil input[name='longitud']",
+        "els => els.map(e => ({ n: e.getAttribute('name'), v: e.value || '' }))")
+    d = {x["n"]: x["v"] for x in vals}
+    return d.get("latitud", ""), d.get("longitud", "")
+
+
+def georref_hyperlink(lat, lng):
+    """A simple clickable map cell: =HYPERLINK("…maps…", "lat, lng")."""
+    if not lat or not lng:
+        return ""
+    label = f"{lat[:10]}, {lng[:10]}"
+    url = f"https://maps.google.com/maps?ll={lat},{lng}&z=16"
+    return f'=HYPERLINK("{url}","{label}")'
 
 
 # ── Document download (GET in-session, share browser cookies) ─────────────────
@@ -379,7 +412,7 @@ def download_form(api, form, param="dtaDoc", quiet=False):
 
 # ── Per-causa scrape ──────────────────────────────────────────────────────────
 
-def scrape_causa(page, api, sb_url, sb_key, causa):
+def scrape_causa(page, api, causa):
     rol = causa["rol"]
     log(f"\n[CAUSA] {rol} — {causa['caratulado'][:60]}")
     open_detail(page, causa["jwt"])
@@ -395,19 +428,18 @@ def scrape_causa(page, api, sb_url, sb_key, causa):
         body = download_form(api, {"action": eb["action"], "val": eb["val"]}, quiet=True)
         if body:
             try:
-                ebook_url = upload_pdf(sb_url, sb_key,
-                                       f"{rol}/ebook.pdf".replace(" ", "_"), body)
+                ebook_url = upload_pdf(f"{rol}/ebook.pdf".replace(" ", "_"), body)
             except Exception as e:
                 log(f"[WARN] ebook upload {rol}: {e}")
 
-    upsert(sb_url, sb_key, "pjud_causas", "rol", [{
+    upsert("pjud_causas", [{
         "rol": rol,
         **header,
         "tribunal": TRIBUNAL["id"],
         "competencia": "Civil",
         "ebook": ebook_url,
         "updated_at": _now(),
-    }], null_cols=("tribunal",))
+    }])
 
     # Litigantes -> ruts + junction
     rut_rows, lit_rows = [], []
@@ -426,11 +458,37 @@ def scrape_causa(page, api, sb_url, sb_key, causa):
                              "ap_materno": amat, "updated_at": _now()})
         lit_rows.append({"id": f"{rol}::{rut}", "causa": rol, "rut": rut,
                          "participante": L["participante"], "updated_at": _now()})
-    upsert(sb_url, sb_key, "pjud_ruts", "rut", rut_rows)
-    upsert(sb_url, sb_key, "pjud_litigantes", "id", lit_rows)
+    upsert("pjud_ruts", rut_rows)
+    upsert("pjud_litigantes", lit_rows)
+
+    cuads = cuaderno_options(page) or [{"txt": "1 - Principal", "val": ""}]
+    # map a bare cuaderno name back to our numbered id ('Principal' -> '1 - Principal')
+    bare2full = {}
+    for opt in cuads:
+        txt = opt["txt"]
+        bare = txt.split(" - ", 1)[1].strip() if " - " in txt else txt
+        bare2full[bare] = txt
+
+    # Notificaciones Receptor — causa-level sub-modal #modalReceptorCivil
+    notif_rows = []
+    rjwt = grab_receptor_jwt(page)
+    if rjwt:
+        try:
+            open_receptor(page, rjwt)
+            for i, rr in enumerate(parse_receptor(page), 1):
+                full = bare2full.get(rr["cuaderno"], rr["cuaderno"])
+                notif_rows.append({
+                    "ID": f"{rol}::receptor::{i}",
+                    "Cuaderno ID": f"{rol}::{full}",
+                    "Nombre": rr["nombre"], "Fecha": rr["fecha"],
+                    "Estado": rr["estado"],
+                })
+            close_overlay(page, "#modalReceptorCivil")
+        except Exception as e:
+            log(f"[WARN] receptor {rol}: {e}")
+    upsert("pjud_notificaciones", notif_rows)
 
     # Cuadernos (iterate selCuaderno) -> historia rows + docs/anexos
-    cuads = cuaderno_options(page) or [{"txt": "1 - Principal", "val": ""}]
     cuad_rows, esc_rows, doc_rows, anex_rows = [], [], [], []
     for i, opt in enumerate(cuads):
         cuaderno = opt["txt"]
@@ -442,11 +500,20 @@ def scrape_causa(page, api, sb_url, sb_key, causa):
             n = seen.get(folio, 0) + 1
             seen[folio] = n
             cid = f"{rol}::{cuaderno}::{folio}::{n}"
+            georref = h["georref"]
+            if h.get("geo"):            # row has a map reference -> resolve coords
+                try:
+                    open_geo(page, h["geo"])
+                    lat, lng = grab_geo(page)
+                    close_overlay(page, "#modalGeoReferenciaCivil")
+                    georref = georref_hyperlink(lat, lng) or georref
+                except Exception as e:
+                    log(f"[WARN] geo {rol} {cuaderno} folio {folio}: {e}")
             cuad_rows.append({
                 "id": cid, "causa": rol, "cuaderno": cuaderno, "folio": folio,
                 "etapa": h["etapa"], "tramite": h["tramite"],
                 "descripcion_tramite": h["desc"], "fecha_tramite": h["fecha"],
-                "foja": h["foja"], "georref": h["georref"],
+                "foja": h["foja"], "georref": georref,
             })
             # documents on this row
             for kind, form, sink in (("doc", h["doc"], doc_rows),
@@ -458,7 +525,7 @@ def scrape_causa(page, api, sb_url, sb_key, causa):
                     continue
                 obj = f"{rol}/{cuaderno}/{folio}-{n}-{kind}.pdf".replace(" ", "_")
                 try:
-                    url = upload_pdf(sb_url, sb_key, obj, body)
+                    url = upload_pdf(obj, body)
                 except Exception as e:
                     log(f"[WARN] upload {obj}: {e}")
                     continue
@@ -477,12 +544,14 @@ def scrape_causa(page, api, sb_url, sb_key, causa):
             esc_rows.append({"id": f"{rol}::{cuaderno}::esc::{i}",
                              "cuaderno": anchor, **e})
 
-    upsert(sb_url, sb_key, "pjud_cuadernos", "id", cuad_rows)
-    upsert(sb_url, sb_key, "pjud_escritos", "id", esc_rows)
-    upsert(sb_url, sb_key, "pjud_documentos", "id", doc_rows)
-    upsert(sb_url, sb_key, "pjud_anexos", "id", anex_rows)
+    upsert("pjud_cuadernos", cuad_rows)
+    upsert("pjud_escritos", esc_rows)
+    upsert("pjud_documentos", doc_rows)
+    upsert("pjud_anexos", anex_rows)
+    geo_n = sum(1 for c in cuad_rows if str(c.get("georref", "")).startswith("="))
     log(f"[CAUSA] {rol}: {len(cuad_rows)} historia, {len(lit_rows)} litigantes, "
-        f"{len(doc_rows)} docs, {len(anex_rows)} anexos, {len(esc_rows)} escritos")
+        f"{len(notif_rows)} receptor, {geo_n} georref, {len(doc_rows)} docs, "
+        f"{len(anex_rows)} anexos, {len(esc_rows)} escritos")
 
     # close modal for the next causa
     for sel in ("#modalDetalleCivil button.close", "#modalDetalleCivil .close",
@@ -513,6 +582,8 @@ def expand_eras(spec):
 
 def parse_args():
     p = argparse.ArgumentParser(description="PJUD OJV scraper (Arica/Civil/Tribunal-1).")
+    p.add_argument("--setup", action="store_true",
+                   help="One-time: OAuth login + provision the Drive folder/Sheet, then exit.")
     p.add_argument("--rut", default="97004000", help="RUT sin dígito verificador (default: Banco de Chile).")
     p.add_argument("--dv", default="5", help="Dígito verificador.")
     p.add_argument("--era", default="2026",
@@ -527,15 +598,22 @@ def parse_args():
 
 
 def main():
-    global DRY, SKIP_DOCS
+    global STORE, DRY, SKIP_DOCS
     args = parse_args()
+
+    if args.setup:
+        gstore.provision()
+        log("[SETUP] done. Now run: python run.py --headed --limit 1")
+        return
+
     DRY = args.dry_run
     SKIP_DOCS = args.skip_docs
-    sb_url, sb_key = load_env()
+    if not DRY:
+        STORE = gstore.Store()
     SCRATCH.mkdir(parents=True, exist_ok=True)
 
-    # seed the single tribunal (FK target for pjud_causas)
-    upsert(sb_url, sb_key, "pjud_tribunales", "id", [TRIBUNAL])
+    # seed the single tribunal (referenced by Causas.tribunal)
+    upsert("pjud_tribunales", [TRIBUNAL])
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=not args.headed)
@@ -562,7 +640,7 @@ def main():
             for c in causas:
                 total += 1
                 try:
-                    scrape_causa(search_page, api, sb_url, sb_key, c)
+                    scrape_causa(search_page, api, c)
                     ok += 1
                 except Exception as e:
                     log(f"[ERR] causa {c['rol']}: {e}")
