@@ -1,11 +1,11 @@
-"""Search for email addresses for demandados identified by RUT.
+"""Search for email addresses for personas identified by RUT.
 
-Reads demandados without emails from Supabase, tries each source
-anonymously in order, and patches the email back on first match.
+Reads personas without an email from the Sheet's Ruts tab, tries each source
+anonymously in order, and writes the email back to that RUT's row on first match.
 
 Usage:
-  python enrich_emails.py [--job-id <UUID>] [--all] [--dry-run]
-  python enrich_emails.py --all --sources pjud,boletin_concursal
+  python enrich_emails.py [--dry-run]
+  python enrich_emails.py --sources pjud,boletin_concursal
 """
 import argparse
 import json
@@ -17,8 +17,7 @@ import time
 import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+import gstore
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 
@@ -52,31 +51,13 @@ def _go(page, url, wait=1_500):
         return ""
 
 
-# ── Supabase helpers ──────────────────────────────────────────────────────────
+# ── Sheet helpers ─────────────────────────────────────────────────────────────
 
-def _sb_headers():
-    return {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
-
-
-def fetch_all_rows(job_id=None):
-    params = {"select": "job_id,record_id,status,text", "order": "job_id"}
-    if job_id:
-        params["job_id"] = f"eq.{job_id}"
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/checkpoints",
-                     headers=_sb_headers(), params=params, timeout=90)
-    r.raise_for_status()
-    return r.json()
-
-
-def patch_row(job_id, record_id, new_text):
-    r = requests.patch(
-        f"{SUPABASE_URL}/rest/v1/checkpoints",
-        headers={**_sb_headers(), "Content-Type": "application/json"},
-        params={"job_id": f"eq.{job_id}", "record_id": f"eq.{record_id}"},
-        json={"text": new_text},
-        timeout=30,
-    )
-    r.raise_for_status()
+def full_name(rut_row):
+    """Reconstruct a search name from the Ruts tab's split-name columns."""
+    parts = [rut_row.get("nombre", ""), rut_row.get("ap_paterno", ""),
+             rut_row.get("ap_materno", "")]
+    return " ".join(p for p in parts if p).strip() or rut_row.get("razon_social", "")
 
 
 # ── Sources ───────────────────────────────────────────────────────────────────
@@ -161,42 +142,22 @@ ALL_SOURCES = [
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--job-id")
-    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--job-id", help="Accepted for CI compatibility; ignored "
+                    "(the Sheet is the source — all personas w/o email are enriched).")
+    ap.add_argument("--all", action="store_true", help="Accepted for compatibility.")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--sources", help="Comma-separated source names (default: all).")
     args = ap.parse_args()
-
-    if not (args.job_id or args.all):
-        sys.exit("ERROR: pass --job-id <JOB> or --all")
-    if not (SUPABASE_URL and SUPABASE_KEY):
-        sys.exit("ERROR: set SUPABASE_URL and SUPABASE_SERVICE_KEY")
 
     enabled = set(args.sources.split(",")) if args.sources else None
     active  = [(n, fn) for n, fn in ALL_SOURCES if enabled is None or n in enabled]
     print(f"[enrich] sources: {[n for n, _ in active]}")
 
-    rows = fetch_all_rows(args.job_id if not args.all else None)
-
-    rol_rows: dict[str, dict] = {}
-    for row in rows:
-        rid = row.get("record_id", "")
-        if rid.startswith("__"):
-            continue
-        rol_rows.setdefault(row["job_id"], {})[rid] = row
-
-    targets = []
-    for jid, rols in rol_rows.items():
-        for rol, row in rols.items():
-            try:
-                d = json.loads(row.get("text") or "{}")
-            except Exception:
-                continue
-            for i, dem in enumerate(d.get("demandados") or []):
-                if not dem.get("email") and dem.get("rut"):
-                    targets.append((jid, rol, i, dem["rut"], dem.get("nombre", "")))
-
-    print(f"[enrich] {len(targets)} demandados without email")
+    store = gstore.Store()
+    ruts = store.read_tab("Ruts")
+    targets = [r for r in ruts
+               if r.get("tipo") == "persona" and r.get("rut") and not r.get("email")]
+    print(f"[enrich] {len(targets)} personas without email")
     if not targets:
         return
 
@@ -209,8 +170,9 @@ def main():
         ))
         page = ctx.new_page()
 
-        for (jid, rol, dem_idx, rut, nombre) in targets:
-            print(f"\n[enrich] {rol} RUT={rut!r} nombre={nombre!r}")
+        for r in targets:
+            rut, nombre = r["rut"], full_name(r)
+            print(f"\n[enrich] RUT={rut!r} nombre={nombre!r}")
             email = source = None
 
             for src_name, src_fn in active:
@@ -236,18 +198,11 @@ def main():
                 print(f"  → DRY RUN: email={email!r} source={source!r}")
                 continue
 
-            row = rol_rows[jid][rol]
+            r["email"] = email
+            r["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             try:
-                d = json.loads(row.get("text") or "{}")
-                dem_list = d.get("demandados") or []
-                if dem_idx < len(dem_list):
-                    dem_list[dem_idx]["email"]        = email
-                    dem_list[dem_idx]["email_source"] = source
-                    d["demandados"] = dem_list
-                    new_text = json.dumps(d, ensure_ascii=False)
-                    patch_row(jid, rol, new_text)
-                    row["text"] = new_text
-                    print("  → saved")
+                store.upsert("Ruts", [r])      # full row back -> only email changes
+                print(f"  → saved (source {source})")
             except Exception as exc:
                 print(f"  → ERROR saving: {exc}")
 

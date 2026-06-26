@@ -1,22 +1,15 @@
-"""Shared helpers for patente enrichment (Supabase I/O + HTML field extraction).
+"""Shared helpers for patente enrichment (plate + HTML field extraction).
 
 NOTE: patentechile.com gates its results endpoint behind a Cloudflare *managed
 challenge* that automated/headless browsers and datacenter IPs (GitHub Actions)
-cannot pass. The actual scraping therefore runs locally in a real browser —
-see enrich_patentes_local.py. This module only holds the reusable pieces it
-imports; running it directly just points you there.
+cannot pass. The actual scraping runs locally in a real browser — see
+enrich_patentes_local.py. This module is import-only parsing helpers; the data
+store is the Google Sheet (Patentes tab), handled via gstore.
 """
-import argparse
-import json
-import os
 import re
 import sys
 
-import requests
 from bs4 import BeautifulSoup
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 PLATE_RE = re.compile(r'^[A-Z]{2,4}\d{2,4}$')
 
@@ -34,53 +27,6 @@ _FIELDS = {
 }
 
 
-# ── Supabase helpers ───────────────────────────────────────────────────────────
-
-def _sb():
-    return {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
-
-
-def fetch_checkpoints(job_id):
-    r = requests.get(
-        f"{SUPABASE_URL}/rest/v1/checkpoints",
-        headers=_sb(),
-        params={"select": "record_id,text", "job_id": f"eq.{job_id}"},
-        timeout=90,
-    )
-    r.raise_for_status()
-    return r.json()
-
-
-def fetch_existing(plates: set) -> set:
-    if not plates:
-        return set()
-    in_val = ",".join(sorted(plates))
-    r = requests.get(
-        f"{SUPABASE_URL}/rest/v1/patentes",
-        headers=_sb(),
-        # Only count a plate as already-enriched if it actually has data — the
-        # export creates empty placeholder rows (one per plate, for the FK), and
-        # those must NOT be treated as done or they'd never get enriched.
-        params={"select": "patente",
-                "or": "(marca.not.is.null,rut_propietario.not.is.null,modelo.not.is.null)",
-                "patente": f"in.({in_val})"},
-        timeout=30,
-    )
-    r.raise_for_status()
-    return {row["patente"] for row in r.json()}
-
-
-def upsert(data: dict):
-    r = requests.post(
-        f"{SUPABASE_URL}/rest/v1/patentes",
-        headers={**_sb(), "Content-Type": "application/json",
-                 "Prefer": "resolution=merge-duplicates"},
-        json=data,
-        timeout=30,
-    )
-    r.raise_for_status()
-
-
 # ── Plate extraction ───────────────────────────────────────────────────────────
 
 def extract_plates(field: str) -> list[str]:
@@ -90,25 +36,6 @@ def extract_plates(field: str) -> list[str]:
         if p and PLATE_RE.match(p):
             out.append(p)
     return out
-
-
-def collect_plates(rows) -> set:
-    plates = set()
-    for row in rows:
-        rid = row.get("record_id", "")
-        if rid.startswith("__"):
-            continue
-        try:
-            d = json.loads(row.get("text") or "{}")
-        except Exception:
-            continue
-        causa = d.get("causa") or {}
-        for p in extract_plates(causa.get("placa_patente") or d.get("placa_patente") or ""):
-            plates.add(p)
-        for dem in d.get("demandados") or []:
-            for p in extract_plates(dem.get("patente") or dem.get("placa_patente") or ""):
-                plates.add(p)
-    return plates
 
 
 # ── HTML data extraction ───────────────────────────────────────────────────────
@@ -171,15 +98,11 @@ def _extract_html(html: str, patente: str) -> dict:
 # that headless/CI cannot pass. This module is now import-only helpers.
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--job-id")
-    ap.add_argument("--dry-run", action="store_true")
-    ap.parse_args()
     sys.exit(
-        "patente enrichment runs locally now — patentechile.com is behind a "
-        "Cloudflare managed challenge that CI/headless can't pass.\n"
-        "Run on your own machine:\n"
-        "  python enrich_patentes_local.py --job-id <UUID>"
+        "This module is import-only parsing helpers now. Patente enrichment runs\n"
+        "locally (patentechile.com is behind a Cloudflare challenge CI can't pass):\n"
+        "  python enrich_patentes_local.py                      # enrich un-filled plates in the Sheet\n"
+        "  python enrich_patentes_local.py --plates AA1111,BB2222 --dry-run"
     )
 
 

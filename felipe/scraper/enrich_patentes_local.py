@@ -29,11 +29,9 @@ except ImportError:
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
     _DRIVER = "playwright"
 
-# Reuse the Supabase + extraction helpers from the CI module.
-from enrich_patentes import (
-    fetch_checkpoints, collect_plates, fetch_existing, upsert,
-    _extract_html, SUPABASE_URL, SUPABASE_KEY,
-)
+# Reuse the HTML field-extraction helper; the data store is the Google Sheet.
+import gstore
+from enrich_patentes import _extract_html
 
 PROFILE_DIR = os.path.expanduser("~/.cache/patente-profile")
 CHALLENGE_MARKERS = ("verificación de seguridad", "just a moment",
@@ -143,7 +141,7 @@ def open_context(pw):
         return pw.chromium.launch_persistent_context(PROFILE_DIR, **kwargs)
 
 
-def enrich_plates(page, plates, dry_run=False, _is_retry=False):
+def enrich_plates(store, page, plates, dry_run=False, _is_retry=False):
     """Scrape (and unless dry_run, upsert) each plate on an already-open page.
 
     Paces between plates to avoid Cloudflare. Plates blocked by a CF challenge are
@@ -180,7 +178,9 @@ def enrich_plates(page, plates, dry_run=False, _is_retry=False):
             print(f"  -> DRY RUN: {result}")
             continue
         try:
-            upsert(result)
+            # result keys (patente, rut_propietario, marca, ...) match the Patentes
+            # tab columns, so the dict upserts straight into that plate's row.
+            store.upsert("Patentes", [result])
             found += 1                       # count only after a successful save
             print(f"  -> saved: {result}")
         except Exception as e:
@@ -190,7 +190,7 @@ def enrich_plates(page, plates, dry_run=False, _is_retry=False):
     if challenged and not _is_retry:
         print(f"\n[patentes] retrying {len(challenged)} plate(s) blocked by Cloudflare…")
         time.sleep(random.uniform(10, 20))
-        f2, _ = enrich_plates(page, challenged, dry_run=dry_run, _is_retry=True)
+        f2, _ = enrich_plates(store, page, challenged, dry_run=dry_run, _is_retry=True)
         found += f2
     elif challenged:
         print(f"[patentes] {len(challenged)} still blocked after retry: {challenged}")
@@ -198,32 +198,30 @@ def enrich_plates(page, plates, dry_run=False, _is_retry=False):
     return found, len(plates)
 
 
-def job_to_enrich(job_id):
-    """Return the sorted list of plates in a job that aren't yet in the DB."""
-    rows = fetch_checkpoints(job_id)
-    all_plates = collect_plates(rows)
-    existing = fetch_existing(all_plates)
-    to_enrich = sorted(all_plates - existing)
-    print(f"[patentes] {len(all_plates)} in job, {len(existing)} in DB, "
-          f"{len(to_enrich)} to enrich")
+def plates_to_enrich(store):
+    """Plates in the Patentes tab that still lack vehicle data."""
+    rows = store.read_tab("Patentes")
+    to_enrich = sorted(
+        r["patente"] for r in rows
+        if r.get("patente") and not (r.get("marca") or r.get("modelo")
+                                     or r.get("rut_propietario")))
+    print(f"[patentes] {len(rows)} in Sheet, {len(to_enrich)} to enrich")
     return to_enrich
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--job-id")
-    ap.add_argument("--plates", help="Comma-separated plates (skips Supabase read)")
+    ap.add_argument("--plates", help="Comma-separated plates (ad-hoc; skips the Sheet read)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
+    # The Sheet is only needed to pick targets and/or save. Pure --plates --dry-run
+    # needs neither.
+    store = None if (args.dry_run and args.plates) else gstore.Store()
     if args.plates:
         to_enrich = sorted({p.strip().upper() for p in args.plates.split(",") if p.strip()})
     else:
-        if not args.job_id:
-            sys.exit("ERROR: pass --job-id or --plates")
-        if not (SUPABASE_URL and SUPABASE_KEY):
-            sys.exit("ERROR: set SUPABASE_URL and SUPABASE_SERVICE_KEY")
-        to_enrich = job_to_enrich(args.job_id)
+        to_enrich = plates_to_enrich(store)
 
     if not to_enrich:
         print("[patentes] Nothing to do")
@@ -232,7 +230,7 @@ def main():
     with sync_playwright() as pw:
         ctx = open_context(pw)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        found, total = enrich_plates(page, to_enrich, dry_run=args.dry_run)
+        found, total = enrich_plates(store, page, to_enrich, dry_run=args.dry_run)
         try:
             ctx.close()
         except Exception:

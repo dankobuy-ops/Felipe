@@ -182,6 +182,18 @@ class Store:
         """True if `key` already exists in column A of `tab` (used for resume)."""
         return key in self._load_index(tab)
 
+    def read_tab(self, tab):
+        """All data rows of `tab` as dicts keyed by the tab's column names.
+        Used by enrichment to read rows, fill a field, and upsert them back."""
+        cols = TABS[tab]
+        resp = self.sheets.spreadsheets().values().get(
+            spreadsheetId=self.sheet_id,
+            range=f"{tab}!A2:{_col_letter(len(cols) - 1)}").execute()
+        out = []
+        for r in resp.get("values", []):
+            out.append({c: (r[i] if i < len(r) else "") for i, c in enumerate(cols)})
+        return out
+
     def upsert(self, table, rows):
         """Upsert dict rows by column A. Existing IDs overwrite in place; new IDs
         append. Repeated IDs within the batch — last one wins."""
