@@ -19,8 +19,7 @@ from urllib.parse import urljoin
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
-from checkpoint import mark_job_status, read_checkpoint, write_checkpoints
-from storage import upload_pdf
+import gstore
 
 STATUS_FILE  = Path("/tmp/scrape_status")
 DOWNLOAD_DIR = Path("/tmp/pdfs")
@@ -41,9 +40,11 @@ FORM_MARKERS = ("seleccione la opción", "ej: 12345678", "ej: aa1111", "placa:")
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--job-id",      required=True)
-    p.add_argument("--search-code", required=True)
-    p.add_argument("--target-url",  required=True)
+    p.add_argument("--setup", action="store_true",
+                   help="One-time: OAuth login + provision the Drive folder/Sheet, then exit.")
+    p.add_argument("--job-id",      default="")
+    p.add_argument("--search-code", default="")
+    p.add_argument("--target-url",  default="")
     p.add_argument("--max-seconds", type=int, default=240)
     p.add_argument("--year",        default="", help="Keep only entries whose fecha_proceso contains this year (e.g. 2024). Empty = all years.")
     p.add_argument("--juzgado",     default="", help="Court identifier (e.g. vitacura, lobarnechea)")
@@ -73,7 +74,13 @@ def filter_by_year(records, year):
 
 
 def write_status(s):
-    STATUS_FILE.write_text(s)
+    """CI reads this to decide whether to re-dispatch. Best-effort — tolerate a
+    missing /tmp on local (Windows) runs."""
+    try:
+        STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATUS_FILE.write_text(s)
+    except Exception:
+        pass
 
 
 def log(msg):
@@ -409,19 +416,6 @@ def get_results_list(page):
     return records
 
 
-def write_meta(supabase_url, supabase_key, job_id, total, rut="", year="", juzgado=""):
-    """Write __meta__ row with total count + query params so the SPA can list
-    and label previous jobs (the 'Jobs anteriores' history)."""
-    write_checkpoints(supabase_url, supabase_key, [{
-        "job_id":    job_id,
-        "record_id": "__meta__",
-        "status":    "running",
-        "text":      json.dumps({"total": total, "rut": rut, "year": year, "juzgado": juzgado,
-                                 "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}),
-        "pdf_url":   "",
-    }])
-
-
 # ── Level 2 → Level 3: click Abrir ────────────────────────────────────────────
 
 def open_causa(page, rec, results_url):
@@ -669,26 +663,172 @@ def _fetch_pdf(context, href, depth=0):
     return None
 
 
-def download_pdfs(page, context, docs, job_id, rol, supabase_url, supabase_key, bucket):
+# ── Normalization: one causa's JSON -> relational rows for the Sheet ───────────
+# Ported from the old export_sheets.build_tables, applied per-causa as we scrape.
+
+_PLATE_RE = re.compile(r"^[A-Z]{2,4}\d{2,4}$")
+
+JUZGADO_NAMES = {"vitacura": "Vitacura", "lobarnechea": "Lo Barnechea"}
+JUZGADOS_SEED = [
+    {"juzgado_id": "vitacura", "nombre": "Vitacura",
+     "url": "https://vitacura.cl/municipalidad/juzgado/juzgado-policia-local/"},
+    {"juzgado_id": "lobarnechea", "nombre": "Lo Barnechea",
+     "url": "https://mlobarnechea.custhelp.com/app/answers/detail/a_id/83/incidents.c$tipo_atencion/221"},
+]
+
+
+def _now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _first(d, *keys):
+    for k in keys:
+        if d.get(k):
+            return d[k]
+    return ""
+
+
+def _domicilio(party):
+    return ", ".join(p for p in (party.get("direccion", ""), party.get("comuna", "")) if p)
+
+
+def _plates(*fields):
+    out, seen = [], set()
+    for field in fields:
+        for tok in re.split(r"[\n,;/]+", field or ""):
+            p = re.sub(r"[\s\-.]", "", tok).strip().upper()
+            if p and _PLATE_RE.match(p) and p not in seen:
+                seen.add(p)
+                out.append(p)
+    return out
+
+
+def _split_name(nombre):
+    """Split "APELLIDO1 APELLIDO2, NOMBRE1 NOMBRE2" (or positional) → 4 parts."""
+    if not nombre:
+        return "", "", "", ""
+    nombre = nombre.strip()
+    if "," in nombre:
+        apellidos_str, nombres_str = nombre.split(",", 1)
+        apellidos = apellidos_str.strip().split()
+        nombres = nombres_str.strip().split()
+        ap_paterno = apellidos[0].title() if len(apellidos) >= 1 else ""
+        ap_materno = apellidos[1].title() if len(apellidos) >= 2 else ""
+        nombre1 = nombres[0].title() if len(nombres) >= 1 else ""
+        segundo = " ".join(p.title() for p in nombres[1:])
+        return nombre1, segundo, ap_paterno, ap_materno
+    parts = nombre.split()
+    n = len(parts)
+    if n == 0:
+        return "", "", "", ""
+    if n == 1:
+        return parts[0].title(), "", "", ""
+    if n == 2:
+        return parts[1].title(), "", parts[0].title(), ""
+    if n == 3:
+        return parts[2].title(), "", parts[0].title(), parts[1].title()
+    return (parts[2].title(), " ".join(p.title() for p in parts[3:]),
+            parts[0].title(), parts[1].title())
+
+
+def normalize_causa(juzgado_id, search_code, case_data):
+    """One causa's scraped JSON -> ({tab: [row dicts]}, caso_id).
+
+    Enrichment-bearing tabs (Ruts email/phone, Patentes marca/...) are written
+    rut/plate-only here; the caller skips ones already in the Sheet so prior
+    enrichment is never clobbered by a re-scrape.
+    """
+    if juzgado_id not in JUZGADO_NAMES:
+        juzgado_id = ""
+    rol = case_data.get("rol") or ""
+    cid = f"{juzgado_id or 'jpl'}/{rol}"
+    causa = case_data.get("causa") or {}
+    now = _now()
+    out = {t: [] for t in ("Ruts", "Causas", "Tramites", "Documentos",
+                           "Patentes", "CausaXRut", "CausaXPatente")}
+
+    out["Causas"].append({
+        "caso_id": cid, "rol": rol, "juzgado_id": juzgado_id,
+        "materia": case_data.get("descripcion", "") or _first(
+            causa, "descripcion", "descripción", "materia", "materia_causa",
+            "materia_de_la_causa"),
+        "fecha_causa": _first(causa, "fecha_causa"),
+        "fecha_citacion": _first(causa, "fecha_citacion", "fecha_citación"),
+        "fecha_estado": _first(causa, "fecha_estado"),
+        "estado": causa.get("estado", ""),
+        "boleta_numero": causa.get("boleta_numero", ""),
+        "boleta_fecha": causa.get("boleta_fecha", ""),
+        "monto_demandado": _first(causa, "monto", "monto_demandado", "cuantia",
+                                  "cuantía", "monto_multa"),
+    })
+
+    # Demandante = the searched RUT (empresa)
+    if search_code:
+        out["Ruts"].append({"rut": search_code, "tipo": "empresa",
+                            "razon_social": _first(causa, "remisor"), "updated_at": now})
+        out["CausaXRut"].append({"vinculo_id": f"{cid}::{search_code}", "caso_id": cid,
+                                 "rut": search_code, "rol_parte": "demandante",
+                                 "updated_at": now})
+
+    # Demandados (persona) + plates
+    causa_plates = _plates(causa.get("placa_patente"), case_data.get("placa_patente"))
+    plate_set, cp = set(causa_plates), set()
+    dem_list = case_data.get("demandados") or []
+    if not dem_list:
+        cp.update(causa_plates)
+    else:
+        for dem in dem_list:
+            rut = dem.get("rut", "")
+            nom, seg, apat, amat = _split_name(dem.get("nombre", ""))
+            if rut:
+                out["Ruts"].append({
+                    "rut": rut, "tipo": "persona", "nombre": nom, "segundo_nombre": seg,
+                    "ap_paterno": apat, "ap_materno": amat, "email": dem.get("email", ""),
+                    "telefono": dem.get("telefono", ""), "domicilio": _domicilio(dem),
+                    "updated_at": now})
+                out["CausaXRut"].append({"vinculo_id": f"{cid}::{rut}", "caso_id": cid,
+                                         "rut": rut, "rol_parte": "demandado",
+                                         "updated_at": now})
+            plates = _plates(dem.get("patente"), dem.get("placa_patente")) or causa_plates
+            plate_set.update(plates)
+            cp.update(plates)
+
+    for p in sorted(plate_set):
+        out["Patentes"].append({"patente": p})        # enrichment filled later
+    for p in sorted(cp):
+        out["CausaXPatente"].append({"vinculo_id": f"{cid}::{p}", "caso_id": cid,
+                                     "patente": p, "updated_at": now})
+
+    for ti, t in enumerate(case_data.get("tramites") or [], 1):
+        out["Tramites"].append({"tramite_id": f"{cid}/t{ti}", "caso_id": cid,
+                                "fecha": t.get("fecha", ""),
+                                "descripcion": t.get("descripcion", ""),
+                                "pdf_url": t.get("pdf_url", "")})
+    for xi, a in enumerate(case_data.get("adjuntos") or [], 1):
+        out["Documentos"].append({"documento_id": f"{cid}/x{xi}", "caso_id": cid,
+                                  "descripcion": a.get("descripcion", ""),
+                                  "pdf_url": a.get("pdf_url", "")})
+    return out, cid
+
+
+def download_pdfs(context, docs, store, juzgado, rol):
     """Download each Sección C/D 'Abrir' document via its captured MostrarPDF.aspx
-    href, using the authenticated browser session. (The viewer requires login —
-    only works because search_rut established the forms-auth cookie.)"""
+    href (authenticated session) → upload to Drive; tag each doc with its pdf_url."""
     pdf_urls = []
     doc_list = [d for d in docs
                 if d.get("href") and not d["href"].startswith("javascript")]
     log(f"[INFO] ROL {rol}: {len(doc_list)} document href(s)")
 
     for i, doc in enumerate(doc_list):
-        local_pdf = DOWNLOAD_DIR / f"{rol}_doc{i}.pdf"
         try:
             body = _fetch_pdf(context, doc["href"])
             if not body:
                 log(f"[WARN] ROL {rol} doc {i+1}: no PDF resolved from {doc['href']}")
                 continue
-            local_pdf.write_bytes(body)
-            url = upload_pdf(supabase_url, supabase_key, bucket, job_id, f"{rol}_doc{i}", local_pdf)
-            # Tag the trámite/adjunto with its Supabase public URL so the SPA
-            # links to the downloaded PDF, not the login-gated source viewer.
+            obj = f"{juzgado or 'jpl'}/{rol}/doc{i}.pdf"
+            url = store.upload_pdf(obj, body)
+            # Tag the trámite/adjunto with its Drive link so the page links to the
+            # downloaded PDF, not the login-gated source viewer.
             doc["pdf_url"] = url
             pdf_urls.append(url)
             log(f"[INFO] PDF {i+1} uploaded for ROL {rol} ({len(body)} bytes)")
@@ -700,11 +840,12 @@ def download_pdfs(page, context, docs, job_id, rol, supabase_url, supabase_key, 
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
-def scrape(args, supabase_url, supabase_key, supabase_bucket):
-    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+def scrape(args, store):
     deadline = time.monotonic() + args.max_seconds
+    juzgado_id = args.juzgado
 
-    checkpoint = read_checkpoint(supabase_url, supabase_key, args.job_id)
+    # Seed the court registry (referenced by Causas.juzgado_id).
+    store.upsert("Juzgados", JUZGADOS_SEED)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -717,9 +858,7 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
         records = get_results_list(active)
         records = filter_by_year(records, args.year)
 
-        # Dedupe by ROL: the results list can repeat a ROL, and checkpoints are
-        # keyed by (job_id, record_id), so a duplicate would collapse to one row
-        # and make the "all done" check unsatisfiable (job never completes).
+        # Dedupe by ROL: the results list can repeat a ROL.
         seen_rol, unique = set(), []
         for r in records:
             rid = r.get("rol")
@@ -732,30 +871,31 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
         results_url = active.url  # remember Level 2 URL to return after each detail
 
-        # Tell the SPA the total count immediately so progress is accurate from the start
-        write_meta(supabase_url, supabase_key, args.job_id, len(records),
-                   rut=args.search_code, year=args.year, juzgado=args.juzgado)
-
+        target_rols = {r["rol"] for r in records if r.get("rol")}
+        done_rols = set()
         hit_limit = False
         for rec in records:
+            rol = rec["rol"]
+            if not rol:
+                continue
+
+            caso_id = f"{juzgado_id or 'jpl'}/{rol}"
+            # Resume off the Sheet: a caso_id already present means fully written
+            # (Causas is upserted last, after its trámites/docs/links).
+            if store.has("Causas", caso_id):
+                log(f"[INFO] Skip (already in Sheet): ROL {rol}")
+                done_rols.add(rol)
+                continue
+
             if time.monotonic() >= deadline:
                 log("[INFO] Time limit — stopping for re-dispatch")
                 hit_limit = True
                 break
 
-            rol = rec["rol"]
-            if not rol:
-                continue
-            if checkpoint.get(rol) == "done":
-                log(f"[INFO] Skip (already done): ROL {rol}")
-                continue
-
             log(f"[INFO] Processing ROL {rol} — {rec.get('descripcion', '')}")
             try:
                 # Level 2 → Level 3
                 open_causa(active, rec, results_url)
-
-                # Extract all Level 3 data via JS
                 detail = extract_level3(active)
 
                 # Remove the demandante (search RUT) from demandados — some JPL
@@ -771,26 +911,29 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
                 case_data = {**rec, **detail}
 
-                # Download PDFs from Sección C + D via the captured MostrarPDF.aspx
-                # hrefs, using the authenticated session.
+                # Download PDFs (Sección C + D) via the captured MostrarPDF.aspx
+                # hrefs, using the authenticated session → upload to Drive.
                 all_docs = detail.get("tramites", []) + detail.get("adjuntos", [])
-                pdf_urls = download_pdfs(
-                    active, ctx, all_docs,
-                    args.job_id, rol, supabase_url, supabase_key, supabase_bucket,
-                )
+                pdf_urls = download_pdfs(ctx, all_docs, store, juzgado_id, rol)
 
                 # Drop adjuntos with no downloaded PDF before persisting
                 case_data['adjuntos'] = [
                     a for a in case_data.get('adjuntos', []) if a.get('pdf_url')
                 ]
 
-                write_checkpoints(supabase_url, supabase_key, [{
-                    "job_id":    args.job_id,
-                    "record_id": rol,
-                    "status":    "done",
-                    "text":      json.dumps(case_data, ensure_ascii=False),
-                    "pdf_url":   pdf_urls[0] if pdf_urls else "",
-                }])
+                tabs, cid = normalize_causa(juzgado_id, args.search_code, case_data)
+                # Insert-only for enrichment-bearing tabs so a re-scrape never
+                # clobbers email (Ruts) / vehicle data (Patentes) added later.
+                tabs["Ruts"] = [r for r in tabs["Ruts"]
+                                if not store.has("Ruts", r["rut"])]
+                tabs["Patentes"] = [r for r in tabs["Patentes"]
+                                    if not store.has("Patentes", r["patente"])]
+                # Causas LAST — its presence is the resume "done" sentinel.
+                for tab in ("Ruts", "Patentes", "Tramites", "Documentos",
+                            "CausaXRut", "CausaXPatente", "Causas"):
+                    store.upsert(tab, tabs[tab])
+
+                done_rols.add(rol)
                 log(f"[INFO] Done ROL {rol} — {len(pdf_urls)} PDFs saved")
 
                 # Back to Level 2
@@ -807,43 +950,38 @@ def scrape(args, supabase_url, supabase_key, supabase_bucket):
 
             except PlaywrightTimeout as e:
                 log(f"[WARN] Timeout on ROL {rol}: {e}")
-                write_checkpoints(supabase_url, supabase_key, [{
-                    "job_id": args.job_id, "record_id": rol,
-                    "status": "failed", "text": json.dumps(rec), "pdf_url": "",
-                }])
                 write_status("incomplete")
             except Exception as e:
                 log(f"[WARN] Error on ROL {rol}: {e}")
-                write_checkpoints(supabase_url, supabase_key, [{
-                    "job_id": args.job_id, "record_id": rol,
-                    "status": "failed", "text": json.dumps(rec), "pdf_url": "",
-                }])
 
         ctx.close()
         browser.close()
 
-    final = read_checkpoint(supabase_url, supabase_key, args.job_id)
-    # Completion = every target ROL has a 'done' checkpoint. Set-based so a
-    # duplicate ROL or a skipped empty row can't make this unsatisfiable.
-    target_rols = {r["rol"] for r in records if r.get("rol")}
-    done_rols   = {k for k, v in final.items()
-                   if k not in ("__job__", "__meta__") and v == "done"}
+    # Completion = every target ROL written this run or already present.
     all_done = not hit_limit and target_rols.issubset(done_rols)
-
-    if all_done and final:
-        mark_job_status(supabase_url, supabase_key, args.job_id, "complete")
+    if all_done:
         write_status("complete")
-        log(f"[INFO] Job {args.job_id} complete — {len(final)} causas processed")
+        log(f"[INFO] Job complete — {len(done_rols)}/{len(target_rols)} causas in the Sheet")
     else:
         write_status("incomplete")
-        log(f"[INFO] Job {args.job_id} incomplete — will re-dispatch")
+        log(f"[INFO] Job incomplete — {len(done_rols)}/{len(target_rols)} done, will re-dispatch")
 
 
 def main():
     args = parse_args()
+
+    if args.setup:
+        gstore.provision()
+        log("[SETUP] done. Now dispatch a scrape: python run.py --search-code <RUT> "
+            "--target-url <URL> --juzgado <vitacura|lobarnechea>")
+        return
+
+    if not (args.search_code and args.target_url):
+        sys.exit("ERROR: --search-code and --target-url are required (or use --setup).")
+
     try:
-        scrape(args, os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"],
-               os.environ.get("SUPABASE_BUCKET", "pdfs"))
+        store = gstore.Store()
+        scrape(args, store)
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
