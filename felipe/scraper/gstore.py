@@ -182,6 +182,14 @@ class Store:
         """True if `key` already exists in column A of `tab` (used for resume)."""
         return key in self._load_index(tab)
 
+    def clear_data(self, tabs=None):
+        """Clear data rows (keep the header row) of `tabs` (default: all)."""
+        tabs = tabs or TAB_ORDER
+        self.sheets.spreadsheets().values().batchClear(
+            spreadsheetId=self.sheet_id,
+            body={"ranges": [f"{t}!A2:ZZ" for t in tabs]}).execute()
+        self._index = {}      # invalidate the cached column-A index
+
     def read_tab(self, tab):
         """All data rows of `tab` as dicts keyed by the tab's column names.
         Used by enrichment to read rows, fill a field, and upsert them back."""

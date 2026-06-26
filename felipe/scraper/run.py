@@ -42,6 +42,8 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--setup", action="store_true",
                    help="One-time: OAuth login + provision the Drive folder/Sheet, then exit.")
+    p.add_argument("--wipe", action="store_true",
+                   help="Clear all data rows from the Sheet (keep headers), then exit.")
     p.add_argument("--job-id",      default="")
     p.add_argument("--search-code", default="")
     p.add_argument("--target-url",  default="")
@@ -974,6 +976,11 @@ def main():
         gstore.provision()
         log("[SETUP] done. Now dispatch a scrape: python run.py --search-code <RUT> "
             "--target-url <URL> --juzgado <vitacura|lobarnechea>")
+        return
+
+    if args.wipe:
+        gstore.Store().clear_data()
+        log("[WIPE] cleared all data rows from the Sheet (headers kept)")
         return
 
     if not (args.search_code and args.target_url):
