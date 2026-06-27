@@ -130,6 +130,11 @@ def split_persona(nombre):
 def reach_search_form(page, context):
     """home → accesoConsultaCausas() (POSTs a guest session, then same-tab
     redirects to indexN.php) → return the page holding the search form."""
+    seen = []
+    page.on("response", lambda r: seen.append((r.status, r.url[:130]))
+            if ("sesion-invitado" in r.url or "indexN.php" in r.url or r.status >= 400)
+            else None)
+
     page.goto(HOME, wait_until="load", timeout=45_000)
     page.wait_for_timeout(3000)
 
@@ -147,6 +152,7 @@ def reach_search_form(page, context):
         except Exception:
             title, body = "?", "?"
         log(f"[NAV][FAIL] still at {page.url} | defined={has_fn} | title={title!r}")
+        log(f"[NAV][FAIL] responses={seen}")
         log(f"[NAV][FAIL] body[:400]={body!r}")
         raise
     page.wait_for_load_state("domcontentloaded")
