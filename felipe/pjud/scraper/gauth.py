@@ -40,8 +40,9 @@ TOKEN_PATH = _HERE / "token.json"
 
 
 def _load_client_secret_dict():
-    """OAuth client config: env (CI) first, then client_secret.json on disk."""
-    raw = os.environ.get("PJUD_CLIENT_SECRET")
+    """OAuth client config: env (CI) first, then client_secret.json on disk.
+    Accepts GOOGLE_* (shared with JPL) or PJUD_* env var names."""
+    raw = os.environ.get("GOOGLE_CLIENT_SECRET") or os.environ.get("PJUD_CLIENT_SECRET")
     if raw:
         return json.loads(raw)
     if CLIENT_SECRET_PATH.exists():
@@ -50,8 +51,9 @@ def _load_client_secret_dict():
 
 
 def _load_saved_creds():
-    """Existing user creds: env (CI) first, then token.json on disk."""
-    raw = os.environ.get("PJUD_TOKEN_JSON")
+    """Existing user creds: env (CI) first, then token.json on disk.
+    Accepts GOOGLE_* (shared with JPL) or PJUD_* env var names."""
+    raw = os.environ.get("GOOGLE_TOKEN_JSON") or os.environ.get("PJUD_TOKEN_JSON")
     if raw:
         return Credentials.from_authorized_user_info(json.loads(raw), SCOPES)
     if TOKEN_PATH.exists():
@@ -97,7 +99,7 @@ def credentials(allow_login=False):
 
 def _save_token(creds):
     """Persist refreshed/new creds to token.json (skip in CI, where it's an env)."""
-    if os.environ.get("PJUD_TOKEN_JSON"):
+    if os.environ.get("GOOGLE_TOKEN_JSON") or os.environ.get("PJUD_TOKEN_JSON"):
         return
     TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
 
