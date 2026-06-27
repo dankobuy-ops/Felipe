@@ -1,25 +1,31 @@
 """Scraper for Poder Judicial Virtual — Oficina Judicial Virtual (OJV).
 
-Public guest access, no captcha, no login. Locked scope (see pjud/HANDOFF.md):
-  - Civil, C.A. de Arica, 1º Juzgado de Letras de Arica (tribunal id 'arica-1').
-  - Search by Rut Persona Jurídica (test bank: Banco de Chile 97004000-5).
-  - Keep only causas whose ROL starts with 'C'.
+Public guest access, no captcha, no login. Scope (see pjud/HANDOFF.md):
+  - Civil competencia. Per bank, sweep EVERY corte × tribunal in Chile (~230)
+    via "Búsqueda por Rut Persona Jurídica" — the banks come from the Bancos tab.
+  - Keep only causas whose ROL starts with 'C' AND ingresadas on/after start_date
+    (the go-live anchor in pjud_config.json; "from today onwards").
   - Download docs/anexos/ebook PDFs to a Google Drive "Documentos" folder.
 
-Flow (verified via CDP recon):
-  1. home/index.php → close AVISO modal → "Consulta causas"
-  2. indexN.php → tab "Búsqueda por Rut Persona Jurídica" → fill rut/dv/era +
-     competencia(Civil=3) → corte(Arica=10) → tribunal(Letras 1=2) → "Buscar"
-  3. results table (has "Caratulado") → each 🔍 = detalleCausaCivil('<JWT>')
+Flow (verified via live recon):
+  1. home/index.php → accesoConsultaCausas() → indexN.php (guest session).
+  2. tab "Búsqueda por Rut Persona Jurídica"; competencia(Civil=3) once; then for
+     each corte select #corteJur (repopulates #jurTribunal) and for each tribunal
+     fill rut/dv/era + Buscar. NB: a realistic UA is required, and the FIRST
+     search after load always returns 0 (warm_up() absorbs it).
+  3. results table → keep Rol 'C' + fecha ≥ start_date → each 🔍 =
+     detalleCausaCivil('<JWT>').
   4. #modalDetalleCivil → header + iterate #selCuaderno → historia / litigantes /
-     escritos panes; download docs per historia row; anexos sub-modal.
+     escritos panes; receptor + georref sub-modals; download docs per row.
 
-Writes incrementally into a Google Sheet (8 tabs) + Drive folder via gstore. Run
-setup once (`python run.py --setup`), then run LOCALLY (`python run.py --headed
---limit 1`), verify against live, then CI.
+The daily GitHub Actions workflow runs ONE bank per parallel job (matrix from the
+Bancos tab). IDs are plain deterministic codes (causa_id = "<tribunal_id>-<rol>";
+rol isn't unique nationwide). Writes incrementally to a Google Sheet + Drive via gstore.
+Run `python run.py --setup` once, then `python run.py --rut 97004000 --dv 5`.
 """
 
 import argparse
+import json
 import os
 import re
 import time
@@ -34,12 +40,30 @@ import gstore
 
 OJV       = "https://oficinajudicialvirtual.pjud.cl"
 HOME      = f"{OJV}/home/index.php"
-TRIBUNAL  = {"id": "arica-1", "corte": "C.A. de Arica",
-             "tribunal": "1º Juzgado de Letras de Arica"}
-# Select values mapped during recon (may shift — logged on mismatch).
-VAL_COMPETENCIA = "3"   # Civil
-VAL_CORTE       = "10"  # C.A. de Arica
-VAL_TRIBUNAL    = "2"   # 1º Juzgado de Letras de Arica
+
+VAL_COMPETENCIA = "3"   # Civil (#jurCompetencia) — Rol starts with 'C'
+
+# The 17 Cortes de Apelaciones (#corteJur values, mapped during recon). Selecting
+# a corte repopulates #jurTribunal with that corte's tribunales; iterating all of
+# them covers every civil tribunal in Chile (~230).
+CORTES = [
+    ("10", "C.A. de Arica"),       ("11", "C.A. de Iquique"),
+    ("15", "C.A. de Antofagasta"), ("20", "C.A. de Copiapó"),
+    ("25", "C.A. de La Serena"),   ("30", "C.A. de Valparaíso"),
+    ("35", "C.A. de Rancagua"),    ("40", "C.A. de Talca"),
+    ("45", "C.A. de Chillan"),     ("46", "C.A. de Concepción"),
+    ("50", "C.A. de Temuco"),      ("55", "C.A. de Valdivia"),
+    ("56", "C.A. de Puerto Montt"),("60", "C.A. de Coyhaique"),
+    ("61", "C.A. de Punta Arenas"),("90", "C.A. de Santiago"),
+    ("91", "C.A. de San Miguel"),
+]
+
+# How long to wait for a search's results to render before treating the tribunal
+# as empty for this bank (most tribunals return nothing for a given bank).
+SEARCH_WAIT_MS = 8000
+# Small delay between searches — OJV captcha-gates by IP under rapid guest traffic;
+# pacing keeps a long single-session sweep under the radar.
+PACE_MS = 500
 
 SCRATCH = Path(os.environ.get("TEMP", "/tmp")) / "pjud_pdfs"
 
@@ -118,34 +142,86 @@ def reach_search_form(page, context):
     return page
 
 
-def run_search(page, rut_sin_dv, dv, era):
-    """Select the Rut Persona Jurídica tab, fill fields + cascading selects, Buscar.
-    Returns True if the results table rendered."""
-    page.click("a:has-text('Rut Persona Jurídica')")
+def open_search_tab(page):
+    """Activate the 'Rut Persona Jurídica' tab and lock competencia = Civil.
+    Done once per page; corte/tribunal are then iterated by the sweep. The consulta
+    form renders via AJAX after indexN.php, so wait for the tab anchor first."""
+    page.wait_for_selector("a[href='#BusJuridica']", timeout=30_000)
+    page.wait_for_timeout(500)
+    page.click("a[href='#BusJuridica']")
     page.wait_for_timeout(800)
-
     _select(page, "#jurCompetencia", VAL_COMPETENCIA, "competencia")
-    page.wait_for_timeout(1500)   # corte populates via AJAX
-    _select(page, "#corteJur", VAL_CORTE, "corte")
-    page.wait_for_timeout(1500)   # tribunal populates via AJAX
-    _select(page, "#jurTribunal", VAL_TRIBUNAL, "tribunal")
+    page.wait_for_timeout(1500)   # corte list populates via AJAX
 
+
+def select_corte(page, corte_val, corte_name):
+    """Select a corte and return its tribunal options [{v,t}] (AJAX-populated)."""
+    _select(page, "#corteJur", corte_val, f"corte {corte_name}")
+    page.wait_for_timeout(1800)   # #jurTribunal repopulates via AJAX
+    return page.eval_on_selector_all(
+        "#jurTribunal option",
+        "els=>els.map(e=>({v:e.value,t:(e.textContent||'').trim()}))")
+
+
+def _wait_results(page, max_ms=SEARCH_WAIT_MS):
+    """Poll the results table: return True as soon as a row appears, else False
+    once max_ms elapses (the tribunal has no causas for this bank)."""
+    waited, step = 0, 600
+    while waited < max_ms:
+        n = page.eval_on_selector_all(
+            "#dtaTableDetalleJuridica tbody tr", "e=>e.length")
+        if n:
+            page.wait_for_timeout(700)   # let the rest of the rows render
+            return True
+        page.wait_for_timeout(step)
+        waited += step
+    return False
+
+
+def search_tribunal(page, trib_val, rut_sin_dv, dv, era):
+    """Pick a tribunal (corte already selected), fill rut/dv/era, Buscar.
+    Returns True if any results rendered."""
+    _select(page, "#jurTribunal", trib_val, "tribunal")
     page.fill("#rutJur", str(rut_sin_dv))
     page.fill("#dvJur", str(dv))
     page.fill("#eraJur", str(era))
-
-    log(f"[NAV] Buscar (rut {rut_sin_dv}-{dv}, era {era})…")
-    # Clear any prior results so wait_for_selector waits for the fresh table.
+    # Clear any prior results so _wait_results doesn't see a stale table.
     page.evaluate("() => { const t = document.querySelector('#dtaTableDetalleJuridica tbody');"
                   " if (t) t.innerHTML=''; }")
     page.click("#btnConConsultaJur")
+    found = _wait_results(page)
+    page.wait_for_timeout(PACE_MS)
+    return found
+
+
+def form_alive(page):
+    """True while the Jurídica search form is present (i.e. the guest session
+    hasn't expired or been captcha-gated mid-sweep)."""
     try:
-        page.wait_for_selector("#dtaTableDetalleJuridica tbody tr", timeout=20_000)
-        page.wait_for_timeout(1200)
-        return True
-    except PlaywrightTimeout:
-        log(f"[INFO] no results for era {era} (table never populated)")
+        return page.eval_on_selector_all("#jurCompetencia", "e=>e.length") > 0
+    except Exception:
         return False
+
+
+def reopen_form(page, context):
+    """Re-establish the guest session + search tab after a soft block/timeout."""
+    log("[NAV] search form missing — re-establishing guest session…")
+    reach_search_form(page, context)
+    open_search_tab(page)
+    warm_up(page)
+
+
+def warm_up(page):
+    """The FIRST search after the form loads always returns 0 rows (a site quirk).
+    Burn one throwaway search so the first real query isn't silently lost."""
+    try:
+        tribs = select_corte(page, CORTES[0][0], CORTES[0][1])
+        first = next((o["v"] for o in tribs if o["v"] not in ("", "0")), None)
+        if first:
+            search_tribunal(page, first, "97004000", "5", time.strftime("%Y"))
+            log("[NAV] warm-up search done (discarded)")
+    except Exception as e:
+        log(f"[WARN] warm-up: {e}")
 
 
 def _select(page, sel, value, label):
@@ -412,9 +488,16 @@ def download_form(api, form, param="dtaDoc", quiet=False):
 
 # ── Per-causa scrape ──────────────────────────────────────────────────────────
 
-def scrape_causa(page, api, causa):
+def _cuaderno_num(cuaderno_txt, fallback):
+    """'1 - Principal' -> '1', '2 - Apremio…' -> '2'; else the 1-based fallback."""
+    m = re.match(r"\s*(\d+)\s*-", cuaderno_txt or "")
+    return m.group(1) if m else str(fallback)
+
+
+def scrape_causa(page, api, causa, tribunal):
     rol = causa["rol"]
-    log(f"\n[CAUSA] {rol} — {causa['caratulado'][:60]}")
+    causa_id = f'{tribunal["id"]}-{rol}'
+    log(f"\n[CAUSA] {tribunal['tribunal']} · {rol} — {causa['caratulado'][:50]}")
     open_detail(page, causa["jwt"])
     header = parse_header(page)
 
@@ -428,14 +511,16 @@ def scrape_causa(page, api, causa):
         body = download_form(api, {"action": eb["action"], "val": eb["val"]}, quiet=True)
         if body:
             try:
-                ebook_url = upload_pdf(f"{rol}/ebook.pdf".replace(" ", "_"), body)
+                ebook_url = upload_pdf(
+                    f"{causa_id}/ebook.pdf".replace(" ", "_"), body)
             except Exception as e:
                 log(f"[WARN] ebook upload {rol}: {e}")
 
     upsert("pjud_causas", [{
+        "causa_id": causa_id,
         "rol": rol,
         **header,
-        "tribunal": TRIBUNAL["id"],
+        "tribunal_id": tribunal["id"],
         "competencia": "Civil",
         "ebook": ebook_url,
         "updated_at": _now(),
@@ -456,7 +541,7 @@ def scrape_causa(page, api, causa):
             rut_rows.append({"rut": rut, "tipo": "persona", "nombre": nom,
                              "segundo_nombre": seg, "ap_paterno": apat,
                              "ap_materno": amat, "updated_at": _now()})
-        lit_rows.append({"id": f"{rol}::{rut}", "causa": rol, "rut": rut,
+        lit_rows.append({"id": f"{causa_id}-{rut}", "causa_id": causa_id, "rut": rut,
                          "participante": L["participante"], "updated_at": _now()})
     upsert("pjud_ruts", rut_rows)
     upsert("pjud_litigantes", lit_rows)
@@ -478,8 +563,9 @@ def scrape_causa(page, api, causa):
             for i, rr in enumerate(parse_receptor(page), 1):
                 full = bare2full.get(rr["cuaderno"], rr["cuaderno"])
                 notif_rows.append({
-                    "ID": f"{rol}::receptor::{i}",
-                    "Cuaderno ID": f"{rol}::{full}",
+                    "id": f"{causa_id}-r{i}",
+                    "Causa ID": causa_id,
+                    "Cuaderno": full,
                     "Nombre": rr["nombre"], "Fecha": rr["fecha"],
                     "Estado": rr["estado"],
                 })
@@ -490,16 +576,17 @@ def scrape_causa(page, api, causa):
 
     # Cuadernos (iterate selCuaderno) -> historia rows + docs/anexos
     cuad_rows, esc_rows, doc_rows, anex_rows = [], [], [], []
-    for i, opt in enumerate(cuads):
-        cuaderno = opt["txt"]
-        if i > 0:                       # cuaderno 0 is already loaded on open
-            select_cuaderno(page, i)
+    for ci, opt in enumerate(cuads):
+        cuaderno = opt["txt"]                       # readable name, e.g. "1 - Principal"
+        cnum = _cuaderno_num(cuaderno, ci + 1)      # plain number for IDs, e.g. "1"
+        if ci > 0:                      # cuaderno 0 is already loaded on open
+            select_cuaderno(page, ci)
         seen = {}
         for h in parse_historia(page):
             folio = h["folio"]
             n = seen.get(folio, 0) + 1
             seen[folio] = n
-            cid = f"{rol}::{cuaderno}::{folio}::{n}"
+            cid = f"{causa_id}-c{cnum}-{folio}-{n}"
             georref = h["georref"]
             if h.get("geo"):            # row has a map reference -> resolve coords
                 try:
@@ -510,12 +597,12 @@ def scrape_causa(page, api, causa):
                 except Exception as e:
                     log(f"[WARN] geo {rol} {cuaderno} folio {folio}: {e}")
             cuad_rows.append({
-                "id": cid, "causa": rol, "cuaderno": cuaderno, "folio": folio,
+                "id": cid, "causa_id": causa_id, "cuaderno": cuaderno, "folio": folio,
                 "etapa": h["etapa"], "tramite": h["tramite"],
                 "descripcion_tramite": h["desc"], "fecha_tramite": h["fecha"],
                 "foja": h["foja"], "georref": georref,
             })
-            # documents on this row
+            # documents on this row attach to THIS trámite row (cuaderno_id = cid)
             for kind, form, sink in (("doc", h["doc"], doc_rows),
                                      ("anexo", h["anexo"], anex_rows)):
                 if not form or SKIP_DOCS:
@@ -523,26 +610,25 @@ def scrape_causa(page, api, causa):
                 body = download_form(api, form)
                 if not body:
                     continue
-                obj = f"{rol}/{cuaderno}/{folio}-{n}-{kind}.pdf".replace(" ", "_")
+                obj = f"{causa_id}/c{cnum}/{folio}-{n}-{kind}.pdf".replace(" ", "_")
                 try:
                     url = upload_pdf(obj, body)
                 except Exception as e:
                     log(f"[WARN] upload {obj}: {e}")
                     continue
                 if kind == "doc":
-                    sink.append({"id": cid + "::doc", "cuaderno": cid,
+                    sink.append({"id": f"{cid}-doc", "cuaderno_id": cid,
                                  "origen": form["action"], "folio": folio,
                                  "descripcion": h["desc"], "url": url})
                 else:
-                    sink.append({"id": cid + "::anexo", "cuaderno": cid,
+                    sink.append({"id": f"{cid}-anexo", "cuaderno_id": cid,
                                  "origen": form["action"], "folio": folio,
                                  "fecha": h["fecha"], "referencia": h["desc"],
                                  "url": url})
-        # escritos belong to the cuaderno; attach to the first historia id of it
-        anchor = cuad_rows[-1]["id"] if cuad_rows else f"{rol}::{cuaderno}::::1"
-        for i, e in enumerate(parse_escritos(page), 1):
-            esc_rows.append({"id": f"{rol}::{cuaderno}::esc::{i}",
-                             "cuaderno": anchor, **e})
+        # escritos are cuaderno-level → FK the causa, keep cuaderno NAME as text
+        for ei, e in enumerate(parse_escritos(page), 1):
+            esc_rows.append({"id": f"{causa_id}-c{cnum}-e{ei}",
+                             "causa_id": causa_id, "cuaderno": cuaderno, **e})
 
     upsert("pjud_cuadernos", cuad_rows)
     upsert("pjud_escritos", esc_rows)
@@ -568,6 +654,61 @@ def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+# ── Date filter + work-list resolution ────────────────────────────────────────
+
+def parse_fecha(f):
+    """OJV results 'dd/mm/yyyy' (ingreso) -> ISO 'yyyy-mm-dd', or '' if unparseable."""
+    m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", f or "")
+    if not m:
+        return ""
+    d, mo, y = m.groups()
+    return f"{y}-{int(mo):02d}-{int(d):02d}"
+
+
+def keep_causa(causa, start_date):
+    """Causas are already C-rol filtered upstream. Keep only those ingresadas on or
+    after start_date. Unparseable dates are kept (never silently drop a row)."""
+    iso = parse_fecha(causa.get("fecha", ""))
+    return (not iso) or (iso >= start_date)
+
+
+def resolve_start_date(args, store):
+    """The go-live anchor: only causas ingresadas on/after this date are stored.
+    --since overrides; otherwise read (and on first run, set) config.start_date."""
+    if args.since:
+        return args.since
+    cfg = (store.cfg if store else gstore.load_config()) or {}
+    sd = cfg.get("start_date")
+    if not sd:
+        sd = time.strftime("%Y-%m-%d")
+        if store:
+            cfg["start_date"] = sd
+            gstore.save_config(cfg)
+            log(f"[INFO] start_date anchored to {sd} (saved to config)")
+    return sd
+
+
+def resolve_banks(args, store):
+    """One bank from --rut, or every active row of the Bancos tab."""
+    if args.rut:
+        rut = re.sub(r"[.\-\s]", "", args.rut).strip()
+        return [{"nombre": args.bank or rut, "rut": rut, "dv": args.dv.strip()}]
+    if not store:
+        raise SystemExit("[FATAL] no --rut and no Sheet (use --rut, or drop --dry-run).")
+    banks = []
+    for row in store.read_tab("Bancos"):
+        activo = (row.get("activo", "") or "").strip().lower()
+        if activo not in ("", "si", "sí", "yes", "true", "1"):
+            continue
+        rut = re.sub(r"[.\-\s]", "", row.get("rut", "")).strip()
+        if rut:
+            banks.append({"nombre": row.get("nombre") or rut, "rut": rut,
+                          "dv": (row.get("dv", "") or "").strip()})
+    if not banks:
+        raise SystemExit("[FATAL] Bancos tab has no active rows.")
+    return banks
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def expand_eras(spec):
@@ -581,17 +722,33 @@ def expand_eras(spec):
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="PJUD OJV scraper (Arica/Civil/Tribunal-1).")
+    p = argparse.ArgumentParser(
+        description="PJUD OJV civil scraper — per-bank nationwide sweep "
+                    "(Búsqueda por Rut Persona Jurídica, Rol 'C').")
     p.add_argument("--setup", action="store_true",
-                   help="One-time: OAuth login + provision the Drive folder/Sheet, then exit.")
-    p.add_argument("--rut", default="97004000", help="RUT sin dígito verificador (default: Banco de Chile).")
-    p.add_argument("--dv", default="5", help="Dígito verificador.")
-    p.add_argument("--era", default="2026",
-                   help="Año (#eraJur). Single '2024' or range '2018-2026'.")
-    p.add_argument("--limit", type=int, default=0, help="Max causas per year (0 = all).")
+                   help="One-time: OAuth login + provision Drive/Sheet (+ Bancos tab), then exit.")
+    p.add_argument("--list-banks", action="store_true",
+                   help="Print active banks from the Bancos tab as JSON (for the CI matrix), then exit.")
+    p.add_argument("--rut", default=None,
+                   help="RUT sin dígito verificador for ONE bank. Omit to sweep all "
+                        "active banks in the Bancos tab.")
+    p.add_argument("--dv", default="", help="Dígito verificador (used with --rut).")
+    p.add_argument("--bank", default="", help="Display name for --rut (logging only).")
+    p.add_argument("--era", default="",
+                   help="Año (#eraJur). Default = current year. '2026' or '2024-2026'.")
+    p.add_argument("--since", default="",
+                   help="Override start_date (ISO). Keep only causas ingresadas on/after it.")
+    p.add_argument("--corte", default="",
+                   help="Restrict sweep to one corte value (e.g. 10=Arica). Default = all 17.")
+    p.add_argument("--max-tribunals", type=int, default=0,
+                   help="Cap tribunals per corte (testing).")
+    p.add_argument("--max-seconds", type=int, default=0,
+                   help="Stop the sweep after N seconds (0 = no limit).")
+    p.add_argument("--limit", type=int, default=0,
+                   help="Max causas per tribunal/bank/era (0 = all).")
     p.add_argument("--headed", action="store_true", help="Show the browser.")
     p.add_argument("--dry-run", action="store_true",
-                   help="Verify live nav/parse without any Supabase reads/writes.")
+                   help="Verify live nav/parse without any writes.")
     p.add_argument("--skip-docs", action="store_true",
                    help="Scrape metadata only — no PDF download/upload (fast).")
     return p.parse_args()
@@ -602,8 +759,18 @@ def main():
     args = parse_args()
 
     if args.setup:
-        gstore.provision()
-        log("[SETUP] done. Now run: python run.py --headed --limit 1")
+        cfg = gstore.provision()
+        if not cfg.get("start_date"):
+            cfg["start_date"] = time.strftime("%Y-%m-%d")
+            gstore.save_config(cfg)
+        log(f"[SETUP] start_date = {cfg['start_date']}. "
+            f"Run a bank: python run.py --rut 97004000 --dv 5")
+        return
+
+    if args.list_banks:
+        # JSON array of {nombre, rut, dv} for the GitHub Actions matrix.
+        print(json.dumps(resolve_banks(argparse.Namespace(rut=None, dv="", bank=""),
+                                        gstore.Store()), ensure_ascii=False))
         return
 
     DRY = args.dry_run
@@ -612,8 +779,13 @@ def main():
         STORE = gstore.Store()
     SCRATCH.mkdir(parents=True, exist_ok=True)
 
-    # seed the single tribunal (referenced by Causas.tribunal)
-    upsert("pjud_tribunales", [TRIBUNAL])
+    start_date = resolve_start_date(args, STORE)
+    banks = resolve_banks(args, STORE)
+    cortes = [c for c in CORTES if (not args.corte or c[0] == args.corte)]
+    eras = expand_eras(args.era or time.strftime("%Y"))
+    deadline = (time.time() + args.max_seconds) if args.max_seconds else None
+    log(f"[INFO] banks={[b['nombre'] for b in banks]} cortes={len(cortes)} "
+        f"eras={eras} since={start_date}")
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=not args.headed)
@@ -623,28 +795,58 @@ def main():
             locale="es-CL", accept_downloads=True,
             viewport={"width": 1400, "height": 1000})
         page = context.new_page()
-        search_page = reach_search_form(page, context)
+        reach_search_form(page, context)
         # APIRequestContext shares this context's cookies → in-session downloads.
         api = context.request
 
-        eras = expand_eras(args.era)
-        log(f"[INFO] eras: {eras}")
+        open_search_tab(page)
+        warm_up(page)
+
         ok = total = 0
-        for era in eras:
-            if not run_search(search_page, args.rut, args.dv, era):
-                continue
-            causas = collect_causas(search_page)
-            if args.limit:
-                causas = causas[:args.limit]
-                log(f"[INFO] era {era}: limited to {len(causas)} causa(s)")
-            for c in causas:
-                total += 1
-                try:
-                    scrape_causa(search_page, api, c)
-                    ok += 1
-                except Exception as e:
-                    log(f"[ERR] causa {c['rol']}: {e}")
-        log(f"\n[DONE] {ok}/{total} causas scraped across {len(eras)} year(s).")
+        stopped = False
+        for corte_val, corte_name in cortes:
+            if stopped:
+                break
+            if not form_alive(page):        # session expired / gated → recover
+                reopen_form(page, context)
+            tribs = [(o["v"], o["t"]) for o in select_corte(page, corte_val, corte_name)
+                     if o["v"] not in ("", "0")]
+            if args.max_tribunals:
+                tribs = tribs[:args.max_tribunals]
+            log(f"[CORTE] {corte_name}: {len(tribs)} tribunales")
+            for trib_val, trib_name in tribs:
+                if deadline and time.time() > deadline:
+                    log("[INFO] max-seconds reached — stopping sweep.")
+                    stopped = True
+                    break
+                tribunal = {"id": trib_val, "corte": corte_name, "tribunal": trib_name}
+                seeded = False
+                for bank in banks:
+                    for era in eras:
+                        try:
+                            if not search_tribunal(page, trib_val, bank["rut"],
+                                                   bank["dv"], era):
+                                continue
+                            causas = [c for c in collect_causas(page)
+                                      if keep_causa(c, start_date)]
+                        except Exception as e:
+                            log(f"[WARN] search {trib_name} {bank['nombre']} "
+                                f"era {era}: {e}")
+                            continue
+                        if args.limit:
+                            causas = causas[:args.limit]
+                        if causas and not seeded:
+                            upsert("pjud_tribunales", [tribunal])
+                            seeded = True
+                        for c in causas:
+                            total += 1
+                            try:
+                                scrape_causa(page, api, c, tribunal)
+                                ok += 1
+                            except Exception as e:
+                                log(f"[ERR] {trib_name} {c['rol']}: {e}")
+        log(f"\n[DONE] {ok}/{total} causas scraped. "
+            f"banks={len(banks)} cortes={len(cortes)} since={start_date}.")
         context.close()
         browser.close()
 
