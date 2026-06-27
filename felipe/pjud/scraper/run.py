@@ -131,7 +131,11 @@ def reach_search_form(page, context):
     """home → accesoConsultaCausas() (POSTs a guest session, then same-tab
     redirects to indexN.php) → return the page holding the search form."""
     seen = []
-    page.on("response", lambda r: seen.append((r.status, r.url[:130]))
+    page.on("request", lambda r: seen.append(("REQ", r.method, r.url[:110]))
+            if "sesion-invitado" in r.url else None)
+    page.on("requestfailed", lambda r: seen.append(("FAIL", str(r.failure), r.url[:110]))
+            if "sesion-invitado" in r.url else None)
+    page.on("response", lambda r: seen.append(("RESP", r.status, r.url[:110]))
             if ("sesion-invitado" in r.url or "indexN.php" in r.url or r.status >= 400)
             else None)
 
