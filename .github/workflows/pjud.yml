@@ -39,6 +39,11 @@ jobs:
           python-version: "3.12"
       - name: Install Google libraries
         run: pip install google-auth google-auth-oauthlib google-api-python-client playwright
+      - name: Restore config (Sheet/folder IDs + start_date)
+        working-directory: ${{ github.workspace }}/felipe/pjud/scraper
+        env:
+          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
+        run: printf '%s' "$PJUD_CONFIG" > pjud_config.json
       - name: List active banks → matrix
         id: list
         working-directory: ${{ github.workspace }}/felipe/pjud/scraper
@@ -89,6 +94,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             fonts-freefont-ttf fonts-liberation libfontconfig1 xvfb 2>/dev/null || true
 
+      - name: Restore config (Sheet/folder IDs + start_date)
+        working-directory: ${{ github.workspace }}/felipe/pjud/scraper
+        env:
+          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
+        run: printf '%s' "$PJUD_CONFIG" > pjud_config.json
       - name: Sweep ${{ matrix.bank.nombre }}
         working-directory: ${{ github.workspace }}/felipe/pjud/scraper
         env:
