@@ -130,12 +130,25 @@ def split_persona(nombre):
 def reach_search_form(page, context):
     """home → accesoConsultaCausas() (POSTs a guest session, then same-tab
     redirects to indexN.php) → return the page holding the search form."""
-    page.goto(HOME, wait_until="domcontentloaded", timeout=45_000)
-    page.wait_for_timeout(2000)
+    page.goto(HOME, wait_until="load", timeout=45_000)
+    page.wait_for_timeout(3000)
 
-    log("[NAV] accesoConsultaCausas() → indexN.php…")
-    page.evaluate("accesoConsultaCausas()")
-    page.wait_for_url("**/indexN.php**", timeout=25_000)
+    has_fn = page.evaluate("typeof accesoConsultaCausas === 'function'")
+    log(f"[NAV] accesoConsultaCausas defined={has_fn}; calling → indexN.php…")
+    if has_fn:
+        page.evaluate("accesoConsultaCausas()")
+    try:
+        page.wait_for_url("**/indexN.php**", timeout=30_000)
+    except PlaywrightTimeout:
+        # Diagnose: WAF/IP block vs timing. Dump what the runner actually got.
+        try:
+            title = page.title()
+            body = (page.inner_text("body") or "")[:400].replace("\n", " ")
+        except Exception:
+            title, body = "?", "?"
+        log(f"[NAV][FAIL] still at {page.url} | defined={has_fn} | title={title!r}")
+        log(f"[NAV][FAIL] body[:400]={body!r}")
+        raise
     page.wait_for_load_state("domcontentloaded")
     page.wait_for_timeout(2500)
     log(f"[NAV] search page -> {page.url}")
