@@ -24,22 +24,32 @@ import gauth
 
 # ── Tab layout — column A is the entity key; order matches schema.sql ──────────
 TABS = {
+    # Work-list: the banks whose causas the daily sweep pulls. Column A (nombre)
+    # is the key; `rut`+`dv` feed the OJV search; `activo` ("si"/"no") toggles a
+    # bank without deleting its row.
+    "Bancos": ["nombre", "rut", "dv", "razon_social", "activo"],
     "Tribunales": ["id", "corte", "tribunal"],
     "Ruts": ["rut", "tipo", "nombre", "segundo_nombre", "ap_paterno",
              "ap_materno", "razon_social", "email", "telefono", "domicilio",
              "updated_at"],
-    "Causas": ["rol", "f_ingreso", "estado_adm", "procedimiento", "ubicacion",
-               "estado_proc", "etapa", "tribunal", "competencia", "ebook",
-               "updated_at"],
-    # Causa-level receptor notifications. Headers are display-style (set by the
-    # user in the Sheet); run.py builds rows keyed by these exact strings.
-    "Notificaciones Receptor": ["ID", "Cuaderno ID", "Nombre", "Fecha", "Estado"],
-    "Litigantes": ["id", "causa", "rut", "participante", "updated_at"],
-    "Cuadernos": ["id", "causa", "cuaderno", "folio", "etapa", "tramite",
+    # IDs are plain deterministic codes (parallel-safe + idempotent on re-runs).
+    # causa_id = "<tribunal_id>-<rol>"  (rol alone isn't unique nationwide).
+    "Causas": ["causa_id", "rol", "f_ingreso", "estado_adm", "procedimiento",
+               "ubicacion", "estado_proc", "etapa", "tribunal_id", "competencia",
+               "ebook", "updated_at"],
+    # Receptor + Escritos are cuaderno-level but no cuaderno entity exists, so they
+    # FK to the causa (causa_id) and carry the cuaderno NAME as plain text.
+    "Notificaciones Receptor": ["id", "Causa ID", "Cuaderno", "Nombre", "Fecha",
+                                "Estado"],
+    "Litigantes": ["id", "causa_id", "rut", "participante", "updated_at"],
+    # One row per historia trámite. id = "<causa_id>-c<n>-<folio>-<k>".
+    "Cuadernos": ["id", "causa_id", "cuaderno", "folio", "etapa", "tramite",
                   "descripcion_tramite", "fecha_tramite", "foja", "georref"],
-    "Escritos": ["id", "cuaderno", "fecha_ingreso", "tipo_escrito", "solicitante"],
-    "Documentos": ["id", "cuaderno", "origen", "folio", "descripcion", "url"],
-    "Anexos": ["id", "cuaderno", "origen", "folio", "fecha", "referencia", "url"],
+    "Escritos": ["id", "causa_id", "cuaderno", "fecha_ingreso", "tipo_escrito",
+                 "solicitante"],
+    # Docs/anexos attach to ONE trámite row → cuaderno_id = that Cuadernos.id.
+    "Documentos": ["id", "cuaderno_id", "origen", "folio", "descripcion", "url"],
+    "Anexos": ["id", "cuaderno_id", "origen", "folio", "fecha", "referencia", "url"],
 }
 TAB_ORDER = list(TABS)
 
@@ -150,6 +160,7 @@ def provision(creds=None):
         _write_headers(sheets, sheet_id)
     else:
         log(f"[SETUP] Sheet exists ({sheet_id})")
+        _ensure_tabs(sheets, sheet_id)    # add any tabs missing from TAB_ORDER
         _write_headers(sheets, sheet_id)  # ensure headers present/correct
     _make_public_reader(drive, sheet_id)
 
@@ -159,6 +170,22 @@ def provision(creds=None):
     log(f"[SETUP] config saved -> {CONFIG_PATH.name}")
     log(f"[SETUP] Sheet: https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
     return cfg
+
+
+def _ensure_tabs(sheets, sheet_id):
+    """Add any tab in TAB_ORDER that the existing spreadsheet is missing."""
+    meta = sheets.spreadsheets().get(
+        spreadsheetId=sheet_id, fields="sheets.properties.title").execute()
+    have = {s["properties"]["title"] for s in meta.get("sheets", [])}
+    missing = [t for t in TAB_ORDER if t not in have]
+    if not missing:
+        return
+    sheets.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={"requests": [{"addSheet": {"properties": {"title": t}}}
+                           for t in missing]}).execute()
+    for t in missing:
+        log(f"[SETUP] added missing tab '{t}'")
 
 
 def _write_headers(sheets, sheet_id):
@@ -199,6 +226,19 @@ class Store:
         # +2: row 1 is the header, sheet rows are 1-based
         self._index[tab] = {v: i + 2 for i, v in enumerate(ids) if v}
         return self._index[tab]
+
+    def read_tab(self, table):
+        """Return all data rows of `table` as dicts keyed by the tab's headers."""
+        tab = TABLE_TO_TAB.get(table, table)
+        cols = TABS[tab]
+        resp = self.sheets.spreadsheets().values().get(
+            spreadsheetId=self.sheet_id,
+            range=f"{tab}!A2:{_col_letter(len(cols) - 1)}").execute()
+        out = []
+        for row in resp.get("values", []):
+            out.append({c: (row[i] if i < len(row) else "")
+                        for i, c in enumerate(cols)})
+        return out
 
     def upsert(self, table, rows):
         """Upsert dict rows by column A. Existing IDs overwrite in place; new IDs
