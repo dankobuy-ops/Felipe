@@ -72,6 +72,7 @@ SCRATCH = Path(os.environ.get("TEMP", "/tmp")) / "pjud_pdfs"
 STORE = None       # gstore.Store, set in main() (None under --dry-run)
 DRY = False        # --dry-run: verify live nav/parse without any writes
 SKIP_DOCS = False  # --skip-docs: scrape metadata only, no PDF download/upload
+PROC_FILTER = "Ejecutivo Obligación de Dar"  # only scrape causas whose Proc. == this
 
 
 def log(msg):
@@ -777,12 +778,29 @@ def _paren_date(s):
     return m.group(1) if m else ""
 
 
+def _close_detail(page):
+    """Close #modalDetalleCivil so the next causa opens cleanly."""
+    for sel in ("#modalDetalleCivil button.close", "#modalDetalleCivil .close", "body"):
+        try:
+            page.click(sel, timeout=1500)
+            break
+        except Exception:
+            pass
+    page.wait_for_timeout(600)
+
+
 def scrape_causa(page, api, causa, tribunal):
     rol = causa["rol"]
     causa_id = f'{tribunal["id"]}-{rol}'
     log(f"\n[CAUSA] {tribunal['tribunal']} · {rol} — {causa['caratulado'][:50]}")
     open_detail(page, causa["jwt"])
     header = parse_header(page)
+
+    # Procedure gate: only scrape causas whose Proc. matches PROC_FILTER exactly.
+    if PROC_FILTER and _norm(header.get("procedimiento", "")) != _norm(PROC_FILTER):
+        log(f"[SKIP] {rol}: proc={header.get('procedimiento', '')!r} ≠ {PROC_FILTER!r}")
+        _close_detail(page)
+        return
 
     # Ebook: header form newebookcivil.php (input dtaEbook). TODO: a plain
     # in-session GET returns HTML/0B — the ebook is generated server-side on form
@@ -924,15 +942,7 @@ def scrape_causa(page, api, causa, tribunal):
         f"{len(notif_rows)} receptor, {geo_n} georref, {len(doc_rows)} docs, "
         f"{len(anex_rows)} anexos, {len(esc_rows)} escritos")
 
-    # close modal for the next causa
-    for sel in ("#modalDetalleCivil button.close", "#modalDetalleCivil .close",
-                "body"):
-        try:
-            page.click(sel, timeout=1500)
-            break
-        except Exception:
-            pass
-    page.wait_for_timeout(600)
+    _close_detail(page)
 
 
 def _now():
@@ -1045,6 +1055,9 @@ def parse_args():
                    help="Verify live nav/parse without any writes.")
     p.add_argument("--skip-docs", action="store_true",
                    help="Scrape metadata only — no PDF download/upload (fast).")
+    p.add_argument("--proc", default="Ejecutivo Obligación de Dar",
+                   help="Only scrape causas whose Proc. matches this exactly. "
+                        "Pass '' to disable the filter.")
     return p.parse_args()
 
 
@@ -1153,8 +1166,9 @@ def sweep_rut(page, api, context, banks, cortes, args, start_date):
 
 
 def main():
-    global STORE, DRY, SKIP_DOCS
+    global STORE, DRY, SKIP_DOCS, PROC_FILTER
     args = parse_args()
+    PROC_FILTER = args.proc
 
     if args.setup:
         cfg = gstore.provision()
