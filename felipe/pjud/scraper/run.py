@@ -427,12 +427,31 @@ def reopen_date(page, context):
     open_date_tab(page)
 
 
-def select_corte_fecha(page, corte_val, corte_name):
-    _select(page, "#corteFec", corte_val, f"corte {corte_name}")
-    page.wait_for_timeout(1800)   # #fecTribunal repopulates via AJAX
+def _fec_tribunal_opts(page):
     return page.eval_on_selector_all(
         "#fecTribunal option",
         "els=>els.map(e=>({v:e.value,t:(e.textContent||'').trim()}))")
+
+
+def select_corte_fecha(page, corte_val, corte_name):
+    """Select a corte and return its #fecTribunal options, WAITING for the AJAX
+    cascade to actually populate. Under heavy parallel load the cascade is slow, so
+    we poll until the option count is stable AND plausibly one corte (<100) — never
+    the unfiltered ~230 national list (which caused cross-worker over-scan)."""
+    for attempt in range(3):
+        _select(page, "#corteFec", corte_val, f"corte {corte_name}")
+        prev, stable = None, 0
+        for _ in range(40):                       # up to ~20s
+            page.wait_for_timeout(500)
+            opts = _fec_tribunal_opts(page)
+            n = len([o for o in opts if o["v"] not in ("", "0")])
+            stable = stable + 1 if (n and n == prev) else 0
+            prev = n
+            if stable >= 2 and 0 < n < 100:       # settled to a single corte
+                return opts
+        log(f"[WARN] corte {corte_name}: tribunal list unsettled (n={prev}); "
+            f"re-selecting (attempt {attempt + 1}/3)")
+    return _fec_tribunal_opts(page)
 
 
 def _wait_fecha_results(page, max_ms=SEARCH_WAIT_MS):
@@ -1238,6 +1257,7 @@ def _run_workers(args, cortes):
         lf = open(logpath, "w", encoding="utf-8")
         log(f"[WORKERS] worker {i}: cortes [{csv}] -> {logpath}")
         procs.append((i, csv, subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf))
+        time.sleep(3)   # stagger startup so N guest sessions don't hit OJV at once
     rc = 0
     for i, csv, p, lf in procs:
         r = p.wait()
