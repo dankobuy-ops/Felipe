@@ -29,6 +29,8 @@ import calendar
 import json
 import os
 import re
+import subprocess
+import sys
 import time
 import unicodedata
 from pathlib import Path
@@ -73,6 +75,8 @@ STORE = None       # gstore.Store, set in main() (None under --dry-run)
 DRY = False        # --dry-run: verify live nav/parse without any writes
 SKIP_DOCS = False  # --skip-docs: scrape metadata only, no PDF download/upload
 PROC_FILTER = "Ejecutivo Obligación de Dar"  # only scrape causas whose Proc. == this
+SKIP_GEO = False   # --skip-geo: don't resolve georref sub-modals (defer to a 2nd pass)
+_BUFFER = {}       # tab -> {keyval: row}; bulk-flushed per tribunal (see flush_buffer)
 
 
 def log(msg):
@@ -82,13 +86,40 @@ def log(msg):
 # ── Write layer: Google Sheet upsert + Drive PDF upload (via gstore) ──────────
 
 def upsert(table, rows):
-    """Upsert dict rows into the Sheet tab for `table`, keyed on column A."""
+    """Buffer dict rows (keyed on column A) for a bulk flush. Turns ~9 Sheets API
+    calls/causa into a few bulk writes per tribunal (see flush_buffer)."""
     if not rows:
         return 0
     if DRY or STORE is None:
         log(f"[DRY] upsert {table}: {len(rows)} row(s); sample={rows[0]}")
         return len(rows)
-    return STORE.upsert(table, rows)
+    tab = gstore.TABLE_TO_TAB.get(table, table)
+    keycol = gstore.TABS[tab][0]
+    buf = _BUFFER.setdefault(tab, {})
+    for r in rows:
+        k = str(r.get(keycol, "")).strip()
+        if k:
+            buf[k] = r            # last write wins (dedup within the buffer)
+    return len(rows)
+
+
+def flush_buffer():
+    """Bulk-write everything buffered so far — one STORE.upsert per tab — then clear.
+    STORE.upsert still does append-or-update keyed on column A, so this stays correct
+    for re-runs; on a freshly-cleared DB it's pure bulk append."""
+    if STORE is None or not _BUFFER:
+        return
+    total = 0
+    for tab, d in list(_BUFFER.items()):
+        if d:
+            try:
+                STORE.upsert(tab, list(d.values()))
+                total += len(d)
+            except Exception as e:
+                log(f"[WARN] flush {tab}: {e}")
+    _BUFFER.clear()
+    if total:
+        log(f"[FLUSH] {total} buffered rows written")
 
 
 def upload_pdf(object_path, data):
@@ -892,7 +923,7 @@ def scrape_causa(page, api, causa, tribunal):
             seen[folio] = n
             cid = f"{causa_id}-c{cnum}-{folio}-{n}"
             georref = h["georref"]
-            if h.get("geo"):            # row has a map reference -> resolve coords
+            if h.get("geo") and not SKIP_GEO:   # resolve coords (skip in fast pass)
                 try:
                     open_geo(page, h["geo"])
                     lat, lng = grab_geo(page)
@@ -1046,7 +1077,12 @@ def parse_args():
                    help="rut mode: override start_date (ISO). Keep causas ingresadas on/after it.")
     # shared
     p.add_argument("--corte", default="",
-                   help="Restrict sweep to one corte value (e.g. 10=Arica). Default = all 17.")
+                   help="Restrict to corte value(s), comma-separated (e.g. 10 or 10,11,90). "
+                        "Default = all 17.")
+    p.add_argument("--workers", type=int, default=1,
+                   help="Parallel worker processes, splitting the cortes among them (default 1).")
+    p.add_argument("--skip-geo", action="store_true",
+                   help="Don't resolve georref sub-modals (defer to a later pass) — big speed-up.")
     p.add_argument("--max-tribunals", type=int, default=0,
                    help="Cap tribunals per corte (testing).")
     p.add_argument("--max-seconds", type=int, default=0,
@@ -1114,6 +1150,8 @@ def sweep_month(page, api, context, banks, cortes, args):
                         ok += 1
                     except Exception as e:
                         log(f"[ERR] {trib_name} {c['rol']}: {e}")
+            flush_buffer()          # bulk-write this tribunal's rows
+    flush_buffer()
     log(f"\n[DONE month] {ok}/{total} causas. cortes={len(cortes)} months={len(months)}.")
 
 
@@ -1165,13 +1203,57 @@ def sweep_rut(page, api, context, banks, cortes, args, start_date):
                             ok += 1
                         except Exception as e:
                             log(f"[ERR] {trib_name} {c['rol']}: {e}")
+            flush_buffer()          # bulk-write this tribunal's rows
+    flush_buffer()
     log(f"\n[DONE rut] {ok}/{total} causas. banks={len(banks)} cortes={len(cortes)}.")
 
 
+def _run_workers(args, cortes):
+    """Parent: fan the selected cortes out across N parallel worker subprocesses
+    (each its own browser + guest session + buffered writer). Sheets appends are
+    concurrency-safe; the only cross-worker overlap is duplicate Ruts (same debtor
+    in two cortes), deduped downstream."""
+    groups = [g for g in (cortes[i::args.workers] for i in range(args.workers)) if g]
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    log(f"[WORKERS] {len(groups)} parallel workers over {len(cortes)} cortes")
+    procs = []
+    for i, g in enumerate(groups):
+        csv = ",".join(c[0] for c in g)
+        cmd = [sys.executable, os.path.abspath(__file__),
+               "--mode", args.mode, "--corte", csv, "--workers", "1",
+               "--proc", args.proc]
+        if args.desde:
+            cmd += ["--desde", args.desde]
+        if args.hasta:
+            cmd += ["--hasta", args.hasta]
+        if args.max_tribunals:
+            cmd += ["--max-tribunals", str(args.max_tribunals)]
+        if args.limit:
+            cmd += ["--limit", str(args.limit)]
+        if args.skip_docs:
+            cmd.append("--skip-docs")
+        if args.skip_geo:
+            cmd.append("--skip-geo")
+        logpath = SCRATCH / f"pjud_worker_{i}.log"
+        lf = open(logpath, "w", encoding="utf-8")
+        log(f"[WORKERS] worker {i}: cortes [{csv}] -> {logpath}")
+        procs.append((i, csv, subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf))
+    rc = 0
+    for i, csv, p, lf in procs:
+        r = p.wait()
+        lf.close()
+        log(f"[WORKERS] worker {i} (cortes {csv}) exited {r}")
+        rc = rc or r
+    log(f"[WORKERS] all workers done (rc={rc})")
+    if rc:
+        raise SystemExit(rc)
+
+
 def main():
-    global STORE, DRY, SKIP_DOCS, PROC_FILTER
+    global STORE, DRY, SKIP_DOCS, PROC_FILTER, SKIP_GEO
     args = parse_args()
     PROC_FILTER = args.proc
+    SKIP_GEO = args.skip_geo
 
     if args.setup:
         cfg = gstore.provision()
@@ -1188,13 +1270,21 @@ def main():
 
     DRY = args.dry_run
     SKIP_DOCS = args.skip_docs
+
+    sel = [x.strip() for x in (args.corte or "").split(",") if x.strip()]
+    cortes = [c for c in CORTES if (not sel or c[0] in sel)]
+
+    # Parent fan-out: split the cortes across N parallel worker processes.
+    if args.workers > 1 and len(cortes) > 1:
+        _run_workers(args, cortes)
+        return
+
     if not DRY:
         STORE = gstore.Store()
     SCRATCH.mkdir(parents=True, exist_ok=True)
 
     start_date = resolve_start_date(args, STORE)
     banks = resolve_banks(args, STORE)
-    cortes = [c for c in CORTES if (not args.corte or c[0] == args.corte)]
     order = {"month": ["month"], "rut": ["rut"], "auto": ["month", "rut"]}[args.mode]
     log(f"[INFO] mode={args.mode} -> {order}; banks={len(banks)} cortes={len(cortes)}")
 
