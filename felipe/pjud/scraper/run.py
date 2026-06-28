@@ -738,6 +738,12 @@ def _first_date(s):
     return m.group(1) if m else (s or "")
 
 
+def _paren_date(s):
+    """The parenthetical diligencia date: '04/06/2026 (03/06/2026)' -> '03/06/2026'."""
+    m = re.search(r"\((\d{1,2}/\d{1,2}/\d{4})\)", s or "")
+    return m.group(1) if m else ""
+
+
 def scrape_causa(page, api, causa, tribunal):
     rol = causa["rol"]
     causa_id = f'{tribunal["id"]}-{rol}'
@@ -843,7 +849,9 @@ def scrape_causa(page, api, causa, tribunal):
             cuad_rows.append({
                 "id": cid, "causa_id": causa_id, "cuaderno": cuaderno, "folio": folio,
                 "etapa": h["etapa"], "tramite": h["tramite"],
-                "descripcion_tramite": h["desc"], "fecha_tramite": _first_date(h["fecha"]),
+                "descripcion_tramite": h["desc"],
+                "fecha_tramite": _first_date(h["fecha"]),
+                "fecha_diligencia": _paren_date(h["fecha"]),
                 "foja": h["foja"], "georref": georref,
             })
             # documents on this row attach to THIS trámite row (cuaderno_id = cid)

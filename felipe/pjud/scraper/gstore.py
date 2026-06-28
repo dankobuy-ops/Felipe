@@ -43,8 +43,10 @@ TABS = {
                                 "Estado"],
     "Litigantes": ["id", "causa_id", "rut", "participante", "updated_at"],
     # One row per historia trámite. id = "<causa_id>-c<n>-<folio>-<k>".
+    # fecha_tramite = leading date; fecha_diligencia = the parenthetical date.
     "Cuadernos": ["id", "causa_id", "cuaderno", "folio", "etapa", "tramite",
-                  "descripcion_tramite", "fecha_tramite", "foja", "georref"],
+                  "descripcion_tramite", "fecha_tramite", "fecha_diligencia",
+                  "foja", "georref"],
     "Escritos": ["id", "causa_id", "cuaderno", "fecha_ingreso", "tipo_escrito",
                  "solicitante"],
     # Docs/anexos attach to ONE trámite row → cuaderno_id = that Cuadernos.id.
