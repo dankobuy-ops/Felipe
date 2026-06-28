@@ -25,10 +25,12 @@ Run `python run.py --setup` once, then `python run.py --rut 97004000 --dv 5`.
 """
 
 import argparse
+import calendar
 import json
 import os
 import re
 import time
+import unicodedata
 from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
@@ -283,6 +285,218 @@ def collect_causas(page):
     kept = [r for r in rows if r["rol"].upper().startswith("C") and r["jwt"]]
     log(f"[INFO] results: {len(rows)} rows, {len(kept)} kept (Rol starts 'C')")
     return kept
+
+
+# ── Search by month (Búsqueda por Fecha) — DEFAULT mode ───────────────────────
+#
+# One date-range search per (corte, tribunal) returns ALL parties' causas in the
+# window, so a single pass covers every bank (vs. the per-bank RUT sweep). We keep
+# Rol-'C' rows whose Caratulado wildcard-matches a bank name and scrape them all
+# (no procedure/RUT filter — that's done downstream in AppSheet). This also reveals
+# each bank entity's real RUT (via its litigantes), to later fix the RUT search.
+
+def _norm(s):
+    """Uppercase + strip accents + collapse spaces (for caratulado/bank matching)."""
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", s).upper().strip()
+
+
+# Distinctive Caratulado fragments per bank (curated; bare "CHILE" avoided).
+BANK_FRAGMENTS = {
+    "Banco de Chile":          ["BANCO DE CHILE"],
+    "BCI":                     ["BANCO DE CREDITO E INVERSIONES", "BCI"],
+    "Banco Santander-Chile":   ["SANTANDER"],
+    "Scotiabank Chile":        ["SCOTIABANK"],
+    "Banco Itaú Chile":        ["ITAU"],
+    "Banco BICE":              ["BICE"],
+    "Banco Internacional":     ["BANCO INTERNACIONAL"],
+    "Banco Consorcio":         ["CONSORCIO"],
+    "Banco Falabella":         ["FALABELLA"],
+    "Banco Ripley":            ["RIPLEY"],
+    "Banco BTG Pactual Chile": ["BTG PACTUAL"],
+    "Coopeuch":                ["COOPEUCH"],
+    "BancoEstado":             ["BANCOESTADO", "BANCO DEL ESTADO", "BANCO ESTADO"],
+}
+_GENERIC = {"BANCO", "DE", "DEL", "LA", "EL", "CHILE", "S.A.", "SA", "LTDA"}
+
+
+def bank_fragments(banks):
+    """Normalized fragment list from the active Bancos work-list; derives a
+    distinctive token for any bank not in BANK_FRAGMENTS."""
+    frags = []
+    for b in banks:
+        cand = BANK_FRAGMENTS.get(b["nombre"])
+        if not cand:
+            toks = [t for t in _norm(b["nombre"]).split() if t not in _GENERIC]
+            cand = [" ".join(toks)] if toks else [_norm(b["nombre"])]
+        frags.extend(_norm(c) for c in cand)
+    return sorted({f for f in frags if f})
+
+
+def matches_bank(caratulado, frags):
+    c = _norm(caratulado)
+    return any(f in c for f in frags)
+
+
+def open_date_tab(page):
+    """Activate 'Búsqueda por Fecha' and lock competencia = Civil."""
+    page.wait_for_selector("a[href='#BusFecha']", timeout=30_000)
+    page.wait_for_timeout(500)
+    page.click("a[href='#BusFecha']")
+    page.wait_for_timeout(800)
+    _select(page, "#fecCompetencia", VAL_COMPETENCIA, "competencia(fecha)")
+    page.wait_for_timeout(1500)   # corte list populates via AJAX
+
+
+def date_form_alive(page):
+    try:
+        return page.eval_on_selector_all("#fecCompetencia", "e=>e.length") > 0
+    except Exception:
+        return False
+
+
+def reopen_date(page, context):
+    log("[NAV] date form missing — re-establishing guest session…")
+    reach_search_form(page, context)
+    open_date_tab(page)
+    warm_up_fecha(page)
+
+
+def select_corte_fecha(page, corte_val, corte_name):
+    _select(page, "#corteFec", corte_val, f"corte {corte_name}")
+    page.wait_for_timeout(1800)   # #fecTribunal repopulates via AJAX
+    return page.eval_on_selector_all(
+        "#fecTribunal option",
+        "els=>els.map(e=>({v:e.value,t:(e.textContent||'').trim()}))")
+
+
+def _wait_fecha_results(page, max_ms=SEARCH_WAIT_MS):
+    waited, step = 0, 600
+    while waited < max_ms:
+        n = page.eval_on_selector_all("#dtaTableDetalleFecha tbody tr", "e=>e.length")
+        if n:
+            page.wait_for_timeout(700)
+            return True
+        page.wait_for_timeout(step)
+        waited += step
+    return False
+
+
+def _collect_fecha_page(page):
+    return page.eval_on_selector_all(
+        "#dtaTableDetalleFecha tbody tr",
+        r"""els => els.map(tr => {
+          const td = Array.from(tr.querySelectorAll('td'));
+          const a = tr.querySelector("a[onclick*='detalleCausaCivil']");
+          const oc = a ? a.getAttribute('onclick') : '';
+          const m = oc.match(/detalleCausaCivil\(['"]([^'"]+)['"]\)/);
+          return { rol: td[1]?td[1].innerText.trim():'',
+                   fecha: td[2]?td[2].innerText.trim():'',
+                   caratulado: td[3]?td[3].innerText.trim():'',
+                   tribunal: td[4]?td[4].innerText.trim():'',
+                   jwt: m?m[1]:'' };
+        }).filter(r=>r.rol)""")
+
+
+def _page_sig(page):
+    """Signature of the current results page = first row's detail JWT (changes per
+    page). Used to detect when the paginator AJAX has actually swapped the table."""
+    return page.eval_on_selector(
+        "#dtaTableDetalleFecha tbody tr a[onclick*='detalleCausaCivil']",
+        "e=>e?e.getAttribute('onclick'):''") or ""
+
+
+def _next_fecha_page(page):
+    """Advance the paginator via 'Siguiente' (#sigId → paginaFecSig(JWT) AJAX).
+    Returns True only once the table actually changes; False at the last page."""
+    try:
+        disabled = page.eval_on_selector(
+            "#sigId",
+            "e=>{const li=e.closest('li');return !!(li&&li.classList.contains('disabled'));}")
+    except Exception:
+        return False
+    if disabled:
+        return False
+    before = _page_sig(page)
+    try:
+        page.eval_on_selector("#sigId", "e=>e.click()")
+    except Exception as e:
+        log(f"[WARN] pagination next: {e}")
+        return False
+    for _ in range(16):                 # poll up to ~8s for the AJAX swap
+        page.wait_for_timeout(500)
+        if _page_sig(page) not in ("", before):
+            return True
+    return False                        # no change → treat as last page
+
+
+def search_month_paginated(page, trib_val, year, month):
+    """Search one tribunal for one calendar month; return ALL rows across pages."""
+    _select(page, "#fecTribunal", trib_val, "tribunal(fecha)")
+    last = calendar.monthrange(year, month)[1]
+    # #fecDesde/#fecHasta are readonly jQuery datepickers — page.fill() can't type
+    # into them, so set the value via JS (strip readonly + dispatch change).
+    page.evaluate(
+        """([desde, hasta]) => {
+            const set = (id, v) => { const e = document.getElementById(id);
+                if (e) { e.removeAttribute('readonly'); e.value = v;
+                         e.dispatchEvent(new Event('change', {bubbles: true})); } };
+            set('fecDesde', desde); set('fecHasta', hasta);
+        }""",
+        [f"01/{month:02d}/{year}", f"{last:02d}/{month:02d}/{year}"])
+    page.evaluate("() => { const t=document.querySelector('#dtaTableDetalleFecha tbody');"
+                  " if(t)t.innerHTML=''; }")
+    page.click("#btnConConsultaFec")
+    if not _wait_fecha_results(page):
+        page.wait_for_timeout(PACE_MS)
+        return []
+    by_rol, pages = {}, 0
+    while pages < 60:
+        for r in _collect_fecha_page(page):
+            if r["rol"]:
+                by_rol.setdefault(r["rol"], r)
+        pages += 1
+        if not _next_fecha_page(page):
+            break
+    page.wait_for_timeout(PACE_MS)
+    return list(by_rol.values())
+
+
+def warm_up_fecha(page):
+    """Burn the first (always-empty) search after the date form loads."""
+    try:
+        tribs = select_corte_fecha(page, CORTES[0][0], CORTES[0][1])
+        first = next((o["v"] for o in tribs if o["v"] not in ("", "0")), None)
+        if first:
+            y, m = int(time.strftime("%Y")), int(time.strftime("%m"))
+            search_month_paginated(page, first, y, m)
+            log("[NAV] date warm-up search done (discarded)")
+    except Exception as e:
+        log(f"[WARN] date warm-up: {e}")
+
+
+def months_to_scan(args):
+    """List of (year, month). --desde/--hasta (YYYY-MM) override; default = current
+    year, January through the current month."""
+    ny, nm = int(time.strftime("%Y")), int(time.strftime("%m"))
+
+    def parse_ym(s):
+        y, m = s.split("-")
+        return int(y), int(m)
+
+    if args.desde and args.hasta:
+        y1, m1 = parse_ym(args.desde)
+        y2, m2 = parse_ym(args.hasta)
+    else:
+        y1, m1, y2, m2 = ny, 1, ny, nm
+    out, y, m = [], y1, m1
+    while (y, m) <= (y2, m2):
+        out.append((y, m))
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return out
 
 
 # ── Detalle modal ─────────────────────────────────────────────────────────────
@@ -746,21 +960,30 @@ def expand_eras(spec):
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="PJUD OJV civil scraper — per-bank nationwide sweep "
-                    "(Búsqueda por Rut Persona Jurídica, Rol 'C').")
+        description="PJUD OJV civil scraper — finds Rol-'C' causas for the bank "
+                    "entities in the Bancos tab. Default mode: search by month.")
     p.add_argument("--setup", action="store_true",
                    help="One-time: OAuth login + provision Drive/Sheet (+ Bancos tab), then exit.")
     p.add_argument("--list-banks", action="store_true",
                    help="Print active banks from the Bancos tab as JSON (for the CI matrix), then exit.")
+    p.add_argument("--mode", choices=["month", "rut", "auto"], default="month",
+                   help="Search strategy. 'month' (default) = Búsqueda por Fecha per "
+                        "calendar month (all banks at once); 'rut' = per-bank RUT sweep; "
+                        "'auto' = month, then rut on failure.")
+    # month-mode range (default: Jan of current year → current month)
+    p.add_argument("--desde", default="", help="Month mode: first month YYYY-MM.")
+    p.add_argument("--hasta", default="", help="Month mode: last month YYYY-MM.")
+    # rut-mode (single bank) options
     p.add_argument("--rut", default=None,
-                   help="RUT sin dígito verificador for ONE bank. Omit to sweep all "
+                   help="RUT sin dígito verificador for ONE bank. Omit to use all "
                         "active banks in the Bancos tab.")
     p.add_argument("--dv", default="", help="Dígito verificador (used with --rut).")
     p.add_argument("--bank", default="", help="Display name for --rut (logging only).")
     p.add_argument("--era", default="",
-                   help="Año (#eraJur). Default = current year. '2026' or '2024-2026'.")
+                   help="rut mode: año (#eraJur). Default = current year. '2026' or '2024-2026'.")
     p.add_argument("--since", default="",
-                   help="Override start_date (ISO). Keep only causas ingresadas on/after it.")
+                   help="rut mode: override start_date (ISO). Keep causas ingresadas on/after it.")
+    # shared
     p.add_argument("--corte", default="",
                    help="Restrict sweep to one corte value (e.g. 10=Arica). Default = all 17.")
     p.add_argument("--max-tribunals", type=int, default=0,
@@ -768,13 +991,117 @@ def parse_args():
     p.add_argument("--max-seconds", type=int, default=0,
                    help="Stop the sweep after N seconds (0 = no limit).")
     p.add_argument("--limit", type=int, default=0,
-                   help="Max causas per tribunal/bank/era (0 = all).")
+                   help="Max causas per tribunal/month (or /bank/era in rut mode); 0 = all.")
     p.add_argument("--headed", action="store_true", help="Show the browser.")
     p.add_argument("--dry-run", action="store_true",
                    help="Verify live nav/parse without any writes.")
     p.add_argument("--skip-docs", action="store_true",
                    help="Scrape metadata only — no PDF download/upload (fast).")
     return p.parse_args()
+
+
+def sweep_month(page, api, context, banks, cortes, args):
+    """Mode 'month' (default): per (corte, tribunal) run one Búsqueda por Fecha per
+    calendar month, paginate fully, keep Rol-'C' rows whose Caratulado wildcard-
+    matches a bank, and scrape every one (no procedure/RUT filter)."""
+    frags = bank_fragments(banks)
+    months = months_to_scan(args)
+    deadline = (time.time() + args.max_seconds) if args.max_seconds else None
+    log(f"[MONTH] frags={frags} months={months[0]}..{months[-1]} cortes={len(cortes)}")
+    open_date_tab(page)
+    warm_up_fecha(page)
+    ok = total = 0
+    for corte_val, corte_name in cortes:
+        if deadline and time.time() > deadline:
+            break
+        if not date_form_alive(page):
+            reopen_date(page, context)
+        tribs = [(o["v"], o["t"]) for o in select_corte_fecha(page, corte_val, corte_name)
+                 if o["v"] not in ("", "0")]
+        if args.max_tribunals:
+            tribs = tribs[:args.max_tribunals]
+        log(f"[CORTE] {corte_name}: {len(tribs)} tribunales")
+        for trib_val, trib_name in tribs:
+            if deadline and time.time() > deadline:
+                log("[INFO] max-seconds reached — stopping.")
+                break
+            tribunal = {"id": trib_val, "corte": corte_name, "tribunal": trib_name}
+            seeded = False
+            for (y, m) in months:
+                try:
+                    rows = search_month_paginated(page, trib_val, y, m)
+                except Exception as e:
+                    log(f"[WARN] month {trib_name} {y}-{m:02d}: {e}")
+                    continue
+                keep = [r for r in rows
+                        if r["rol"].upper().startswith("C") and r["jwt"]
+                        and matches_bank(r["caratulado"], frags)]
+                log(f"[MONTH] {corte_name}/{trib_name} {y}-{m:02d}: "
+                    f"{len(rows)} rows, {len(keep)} bank C-causas")
+                if args.limit:
+                    keep = keep[:args.limit]
+                if keep and not seeded:
+                    upsert("pjud_tribunales", [tribunal])
+                    seeded = True
+                for c in keep:
+                    total += 1
+                    try:
+                        scrape_causa(page, api, c, tribunal)
+                        ok += 1
+                    except Exception as e:
+                        log(f"[ERR] {trib_name} {c['rol']}: {e}")
+    log(f"\n[DONE month] {ok}/{total} causas. cortes={len(cortes)} months={len(months)}.")
+
+
+def sweep_rut(page, api, context, banks, cortes, args, start_date):
+    """Mode 'rut': per (corte, tribunal) search each bank's RUT (Persona Jurídica),
+    keep Rol-'C' causas ingresadas ≥ start_date. (Currently broken site-side.)"""
+    eras = expand_eras(args.era or time.strftime("%Y"))
+    deadline = (time.time() + args.max_seconds) if args.max_seconds else None
+    log(f"[RUT] banks={[b['nombre'] for b in banks]} cortes={len(cortes)} "
+        f"eras={eras} since={start_date}")
+    open_search_tab(page)
+    warm_up(page)
+    ok = total = 0
+    for corte_val, corte_name in cortes:
+        if deadline and time.time() > deadline:
+            break
+        if not form_alive(page):
+            reopen_form(page, context)
+        tribs = [(o["v"], o["t"]) for o in select_corte(page, corte_val, corte_name)
+                 if o["v"] not in ("", "0")]
+        if args.max_tribunals:
+            tribs = tribs[:args.max_tribunals]
+        log(f"[CORTE] {corte_name}: {len(tribs)} tribunales")
+        for trib_val, trib_name in tribs:
+            if deadline and time.time() > deadline:
+                log("[INFO] max-seconds reached — stopping.")
+                break
+            tribunal = {"id": trib_val, "corte": corte_name, "tribunal": trib_name}
+            seeded = False
+            for bank in banks:
+                for era in eras:
+                    try:
+                        if not search_tribunal(page, trib_val, bank["rut"], bank["dv"], era):
+                            continue
+                        causas = [c for c in collect_causas(page)
+                                  if keep_causa(c, start_date)]
+                    except Exception as e:
+                        log(f"[WARN] search {trib_name} {bank['nombre']} era {era}: {e}")
+                        continue
+                    if args.limit:
+                        causas = causas[:args.limit]
+                    if causas and not seeded:
+                        upsert("pjud_tribunales", [tribunal])
+                        seeded = True
+                    for c in causas:
+                        total += 1
+                        try:
+                            scrape_causa(page, api, c, tribunal)
+                            ok += 1
+                        except Exception as e:
+                            log(f"[ERR] {trib_name} {c['rol']}: {e}")
+    log(f"\n[DONE rut] {ok}/{total} causas. banks={len(banks)} cortes={len(cortes)}.")
 
 
 def main():
@@ -786,12 +1113,10 @@ def main():
         if not cfg.get("start_date"):
             cfg["start_date"] = time.strftime("%Y-%m-%d")
             gstore.save_config(cfg)
-        log(f"[SETUP] start_date = {cfg['start_date']}. "
-            f"Run a bank: python run.py --rut 97004000 --dv 5")
+        log(f"[SETUP] start_date = {cfg['start_date']}. Run: python run.py")
         return
 
     if args.list_banks:
-        # JSON array of {nombre, rut, dv} for the GitHub Actions matrix.
         print(json.dumps(resolve_banks(argparse.Namespace(rut=None, dv="", bank=""),
                                         gstore.Store()), ensure_ascii=False))
         return
@@ -805,10 +1130,8 @@ def main():
     start_date = resolve_start_date(args, STORE)
     banks = resolve_banks(args, STORE)
     cortes = [c for c in CORTES if (not args.corte or c[0] == args.corte)]
-    eras = expand_eras(args.era or time.strftime("%Y"))
-    deadline = (time.time() + args.max_seconds) if args.max_seconds else None
-    log(f"[INFO] banks={[b['nombre'] for b in banks]} cortes={len(cortes)} "
-        f"eras={eras} since={start_date}")
+    order = {"month": ["month"], "rut": ["rut"], "auto": ["month", "rut"]}[args.mode]
+    log(f"[INFO] mode={args.mode} -> {order}; banks={len(banks)} cortes={len(cortes)}")
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=not args.headed)
@@ -818,58 +1141,22 @@ def main():
             locale="es-CL", accept_downloads=True,
             viewport={"width": 1400, "height": 1000})
         page = context.new_page()
-        reach_search_form(page, context)
-        # APIRequestContext shares this context's cookies → in-session downloads.
-        api = context.request
+        api = context.request   # shares cookies → in-session PDF downloads
 
-        open_search_tab(page)
-        warm_up(page)
-
-        ok = total = 0
-        stopped = False
-        for corte_val, corte_name in cortes:
-            if stopped:
+        for i, mname in enumerate(order):
+            try:
+                reach_search_form(page, context)
+                if mname == "month":
+                    sweep_month(page, api, context, banks, cortes, args)
+                else:
+                    sweep_rut(page, api, context, banks, cortes, args, start_date)
                 break
-            if not form_alive(page):        # session expired / gated → recover
-                reopen_form(page, context)
-            tribs = [(o["v"], o["t"]) for o in select_corte(page, corte_val, corte_name)
-                     if o["v"] not in ("", "0")]
-            if args.max_tribunals:
-                tribs = tribs[:args.max_tribunals]
-            log(f"[CORTE] {corte_name}: {len(tribs)} tribunales")
-            for trib_val, trib_name in tribs:
-                if deadline and time.time() > deadline:
-                    log("[INFO] max-seconds reached — stopping sweep.")
-                    stopped = True
-                    break
-                tribunal = {"id": trib_val, "corte": corte_name, "tribunal": trib_name}
-                seeded = False
-                for bank in banks:
-                    for era in eras:
-                        try:
-                            if not search_tribunal(page, trib_val, bank["rut"],
-                                                   bank["dv"], era):
-                                continue
-                            causas = [c for c in collect_causas(page)
-                                      if keep_causa(c, start_date)]
-                        except Exception as e:
-                            log(f"[WARN] search {trib_name} {bank['nombre']} "
-                                f"era {era}: {e}")
-                            continue
-                        if args.limit:
-                            causas = causas[:args.limit]
-                        if causas and not seeded:
-                            upsert("pjud_tribunales", [tribunal])
-                            seeded = True
-                        for c in causas:
-                            total += 1
-                            try:
-                                scrape_causa(page, api, c, tribunal)
-                                ok += 1
-                            except Exception as e:
-                                log(f"[ERR] {trib_name} {c['rol']}: {e}")
-        log(f"\n[DONE] {ok}/{total} causas scraped. "
-            f"banks={len(banks)} cortes={len(cortes)} since={start_date}.")
+            except Exception as e:
+                log(f"[MODE] '{mname}' failed: {e}")
+                if i + 1 < len(order):
+                    log(f"[MODE] falling back to '{order[i + 1]}'…")
+                else:
+                    raise
         context.close()
         browser.close()
 
