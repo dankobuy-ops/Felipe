@@ -731,6 +731,13 @@ def _cuaderno_num(cuaderno_txt, fallback):
     return m.group(1) if m else str(fallback)
 
 
+def _first_date(s):
+    """OJV 'Fec. Trámite' can carry two dates: '04/06/2026 (03/06/2026)'. Keep only
+    the leading DD/MM/YYYY so the cell parses as a date downstream; else leave as-is."""
+    m = re.match(r"\s*(\d{1,2}/\d{1,2}/\d{4})", s or "")
+    return m.group(1) if m else (s or "")
+
+
 def scrape_causa(page, api, causa, tribunal):
     rol = causa["rol"]
     causa_id = f'{tribunal["id"]}-{rol}'
@@ -836,7 +843,7 @@ def scrape_causa(page, api, causa, tribunal):
             cuad_rows.append({
                 "id": cid, "causa_id": causa_id, "cuaderno": cuaderno, "folio": folio,
                 "etapa": h["etapa"], "tramite": h["tramite"],
-                "descripcion_tramite": h["desc"], "fecha_tramite": h["fecha"],
+                "descripcion_tramite": h["desc"], "fecha_tramite": _first_date(h["fecha"]),
                 "foja": h["foja"], "georref": georref,
             })
             # documents on this row attach to THIS trámite row (cuaderno_id = cid)
