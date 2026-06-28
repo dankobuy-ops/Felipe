@@ -242,6 +242,26 @@ class Store:
                         for i, c in enumerate(cols)})
         return out
 
+    def dedup(self, table):
+        """Remove duplicate rows keyed on column A (keep last). Used after a parallel
+        run where multiple workers appended the same key (e.g. a rut) without seeing
+        each other's index. Rewrites the tab's data rows; returns rows removed."""
+        tab = TABLE_TO_TAB.get(table, table)
+        cols = TABS[tab]
+        rows = self.read_tab(tab)
+        seen = {}
+        for r in rows:
+            k = str(r.get(cols[0], "")).strip()
+            if k:
+                seen[k] = r
+        if len(seen) == len(rows):
+            return 0
+        self.sheets.spreadsheets().values().batchClear(
+            spreadsheetId=self.sheet_id, body={"ranges": [f"{tab}!A2:ZZ"]}).execute()
+        self._index.pop(tab, None)
+        self.upsert(tab, list(seen.values()))
+        return len(rows) - len(seen)
+
     def upsert(self, table, rows):
         """Upsert dict rows by column A. Existing IDs overwrite in place; new IDs
         append. `rows` may repeat an ID within the batch — last one wins."""

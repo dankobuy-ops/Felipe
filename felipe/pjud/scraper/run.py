@@ -79,6 +79,7 @@ DRY = False        # --dry-run: verify live nav/parse without any writes
 SKIP_DOCS = False  # --skip-docs: scrape metadata only, no PDF download/upload
 PROC_FILTER = "Ejecutivo Obligación de Dar"  # only scrape causas whose Proc. == this
 SKIP_GEO = False   # --skip-geo: don't resolve georref sub-modals (defer to a 2nd pass)
+BANK_RUTS = set()  # normalized RUTs of target banks; demandante must be one of these
 _BUFFER = {}       # tab -> {keyval: row}; bulk-flushed per tribunal (see flush_buffer)
 
 
@@ -355,34 +356,36 @@ def _norm(s):
     return re.sub(r"\s+", " ", s).upper().strip()
 
 
-# Distinctive Caratulado fragments per bank (curated; bare "CHILE" avoided).
+# Distinctive Caratulado fragments keyed by bank RUT (stable, unlike the names).
+# This is only a permissive PRE-FILTER to decide which causas to open; the precise
+# filter is the demandante-RUT gate. Both Falabella entities share "FALABELLA" —
+# the RUT gate separates them.
 BANK_FRAGMENTS = {
-    "Banco de Chile":          ["BANCO DE CHILE"],
-    "BCI":                     ["BANCO DE CREDITO E INVERSIONES", "BCI"],
-    "Banco Santander-Chile":   ["SANTANDER"],
-    "Scotiabank Chile":        ["SCOTIABANK"],
-    "Banco Itaú Chile":        ["ITAU"],
-    "Banco BICE":              ["BICE"],
-    "Banco Internacional":     ["BANCO INTERNACIONAL"],
-    "Banco Consorcio":         ["CONSORCIO"],
-    "Banco Falabella":         ["FALABELLA"],
-    "Banco Ripley":            ["RIPLEY"],
-    "Banco BTG Pactual Chile": ["BTG PACTUAL"],
-    "Coopeuch":                ["COOPEUCH"],
-    "BancoEstado":             ["BANCOESTADO", "BANCO DEL ESTADO", "BANCO ESTADO"],
+    "97036000-k": ["SANTANDER"],
+    "97030000-7": ["ESTADO DE CHILE", "BANCOESTADO", "BANCO DEL ESTADO"],
+    "97023000-9": ["ITAU"],
+    "97018000-1": ["SCOTIABANK"],
+    "97011000-3": ["BANCO INTERNACIONAL"],
+    "97006000-6": ["CREDITO E INVERSIONES", "BCI"],
+    "97004000-5": ["BANCO DE CHILE"],
+    "96509660-4": ["FALABELLA"],
+    "90743000-6": ["FALABELLA"],
+    "82878900-7": ["COOPEUCH"],
 }
-_GENERIC = {"BANCO", "DE", "DEL", "LA", "EL", "CHILE", "S.A.", "SA", "LTDA"}
+_GENERIC = {"BANCO", "DE", "DEL", "LA", "EL", "CHILE", "S.A", "S.A.", "SA",
+            "LTDA", "CIA", "Y", "E"}
 
 
 def bank_fragments(banks):
-    """Normalized fragment list from the active Bancos work-list; derives a
-    distinctive token for any bank not in BANK_FRAGMENTS."""
+    """Normalized caratulado fragments for the active banks (keyed by RUT; derives a
+    distinctive token for any bank not in BANK_FRAGMENTS)."""
     frags = []
     for b in banks:
-        cand = BANK_FRAGMENTS.get(b["nombre"])
+        cand = BANK_FRAGMENTS.get(norm_rut(f"{b['rut']}-{b['dv']}"))
         if not cand:
-            toks = [t for t in _norm(b["nombre"]).split() if t not in _GENERIC]
-            cand = [" ".join(toks)] if toks else [_norm(b["nombre"])]
+            toks = [t for t in _norm(b.get("nombre", "")).split()
+                    if t not in _GENERIC and len(t) > 2 and t.isalpha()]
+            cand = [max(toks, key=len)] if toks else [_norm(b.get("nombre", ""))]
         frags.extend(_norm(c) for c in cand)
     return sorted({f for f in frags if f})
 
@@ -860,6 +863,15 @@ def scrape_causa(page, api, causa, tribunal):
         _close_detail(page)
         return
 
+    # Demandante gate: keep ONLY if a target-bank RUT is the demandante (DTE.).
+    litigantes = parse_litigantes(page)
+    if BANK_RUTS and not any(
+            norm_rut(L["rut"]) in BANK_RUTS and "DTE" in (L["participante"] or "").upper()
+            for L in litigantes):
+        log(f"[SKIP] {rol}: demandante not a target bank")
+        _close_detail(page)
+        return
+
     # Ebook: header form newebookcivil.php (input dtaEbook). TODO: a plain
     # in-session GET returns HTML/0B — the ebook is generated server-side on form
     # submit (opens a target window). Left best-effort/empty until mapped; every
@@ -885,9 +897,9 @@ def scrape_causa(page, api, causa, tribunal):
         "updated_at": _now(),
     }])
 
-    # Litigantes -> ruts + junction
+    # Litigantes -> ruts + junction (already parsed for the demandante gate above)
     rut_rows, lit_rows = [], []
-    for L in parse_litigantes(page):
+    for L in litigantes:
         rut = norm_rut(L["rut"])
         if not rut:
             continue
@@ -1060,6 +1072,11 @@ def resolve_banks(args, store):
     if not banks:
         raise SystemExit("[FATAL] Bancos tab has no active rows.")
     return banks
+
+
+def _bank_ruts(banks):
+    """Normalized RUTs ('digits-dv', lowercased) of the target banks."""
+    return {norm_rut(f"{b['rut']}-{b['dv']}") for b in banks if b.get("rut")}
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -1349,12 +1366,18 @@ def _run_workers(args, cortes):
         log(f"[WORKERS] worker {i} ({ntribs} tribunals) exited {r}")
         rc = rc or r
     log(f"[WORKERS] all workers done (rc={rc})")
+    # Dedup the only cross-worker-duplicable tab (Ruts): same debtor in 2 cortes.
+    try:
+        removed = gstore.Store().dedup("Ruts")
+        log(f"[DEDUP] Ruts: removed {removed} duplicate rows")
+    except Exception as e:
+        log(f"[WARN] dedup Ruts: {e}")
     if rc:
         raise SystemExit(rc)
 
 
 def main():
-    global STORE, DRY, SKIP_DOCS, PROC_FILTER, SKIP_GEO
+    global STORE, DRY, SKIP_DOCS, PROC_FILTER, SKIP_GEO, BANK_RUTS
     args = parse_args()
     PROC_FILTER = args.proc
     SKIP_GEO = args.skip_geo
@@ -1382,6 +1405,7 @@ def main():
             STORE = gstore.Store()
         SCRATCH.mkdir(parents=True, exist_ok=True)
         banks = resolve_banks(args, STORE)
+        BANK_RUTS = _bank_ruts(banks)
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=not args.headed)
             context = _new_context(browser)
@@ -1406,6 +1430,7 @@ def main():
 
     start_date = resolve_start_date(args, STORE)
     banks = resolve_banks(args, STORE)
+    BANK_RUTS = _bank_ruts(banks)
     order = {"month": ["month"], "rut": ["rut"], "auto": ["month", "rut"]}[args.mode]
     log(f"[INFO] mode={args.mode} -> {order}; banks={len(banks)} cortes={len(cortes)}")
 
