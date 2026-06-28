@@ -1,70 +1,73 @@
-name: Consulta PJUD (diaria)
+name: Consulta PJUD
 
-# Daily nationwide civil sweep of the Poder Judicial Virtual.
-# One parallel job PER BANK (matrix built from the Bancos tab of the PJUD Sheet);
-# each job sweeps every corte × tribunal in Chile via "Búsqueda por Rut Persona
-# Jurídica", keeping only Rol-'C' causas ingresadas on/after start_date.
-# No web page — results land in the Google Sheet + Drive.
+# Nationwide civil scrape of the Oficina Judicial Virtual → Google Sheet/Drive.
+# Default mode = search by month (Búsqueda por Fecha). Parallelised one job PER
+# CORTE (each on its own runner IP), so all cortes sweep at the same time.
 
 on:
   schedule:
-    - cron: "0 9 * * *"   # 09:00 UTC ≈ 05:00 hora de Chile, todos los días
+    - cron: "0 9 * * *"          # daily 09:00 UTC (~05:00 Chile)
   workflow_dispatch:
     inputs:
-      since:
-        description: "Override start_date (yyyy-mm-dd). Vacío = usar el ancla guardada en config."
+      mode:
+        description: "month (default) | rut | auto"
         required: false
-        default: ""
+        default: "month"
       corte:
-        description: "Restringir a UNA corte (valor, ej 90=Santiago). Vacío = las 17."
+        description: "Single corte value (e.g. 10=Arica). Blank = all 17 (matrix)."
         required: false
         default: ""
+      desde:
+        description: "Month mode: first month YYYY-MM (blank = Jan of current year)."
+        required: false
+        default: ""
+      hasta:
+        description: "Month mode: last month YYYY-MM (blank = current month)."
+        required: false
+        default: ""
+      max_tribunals:
+        description: "Cap tribunals per corte (blank = all). For quick tests."
+        required: false
+        default: ""
+      skip_docs:
+        description: "Skip PDF download/upload (fast metadata-only)."
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
-# Don't pile daily runs on top of each other.
 concurrency:
-  group: pjud-daily
+  group: pjud
   cancel-in-progress: false
 
 jobs:
-  # 1) Read the Bancos tab and emit the matrix of active banks.
-  banks:
+  # Build the corte matrix. No secrets here, so the matrix output is never masked.
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     outputs:
-      matrix: ${{ steps.list.outputs.matrix }}
+      cortes: ${{ steps.s.outputs.cortes }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install Google libraries
-        run: pip install google-auth google-auth-oauthlib google-api-python-client playwright
-      - name: Restore config (Sheet/folder IDs + start_date)
-        working-directory: ${{ github.workspace }}/felipe/pjud/scraper
+      - id: s
         env:
-          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
-        run: printf '%s' "$PJUD_CONFIG" > pjud_config.json
-      - name: List active banks → matrix
-        id: list
-        working-directory: ${{ github.workspace }}/felipe/pjud/scraper
-        env:
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_TOKEN_JSON:    ${{ secrets.GOOGLE_TOKEN_JSON }}
+          CORTE: ${{ inputs.corte }}
         run: |
-          banks=$(python run.py --list-banks 2>/dev/null | tail -1)
-          echo "Bancos activos: $banks"
-          echo "matrix=$banks" >> "$GITHUB_OUTPUT"
+          if [ -n "$CORTE" ]; then
+            echo "cortes=[\"$CORTE\"]" >> "$GITHUB_OUTPUT"
+          else
+            echo 'cortes=["10","11","15","20","25","30","35","40","45","46","50","55","56","60","61","90","91"]' >> "$GITHUB_OUTPUT"
+          fi
+          echo "matrix: $(cat "$GITHUB_OUTPUT")"
 
-  # 2) One job per bank — sweep all cortes × tribunales.
   scrape:
-    needs: banks
+    needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 20
       matrix:
-        bank: ${{ fromJson(needs.banks.outputs.matrix) }}
+        corte: ${{ fromJson(needs.plan.outputs.cortes) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -99,19 +102,22 @@ jobs:
         env:
           PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
         run: printf '%s' "$PJUD_CONFIG" > pjud_config.json
-      - name: Sweep ${{ matrix.bank.nombre }}
+
+      - name: Scrape corte ${{ matrix.corte }}
         working-directory: ${{ github.workspace }}/felipe/pjud/scraper
         env:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_TOKEN_JSON:    ${{ secrets.GOOGLE_TOKEN_JSON }}
-          SINCE: ${{ inputs.since }}
-          CORTE: ${{ inputs.corte }}
+          MODE:  ${{ inputs.mode }}
+          DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
+          MAXT:  ${{ inputs.max_tribunals }}
+          SKIPDOCS: ${{ inputs.skip_docs }}
         run: |
-          args=""
-          [ -n "$SINCE" ] && args="$args --since $SINCE"
-          [ -n "$CORTE" ] && args="$args --corte $CORTE"
-          python run.py \
-            --rut "${{ matrix.bank.rut }}" \
-            --dv "${{ matrix.bank.dv }}" \
-            --bank "${{ matrix.bank.nombre }}" \
-            --max-seconds 6000 $args
+          args="--mode ${MODE:-month} --corte ${{ matrix.corte }} --max-seconds 19800"
+          [ -n "$DESDE" ] && args="$args --desde $DESDE"
+          [ -n "$HASTA" ] && args="$args --hasta $HASTA"
+          [ -n "$MAXT" ]  && args="$args --max-tribunals $MAXT"
+          [ "$SKIPDOCS" = "true" ] && args="$args --skip-docs"
+          echo "run.py $args"
+          python run.py $args
