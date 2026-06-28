@@ -794,6 +794,11 @@ def scrape_causa(page, api, causa, tribunal):
         log(f"[SKIP] {rol}: proc={header.get('procedimiento', '')!r} ≠ {PROC_FILTER!r}")
         _close_detail(page)
         return
+    # Skip administratively archived causas.
+    if _norm(header.get("estado_adm", "")) == _norm("Archivada"):
+        log(f"[SKIP] {rol}: estado_adm = Archivada")
+        _close_detail(page)
+        return
 
     # Ebook: header form newebookcivil.php (input dtaEbook). TODO: a plain
     # in-session GET returns HTML/0B — the ebook is generated server-side on form
