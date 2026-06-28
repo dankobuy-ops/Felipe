@@ -359,7 +359,22 @@ def matches_bank(caratulado, frags):
 
 def open_date_tab(page):
     """Activate 'Búsqueda por Fecha' and lock competencia = Civil."""
-    page.wait_for_selector("a[href='#BusFecha']", timeout=30_000)
+    try:
+        page.wait_for_selector("a[href='#BusFecha']", timeout=30_000)
+    except PlaywrightTimeout:
+        try:
+            title = page.title()
+            anchors = page.eval_on_selector_all(
+                "a[href^='#']", "els=>els.map(e=>e.getAttribute('href')).slice(0,20)")
+            frames = [f.url[:70] for f in page.frames]
+            body = (page.inner_text("body") or "")[:300].replace("\n", " ")
+        except Exception:
+            title = anchors = frames = body = "?"
+        log(f"[DATE][FAIL] url={page.url} title={title!r}")
+        log(f"[DATE][FAIL] tab-anchors={anchors}")
+        log(f"[DATE][FAIL] frames={frames}")
+        log(f"[DATE][FAIL] body[:300]={body!r}")
+        raise
     page.wait_for_timeout(500)
     page.click("a[href='#BusFecha']")
     page.wait_for_timeout(800)
