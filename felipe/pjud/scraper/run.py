@@ -69,6 +69,9 @@ SEARCH_WAIT_MS = 8000
 # pacing keeps a long single-session sweep under the radar.
 PACE_MS = 500
 
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+
 SCRATCH = Path(os.environ.get("TEMP", "/tmp")) / "pjud_pdfs"
 
 STORE = None       # gstore.Store, set in main() (None under --dry-run)
@@ -1099,7 +1102,10 @@ def parse_args():
                    help="Restrict to corte value(s), comma-separated (e.g. 10 or 10,11,90). "
                         "Default = all 17.")
     p.add_argument("--workers", type=int, default=1,
-                   help="Parallel worker processes, splitting the cortes among them (default 1).")
+                   help="Parallel worker processes; in month mode they split the "
+                        "tribunals (not whole cortes) for even load (default 1).")
+    p.add_argument("--tasks", default="",
+                   help="Internal: a worker's tribunal list 'corte:trib,corte:trib,…'.")
     p.add_argument("--skip-geo", action="store_true",
                    help="Don't resolve georref sub-modals (defer to a later pass) — big speed-up.")
     p.add_argument("--max-tribunals", type=int, default=0,
@@ -1227,26 +1233,102 @@ def sweep_rut(page, api, context, banks, cortes, args, start_date):
     log(f"\n[DONE rut] {ok}/{total} causas. banks={len(banks)} cortes={len(cortes)}.")
 
 
+def _new_context(browser):
+    return browser.new_context(user_agent=UA, locale="es-CL", accept_downloads=True,
+                               viewport={"width": 1400, "height": 1000})
+
+
+def enumerate_tribunals(cortes):
+    """One browser session: list every (corte_val, trib_val) across the cortes.
+    Run by the parent (no concurrency → the cascade is reliable) to build the task
+    list that worker processes then split."""
+    pairs = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = _new_context(browser)
+        page = context.new_page()
+        establish_form(page, context, "date")
+        for cv, cname in cortes:
+            opts = select_corte_fecha(page, cv, cname)
+            tribs = [o["v"] for o in opts if o["v"] not in ("", "0")]
+            log(f"[PLAN] {cname}: {len(tribs)} tribunales")
+            pairs.extend((cv, tv) for tv in tribs)
+        context.close()
+        browser.close()
+    return pairs
+
+
+def sweep_tasks(page, api, context, banks, pairs, args):
+    """Mode 'month', task-based: scrape an explicit list of (corte, tribunal) pairs
+    (a worker's slice). Pairs are corte-grouped so the corte is reselected rarely."""
+    frags = bank_fragments(banks)
+    months = months_to_scan(args)
+    cortemap = dict(CORTES)
+    establish_form(page, context, "date")
+    ok = total = 0
+    cur_corte, trib_names = None, {}
+    for cv, tv in pairs:
+        if not date_form_alive(page):
+            reopen_date(page, context)
+            cur_corte = None
+        if cv != cur_corte:
+            opts = select_corte_fecha(page, cv, cortemap.get(cv, cv))
+            trib_names = {o["v"]: o["t"] for o in opts}
+            cur_corte = cv
+        tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
+                    "tribunal": trib_names.get(tv, tv)}
+        seeded = False
+        for (y, m) in months:
+            try:
+                rows = search_month_paginated(page, tv, y, m)
+            except Exception as e:
+                log(f"[WARN] trib {tv} {y}-{m:02d}: {e}")
+                continue
+            keep = [r for r in rows
+                    if r["rol"].upper().startswith("C") and r["jwt"]
+                    and _in_month(r["fecha"], y, m)
+                    and matches_bank(r["caratulado"], frags)]
+            log(f"[TASK] corte {cv}/trib {tv} {y}-{m:02d}: {len(rows)} rows, {len(keep)} kept")
+            if args.limit:
+                keep = keep[:args.limit]
+            if keep and not seeded:
+                upsert("pjud_tribunales", [tribunal])
+                seeded = True
+            for c in keep:
+                total += 1
+                try:
+                    scrape_causa(page, api, c, tribunal)
+                    ok += 1
+                except Exception as e:
+                    log(f"[ERR] trib {tv} {c['rol']}: {e}")
+        flush_buffer()
+    log(f"\n[DONE tasks] {ok}/{total} causas over {len(pairs)} tribunals.")
+
+
 def _run_workers(args, cortes):
-    """Parent: fan the selected cortes out across N parallel worker subprocesses
-    (each its own browser + guest session + buffered writer). Sheets appends are
-    concurrency-safe; the only cross-worker overlap is duplicate Ruts (same debtor
-    in two cortes), deduped downstream."""
-    groups = [g for g in (cortes[i::args.workers] for i in range(args.workers)) if g]
+    """Parent: enumerate every tribunal across the cortes, then fan them out across
+    N parallel workers (tribunal-balanced; pairs stay corte-contiguous so each
+    worker reselects its corte rarely). Each worker = own browser + guest session +
+    buffered writer. Sheets appends are concurrency-safe; only cross-worker overlap
+    is duplicate Ruts (same debtor in two cortes), deduped downstream."""
+    pairs = enumerate_tribunals(cortes)
+    if not pairs:
+        raise SystemExit("[FATAL] enumerated 0 tribunals")
+    n = max(1, args.workers)
+    size = (len(pairs) + n - 1) // n
+    groups = [pairs[i:i + size] for i in range(0, len(pairs), size)]
     SCRATCH.mkdir(parents=True, exist_ok=True)
-    log(f"[WORKERS] {len(groups)} parallel workers over {len(cortes)} cortes")
+    log(f"[WORKERS] {len(pairs)} tribunals → {len(groups)} workers (~{size} each)")
     procs = []
     for i, g in enumerate(groups):
-        csv = ",".join(c[0] for c in g)
+        tasks = ",".join(f"{cv}:{tv}" for cv, tv in g)
         cmd = [sys.executable, os.path.abspath(__file__),
-               "--mode", args.mode, "--corte", csv, "--workers", "1",
+               "--mode", args.mode, "--tasks", tasks, "--workers", "1",
                "--proc", args.proc]
         if args.desde:
             cmd += ["--desde", args.desde]
         if args.hasta:
             cmd += ["--hasta", args.hasta]
-        if args.max_tribunals:
-            cmd += ["--max-tribunals", str(args.max_tribunals)]
         if args.limit:
             cmd += ["--limit", str(args.limit)]
         if args.skip_docs:
@@ -1255,14 +1337,14 @@ def _run_workers(args, cortes):
             cmd.append("--skip-geo")
         logpath = SCRATCH / f"pjud_worker_{i}.log"
         lf = open(logpath, "w", encoding="utf-8")
-        log(f"[WORKERS] worker {i}: cortes [{csv}] -> {logpath}")
-        procs.append((i, csv, subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf))
+        log(f"[WORKERS] worker {i}: {len(g)} tribunals -> {logpath}")
+        procs.append((i, len(g), subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf))
         time.sleep(3)   # stagger startup so N guest sessions don't hit OJV at once
     rc = 0
-    for i, csv, p, lf in procs:
+    for i, ntribs, p, lf in procs:
         r = p.wait()
         lf.close()
-        log(f"[WORKERS] worker {i} (cortes {csv}) exited {r}")
+        log(f"[WORKERS] worker {i} ({ntribs} tribunals) exited {r}")
         rc = rc or r
     log(f"[WORKERS] all workers done (rc={rc})")
     if rc:
@@ -1291,11 +1373,28 @@ def main():
     DRY = args.dry_run
     SKIP_DOCS = args.skip_docs
 
+    # Task worker: scrape an explicit list of (corte:trib) pairs (month mode).
+    if args.tasks:
+        pairs = [tuple(p.split(":", 1)) for p in args.tasks.split(",") if ":" in p]
+        if not DRY:
+            STORE = gstore.Store()
+        SCRATCH.mkdir(parents=True, exist_ok=True)
+        banks = resolve_banks(args, STORE)
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=not args.headed)
+            context = _new_context(browser)
+            page = context.new_page()
+            api = context.request
+            sweep_tasks(page, api, context, banks, pairs, args)
+            context.close()
+            browser.close()
+        return
+
     sel = [x.strip() for x in (args.corte or "").split(",") if x.strip()]
     cortes = [c for c in CORTES if (not sel or c[0] in sel)]
 
-    # Parent fan-out: split the cortes across N parallel worker processes.
-    if args.workers > 1 and len(cortes) > 1:
+    # Parent fan-out: enumerate tribunals and split across N parallel workers.
+    if args.workers > 1 and len(cortes) >= 1:
         _run_workers(args, cortes)
         return
 
@@ -1310,11 +1409,7 @@ def main():
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=not args.headed)
-        context = browser.new_context(
-            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
-            locale="es-CL", accept_downloads=True,
-            viewport={"width": 1400, "height": 1000})
+        context = _new_context(browser)
         page = context.new_page()
         api = context.request   # shares cookies → in-session PDF downloads
 
