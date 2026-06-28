@@ -533,7 +533,9 @@ def search_month_paginated(page, trib_val, year, month):
         [f"01/{month:02d}/{year}", f"{last:02d}/{month:02d}/{year}"])
     page.evaluate("() => { const t=document.querySelector('#dtaTableDetalleFecha tbody');"
                   " if(t)t.innerHTML=''; }")
-    page.click("#btnConConsultaFec")
+    # Fire via JS (not page.click) — under load the button's actionability check
+    # times out at 30s; e.click() dispatches immediately and is load-resilient.
+    page.eval_on_selector("#btnConConsultaFec", "e=>e.click()")
     if not _wait_fecha_results(page):
         page.wait_for_timeout(PACE_MS)
         return []
