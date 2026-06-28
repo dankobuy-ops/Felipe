@@ -394,7 +394,6 @@ def reopen_date(page, context):
     log("[NAV] date form missing — re-establishing guest session…")
     reach_search_form(page, context)
     open_date_tab(page)
-    warm_up_fecha(page)
 
 
 def select_corte_fecha(page, corte_val, corte_name):
@@ -497,17 +496,11 @@ def search_month_paginated(page, trib_val, year, month):
     return list(by_rol.values())
 
 
-def warm_up_fecha(page):
-    """Burn the first (always-empty) search after the date form loads."""
-    try:
-        tribs = select_corte_fecha(page, CORTES[0][0], CORTES[0][1])
-        first = next((o["v"] for o in tribs if o["v"] not in ("", "0")), None)
-        if first:
-            y, m = int(time.strftime("%Y")), int(time.strftime("%m"))
-            search_month_paginated(page, first, y, m)
-            log("[NAV] date warm-up search done (discarded)")
-    except Exception as e:
-        log(f"[WARN] date warm-up: {e}")
+def _in_month(fecha, year, month):
+    """True if results-row 'dd/mm/yyyy' falls in the requested year/month — a guard
+    so we never store wrong-month causas even if the date search misbehaves."""
+    m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", fecha or "")
+    return bool(m) and int(m.group(3)) == year and int(m.group(2)) == month
 
 
 def months_to_scan(args):
@@ -1070,7 +1063,6 @@ def sweep_month(page, api, context, banks, cortes, args):
     deadline = (time.time() + args.max_seconds) if args.max_seconds else None
     log(f"[MONTH] frags={frags} months={months[0]}..{months[-1]} cortes={len(cortes)}")
     establish_form(page, context, "date")
-    warm_up_fecha(page)
     ok = total = 0
     for corte_val, corte_name in cortes:
         if deadline and time.time() > deadline:
@@ -1096,6 +1088,7 @@ def sweep_month(page, api, context, banks, cortes, args):
                     continue
                 keep = [r for r in rows
                         if r["rol"].upper().startswith("C") and r["jwt"]
+                        and _in_month(r["fecha"], y, m)
                         and matches_bank(r["caratulado"], frags)]
                 log(f"[MONTH] {corte_name}/{trib_name} {y}-{m:02d}: "
                     f"{len(rows)} rows, {len(keep)} bank C-causas")
