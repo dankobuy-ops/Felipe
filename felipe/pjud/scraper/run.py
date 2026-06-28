@@ -167,6 +167,24 @@ def reach_search_form(page, context):
     return page
 
 
+def establish_form(page, context, kind, retries=5):
+    """Reach the consulta form and open the search tab for `kind` ('rut'|'date'),
+    retrying through the OJV's intermittent failures to render (guest session or
+    the tab-strip AJAX sometimes 'crushes' — a re-navigation usually fixes it)."""
+    opener = open_search_tab if kind == "rut" else open_date_tab
+    last = None
+    for i in range(retries):
+        try:
+            reach_search_form(page, context)
+            opener(page)
+            return
+        except Exception as e:
+            last = e
+            log(f"[NAV] establish({kind}) attempt {i + 1}/{retries} failed: {e}")
+            page.wait_for_timeout(3000)
+    raise RuntimeError(f"could not establish the {kind} search form: {last}")
+
+
 def open_search_tab(page):
     """Activate the 'Rut Persona Jurídica' tab and lock competencia = Civil.
     Done once per page; corte/tribunal are then iterated by the sweep. The consulta
@@ -1023,7 +1041,7 @@ def sweep_month(page, api, context, banks, cortes, args):
     months = months_to_scan(args)
     deadline = (time.time() + args.max_seconds) if args.max_seconds else None
     log(f"[MONTH] frags={frags} months={months[0]}..{months[-1]} cortes={len(cortes)}")
-    open_date_tab(page)
+    establish_form(page, context, "date")
     warm_up_fecha(page)
     ok = total = 0
     for corte_val, corte_name in cortes:
@@ -1075,7 +1093,7 @@ def sweep_rut(page, api, context, banks, cortes, args, start_date):
     deadline = (time.time() + args.max_seconds) if args.max_seconds else None
     log(f"[RUT] banks={[b['nombre'] for b in banks]} cortes={len(cortes)} "
         f"eras={eras} since={start_date}")
-    open_search_tab(page)
+    establish_form(page, context, "rut")
     warm_up(page)
     ok = total = 0
     for corte_val, corte_name in cortes:
@@ -1160,7 +1178,6 @@ def main():
 
         for i, mname in enumerate(order):
             try:
-                reach_search_form(page, context)
                 if mname == "month":
                     sweep_month(page, api, context, banks, cortes, args)
                 else:
