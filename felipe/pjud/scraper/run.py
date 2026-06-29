@@ -1156,10 +1156,12 @@ def parse_args():
                    help="Parallel worker subprocesses kept running by the dynamic pool "
                         "(default 1). They pull tribunal batches until the job is done.")
     p.add_argument("--batch", type=int, default=1,
-                   help="Tribunals per worker job (default 1 = each tribunal is its own "
-                        "fresh-browser job; a crash kills only that tribunal and it's retried).")
+                   help="(legacy) tribunals per --tasks job.")
     p.add_argument("--tasks", default="",
                    help="Internal: a worker's tribunal list 'corte:trib,corte:trib,…'.")
+    p.add_argument("--pool-claim", default="",
+                   help="Internal: long-lived worker — claim tribunals from this queue file.")
+    p.add_argument("--worker-id", type=int, default=0, help="Internal: worker index.")
     p.add_argument("--skip-geo", action="store_true",
                    help="Don't resolve georref sub-modals (defer to a later pass) — big speed-up.")
     p.add_argument("--max-tribunals", type=int, default=0,
@@ -1361,25 +1363,154 @@ def sweep_tasks(page, api, context, banks, pairs, args):
     log(f"\n[DONE tasks] {ok}/{total} causas over {len(pairs)} tribunals.")
 
 
+def _claim_next(queue_path):
+    """Atomically pop the next tribunal from the shared queue file (lock-file spin).
+    Returns (corte, trib) or None when empty."""
+    lock = str(queue_path) + ".lock"
+    qp = Path(queue_path)
+    for _ in range(600):                       # spin up to ~60s for the lock
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            time.sleep(0.1)
+            continue
+        try:
+            items = json.loads(qp.read_text(encoding="utf-8")) if qp.exists() else []
+            if not items:
+                return None
+            item = items.pop(0)
+            qp.write_text(json.dumps(items), encoding="utf-8")
+            return tuple(item)
+        finally:
+            os.close(fd)
+            os.unlink(lock)
+    return None
+
+
+def _requeue(queue_path, item):
+    """Push a tribunal back (e.g. after a browser death) so it gets retried."""
+    lock = str(queue_path) + ".lock"
+    qp = Path(queue_path)
+    for _ in range(600):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            time.sleep(0.1)
+            continue
+        try:
+            items = json.loads(qp.read_text(encoding="utf-8")) if qp.exists() else []
+            items.append(list(item))
+            qp.write_text(json.dumps(items), encoding="utf-8")
+            return
+        finally:
+            os.close(fd)
+            os.unlink(lock)
+
+
+def sweep_claim(args, banks, queue_path, widx):
+    """Long-lived work-stealing worker: establish the session ONCE, then keep claiming
+    tribunals from the shared queue and scraping each until the queue is empty. Setup
+    is paid once per worker (not per tribunal). Self-heals: on a browser death it
+    re-queues the current tribunal, relaunches a fresh browser, and continues."""
+    frags = bank_fragments(banks)
+    months = months_to_scan(args)
+    cortemap = dict(CORTES)
+    with sync_playwright() as pw:
+        def fresh():
+            b = pw.chromium.launch(headless=not args.headed)
+            ctx = _new_context(b)
+            pg = ctx.new_page()
+            establish_form(pg, ctx, "date")
+            return b, ctx, pg, ctx.request
+
+        browser, context, page, api = fresh()
+        cur_corte, trib_names, deaths = None, {}, 0
+        while True:
+            item = _claim_next(queue_path)
+            if item is None:
+                break
+            cv, tv = item
+            try:
+                if not date_form_alive(page):
+                    reopen_date(page, context)
+                    cur_corte = None
+                if cv != cur_corte:
+                    trib_names = {o["v"]: o["t"]
+                                  for o in select_corte_fecha(page, cv, cortemap.get(cv, cv))}
+                    cur_corte = cv
+                tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
+                            "tribunal": trib_names.get(tv, tv)}
+                seeded = False
+                for (y, m) in months:
+                    rows = search_month_paginated(page, tv, y, m)
+                    keep = [r for r in rows
+                            if r["rol"].upper().startswith("C") and r["jwt"]
+                            and _in_month(r["fecha"], y, m)
+                            and matches_bank(r["caratulado"], frags)]
+                    log(f"[W{widx}] corte {cv}/trib {tv} {y}-{m:02d}: "
+                        f"{len(rows)} rows, {len(keep)} kept")
+                    if args.limit:
+                        keep = keep[:args.limit]
+                    if keep and not seeded:
+                        upsert("pjud_tribunales", [tribunal])
+                        seeded = True
+                    for c in keep:
+                        try:
+                            scrape_causa(page, api, c, tribunal)
+                        except Exception as e:
+                            if _browser_dead(e):
+                                raise
+                            log(f"[ERR] trib {tv} {c['rol']}: {e}")
+                flush_buffer()
+            except Exception as e:
+                if _browser_dead(e):
+                    deaths += 1
+                    log(f"[W{widx}] browser died on trib {tv} (death {deaths}) — "
+                        f"re-queue + relaunch")
+                    _BUFFER.clear()                 # drop partial buffer for this tribunal
+                    _requeue(queue_path, item)
+                    try:
+                        context.close()
+                        browser.close()
+                    except Exception:
+                        pass
+                    if deaths > 8:
+                        log(f"[W{widx}] too many browser deaths — exiting")
+                        break
+                    browser, context, page, api = fresh()
+                    cur_corte = None
+                else:
+                    log(f"[W{widx}] trib {tv} failed: {e}")
+                    flush_buffer()
+        try:
+            context.close()
+            browser.close()
+        except Exception:
+            pass
+        log(f"[W{widx}] queue empty — done")
+
+
 def _run_pool(args, cortes):
-    """Parent: dynamic pool of `--tasks` subprocesses (the proven, crash-free worker).
-    Tribunals are split into small batches; the parent keeps N workers running and
-    launches the next batch in a slot the instant a worker finishes — so no worker
-    sits idle until the whole job is done. Dedups Ruts at the end."""
+    """Parent: enumerate tribunals into a shared queue file, then spawn N long-lived
+    work-stealing worker subprocesses (each establishes once, pulls tribunals until the
+    queue drains). No re-establish per tribunal, no idle workers, crash-free model."""
     pairs = enumerate_tribunals(cortes)
     if not pairs:
         raise SystemExit("[FATAL] enumerated 0 tribunals")
     n = max(1, args.workers)
-    bs = max(1, args.batch)
-    batches = [pairs[i:i + bs] for i in range(0, len(pairs), bs)]
     SCRATCH.mkdir(parents=True, exist_ok=True)
+    qpath = SCRATCH / "pjud_queue.json"
+    qpath.write_text(json.dumps([list(p) for p in pairs]), encoding="utf-8")
+    lock = str(qpath) + ".lock"
+    if os.path.exists(lock):
+        os.unlink(lock)
     for slot in range(n):
         (SCRATCH / f"pjud_worker_{slot}.log").write_text("", encoding="utf-8")
-    log(f"[POOL] {len(pairs)} tribunals → {len(batches)} batches of ≤{bs}; {n} workers")
-
-    def launch(slot, batch):
+    log(f"[POOL] {len(pairs)} tribunals; {n} long-lived work-stealing workers")
+    procs = []
+    for i in range(n):
         cmd = [sys.executable, os.path.abspath(__file__), "--mode", args.mode,
-               "--tasks", ",".join(f"{cv}:{tv}" for cv, tv in batch),
+               "--pool-claim", str(qpath), "--worker-id", str(i),
                "--workers", "1", "--proc", args.proc]
         if args.desde:
             cmd += ["--desde", args.desde]
@@ -1391,45 +1522,14 @@ def _run_pool(args, cortes):
             cmd.append("--skip-docs")
         if args.skip_geo:
             cmd.append("--skip-geo")
-        lf = open(SCRATCH / f"pjud_worker_{slot}.log", "a", encoding="utf-8")
-        return subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf
-
-    from collections import deque
-    MAX_TRIES = 3
-    pending = deque((b, 0) for b in batches)   # (batch, tries)
-    total = len(batches)
-    slots, done = {}, 0
-
-    def fill(slot):
-        if not pending:
-            return False
-        batch, tries = pending.popleft()
-        slots[slot] = (*launch(slot, batch), batch, tries)
-        return True
-
-    for slot in range(n):
-        if not fill(slot):
-            break
+        lf = open(SCRATCH / f"pjud_worker_{i}.log", "a", encoding="utf-8")
+        procs.append((i, subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf))
         time.sleep(3)               # stagger startup so N sessions don't hit OJV at once
-    while slots:
-        time.sleep(2)
-        for slot, (p, lf, batch, tries) in list(slots.items()):
-            if p.poll() is None:
-                continue
-            lf.close()
-            rc = p.returncode
-            if rc != 0 and tries + 1 < MAX_TRIES:
-                pending.append((batch, tries + 1))      # crashed → retry the tribunal
-                log(f"[POOL] slot {slot} crashed (rc={rc}); re-queued (try {tries + 2})")
-            else:
-                done += 1
-                if rc != 0:
-                    log(f"[POOL] slot {slot} gave up after {tries + 1} tries (rc={rc})")
-                log(f"[POOL] {done}/{total} done; {len(pending)} queued, {len(slots) - 1} active")
-            if not fill(slot):
-                del slots[slot]
-            break
-    log("[POOL] all batches done")
+    for i, p, lf in procs:
+        p.wait()
+        lf.close()
+        log(f"[POOL] worker {i} exited {p.returncode}")
+    log("[POOL] all workers done")
     try:
         removed = gstore.Store().dedup("Ruts")
         log(f"[DEDUP] Ruts: removed {removed} duplicate rows")
@@ -1458,6 +1558,15 @@ def main():
 
     DRY = args.dry_run
     SKIP_DOCS = args.skip_docs
+
+    # Long-lived work-stealing worker: claim tribunals from the shared queue.
+    if args.pool_claim:
+        STORE = gstore.Store()
+        banks = resolve_banks(args, STORE)
+        BANK_RUTS = _bank_ruts(banks)
+        SCRATCH.mkdir(parents=True, exist_ok=True)
+        sweep_claim(args, banks, args.pool_claim, args.worker_id)
+        return
 
     # Task worker: scrape an explicit list of (corte:trib) pairs (month mode).
     if args.tasks:
