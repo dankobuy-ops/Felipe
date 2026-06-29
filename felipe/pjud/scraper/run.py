@@ -27,9 +27,7 @@ Run `python run.py --setup` once, then `python run.py --rut 97004000 --dv 5`.
 import argparse
 import calendar
 import json
-import multiprocessing
 import os
-import queue as _queue
 import re
 import subprocess
 import sys
@@ -1142,8 +1140,11 @@ def parse_args():
                    help="Restrict to corte value(s), comma-separated (e.g. 10 or 10,11,90). "
                         "Default = all 17.")
     p.add_argument("--workers", type=int, default=1,
-                   help="Parallel worker processes; in month mode they split the "
-                        "tribunals (not whole cortes) for even load (default 1).")
+                   help="Parallel worker subprocesses kept running by the dynamic pool "
+                        "(default 1). They pull tribunal batches until the job is done.")
+    p.add_argument("--batch", type=int, default=6,
+                   help="Tribunals per worker batch (smaller = better load balance, more "
+                        "guest sessions; larger = fewer sessions, coarser balance).")
     p.add_argument("--tasks", default="",
                    help="Internal: a worker's tribunal list 'corte:trib,corte:trib,…'.")
     p.add_argument("--skip-geo", action="store_true",
@@ -1345,94 +1346,59 @@ def sweep_tasks(page, api, context, banks, pairs, args):
     log(f"\n[DONE tasks] {ok}/{total} causas over {len(pairs)} tribunals.")
 
 
-def _worker_loop(q, args, banks, widx):
-    """A work-stealing worker process: own browser + guest session + buffered writer.
-    Pulls (corte, tribunal) tasks off the shared queue until a sentinel (None), so all
-    workers stay busy until the whole job is done (no idle workers, no static slices)."""
-    global STORE, DRY, SKIP_DOCS, PROC_FILTER, SKIP_GEO, BANK_RUTS
-    sys.stdout = open(SCRATCH / f"pjud_worker_{widx}.log", "w", encoding="utf-8")
-    PROC_FILTER, SKIP_GEO, SKIP_DOCS, DRY = args.proc, args.skip_geo, args.skip_docs, False
-    STORE = gstore.Store()
-    BANK_RUTS = _bank_ruts(banks)
-    frags = bank_fragments(banks)
-    months = months_to_scan(args)
-    cortemap = dict(CORTES)
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=not args.headed)
-        context = _new_context(browser)
-        page = context.new_page()
-        api = context.request
-        try:
-            establish_form(page, context, "date")
-        except Exception as e:
-            log(f"[W{widx}] establish failed: {e}")
-        cur_corte, trib_names = None, {}
-        while True:
-            item = q.get()
-            if item is None:        # sentinel → no more work
-                break
-            cv, tv = item
-            try:
-                if not date_form_alive(page):
-                    reopen_date(page, context)
-                    cur_corte = None
-                if cv != cur_corte:
-                    trib_names = {o["v"]: o["t"]
-                                  for o in select_corte_fecha(page, cv, cortemap.get(cv, cv))}
-                    cur_corte = cv
-                tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
-                            "tribunal": trib_names.get(tv, tv)}
-                seeded = False
-                for (y, m) in months:
-                    rows = search_month_paginated(page, tv, y, m)
-                    keep = [r for r in rows
-                            if r["rol"].upper().startswith("C") and r["jwt"]
-                            and _in_month(r["fecha"], y, m)
-                            and matches_bank(r["caratulado"], frags)]
-                    log(f"[W{widx}] corte {cv}/trib {tv} {y}-{m:02d}: "
-                        f"{len(rows)} rows, {len(keep)} kept")
-                    if args.limit:
-                        keep = keep[:args.limit]
-                    if keep and not seeded:
-                        upsert("pjud_tribunales", [tribunal])
-                        seeded = True
-                    for c in keep:
-                        try:
-                            scrape_causa(page, api, c, tribunal)
-                        except Exception as e:
-                            log(f"[ERR] trib {tv} {c['rol']}: {e}")
-            except Exception as e:
-                log(f"[W{widx}] trib {tv} failed: {e}")
-            flush_buffer()
-        context.close()
-        browser.close()
-
-
 def _run_pool(args, cortes):
-    """Parent: enumerate every tribunal, then run a work-stealing pool of N worker
-    processes sharing one queue — every worker keeps pulling tribunals until the
-    queue is drained, so none sit idle. Dedups Ruts at the end."""
+    """Parent: dynamic pool of `--tasks` subprocesses (the proven, crash-free worker).
+    Tribunals are split into small batches; the parent keeps N workers running and
+    launches the next batch in a slot the instant a worker finishes — so no worker
+    sits idle until the whole job is done. Dedups Ruts at the end."""
     pairs = enumerate_tribunals(cortes)
     if not pairs:
         raise SystemExit("[FATAL] enumerated 0 tribunals")
     n = max(1, args.workers)
+    bs = max(1, args.batch)
+    batches = [pairs[i:i + bs] for i in range(0, len(pairs), bs)]
     SCRATCH.mkdir(parents=True, exist_ok=True)
-    banks = resolve_banks(args, gstore.Store())
-    q = multiprocessing.Queue()
-    for p in pairs:
-        q.put(p)
-    for _ in range(n):
-        q.put(None)                 # one sentinel per worker
-    log(f"[POOL] {len(pairs)} tribunals across {n} work-stealing workers")
-    procs = []
-    for i in range(n):
-        pr = multiprocessing.Process(target=_worker_loop, args=(q, args, banks, i))
-        pr.start()
-        procs.append(pr)
+    for slot in range(n):
+        (SCRATCH / f"pjud_worker_{slot}.log").write_text("", encoding="utf-8")
+    log(f"[POOL] {len(pairs)} tribunals → {len(batches)} batches of ≤{bs}; {n} workers")
+
+    def launch(slot, batch):
+        cmd = [sys.executable, os.path.abspath(__file__), "--mode", args.mode,
+               "--tasks", ",".join(f"{cv}:{tv}" for cv, tv in batch),
+               "--workers", "1", "--proc", args.proc]
+        if args.desde:
+            cmd += ["--desde", args.desde]
+        if args.hasta:
+            cmd += ["--hasta", args.hasta]
+        if args.limit:
+            cmd += ["--limit", str(args.limit)]
+        if args.skip_docs:
+            cmd.append("--skip-docs")
+        if args.skip_geo:
+            cmd.append("--skip-geo")
+        lf = open(SCRATCH / f"pjud_worker_{slot}.log", "a", encoding="utf-8")
+        return subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf
+
+    bi, slots, done = 0, {}, 0
+    for slot in range(min(n, len(batches))):
+        slots[slot] = (*launch(slot, batches[bi]), bi)
+        bi += 1
         time.sleep(3)               # stagger startup so N sessions don't hit OJV at once
-    for pr in procs:
-        pr.join()
-    log("[POOL] all workers done")
+    while slots:
+        time.sleep(2)
+        for slot, (p, lf, b) in list(slots.items()):
+            if p.poll() is None:
+                continue
+            lf.close()
+            done += 1
+            if bi < len(batches):
+                slots[slot] = (*launch(slot, batches[bi]), bi)
+                bi += 1
+            else:
+                del slots[slot]
+            log(f"[POOL] batch {done}/{len(batches)} done; "
+                f"{len(batches) - bi} queued, {len(slots)} active")
+    log("[POOL] all batches done")
     try:
         removed = gstore.Store().dedup("Ruts")
         log(f"[DEDUP] Ruts: removed {removed} duplicate rows")
