@@ -1589,8 +1589,10 @@ def main():
     sel = [x.strip() for x in (args.corte or "").split(",") if x.strip()]
     cortes = [c for c in CORTES if (not sel or c[0] in sel)]
 
-    # Parent: work-stealing pool over all tribunals (all workers busy until done).
-    if args.workers > 1 and len(cortes) >= 1:
+    # Parent: work-stealing pool over all tribunals (self-heal on browser death).
+    # Used for month mode at any worker count (≥1) so even a single worker gets the
+    # re-queue/relaunch safety net for unattended runs.
+    if args.mode == "month" and args.workers >= 1 and len(cortes) >= 1:
         _run_pool(args, cortes)
         return
 
