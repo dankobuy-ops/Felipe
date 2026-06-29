@@ -587,14 +587,16 @@ def months_to_scan(args):
 # ── Detalle modal ─────────────────────────────────────────────────────────────
 
 def open_detail(page, jwt, rol):
+    # Capture the modal's current content; require it to CHANGE before reading, so a
+    # stale modal is never parsed — even when consecutive causas share the same rol
+    # (e.g. across a tribunal boundary), waiting for the rol alone wouldn't catch it.
+    before = page.eval_on_selector("#modalDetalleCivil", "e => e ? e.innerText : ''")
     page.evaluate("j => detalleCausaCivil(j)", jwt)
-    # Wait for the modal to show THIS causa's ROL — not just any 'ROL:'. A stale
-    # modal from the previous causa would otherwise be read, mis-attributing its
-    # header/litigantes to this rol (e.g. an Ordinario causa stored as Ejecutivo).
     page.wait_for_function(
-        "rol => { const m = document.querySelector('#modalDetalleCivil');"
-        " return m && m.innerText.includes('ROL:') && m.innerText.includes(rol); }",
-        arg=rol, timeout=15_000)
+        "([rol, before]) => { const m = document.querySelector('#modalDetalleCivil');"
+        " return m && m.innerText !== before && m.innerText.includes('ROL:')"
+        " && m.innerText.includes(rol); }",
+        arg=[rol, before], timeout=15_000)
     page.wait_for_timeout(800)
 
 
