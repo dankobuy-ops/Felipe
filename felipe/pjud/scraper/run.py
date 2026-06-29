@@ -27,7 +27,9 @@ Run `python run.py --setup` once, then `python run.py --rut 97004000 --dv 5`.
 import argparse
 import calendar
 import json
+import multiprocessing
 import os
+import queue as _queue
 import re
 import subprocess
 import sys
@@ -1343,56 +1345,99 @@ def sweep_tasks(page, api, context, banks, pairs, args):
     log(f"\n[DONE tasks] {ok}/{total} causas over {len(pairs)} tribunals.")
 
 
-def _run_workers(args, cortes):
-    """Parent: enumerate every tribunal across the cortes, then fan them out across
-    N parallel workers (tribunal-balanced; pairs stay corte-contiguous so each
-    worker reselects its corte rarely). Each worker = own browser + guest session +
-    buffered writer. Sheets appends are concurrency-safe; only cross-worker overlap
-    is duplicate Ruts (same debtor in two cortes), deduped downstream."""
+def _worker_loop(q, args, banks, widx):
+    """A work-stealing worker process: own browser + guest session + buffered writer.
+    Pulls (corte, tribunal) tasks off the shared queue until a sentinel (None), so all
+    workers stay busy until the whole job is done (no idle workers, no static slices)."""
+    global STORE, DRY, SKIP_DOCS, PROC_FILTER, SKIP_GEO, BANK_RUTS
+    sys.stdout = open(SCRATCH / f"pjud_worker_{widx}.log", "w", encoding="utf-8")
+    PROC_FILTER, SKIP_GEO, SKIP_DOCS, DRY = args.proc, args.skip_geo, args.skip_docs, False
+    STORE = gstore.Store()
+    BANK_RUTS = _bank_ruts(banks)
+    frags = bank_fragments(banks)
+    months = months_to_scan(args)
+    cortemap = dict(CORTES)
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=not args.headed)
+        context = _new_context(browser)
+        page = context.new_page()
+        api = context.request
+        try:
+            establish_form(page, context, "date")
+        except Exception as e:
+            log(f"[W{widx}] establish failed: {e}")
+        cur_corte, trib_names = None, {}
+        while True:
+            item = q.get()
+            if item is None:        # sentinel → no more work
+                break
+            cv, tv = item
+            try:
+                if not date_form_alive(page):
+                    reopen_date(page, context)
+                    cur_corte = None
+                if cv != cur_corte:
+                    trib_names = {o["v"]: o["t"]
+                                  for o in select_corte_fecha(page, cv, cortemap.get(cv, cv))}
+                    cur_corte = cv
+                tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
+                            "tribunal": trib_names.get(tv, tv)}
+                seeded = False
+                for (y, m) in months:
+                    rows = search_month_paginated(page, tv, y, m)
+                    keep = [r for r in rows
+                            if r["rol"].upper().startswith("C") and r["jwt"]
+                            and _in_month(r["fecha"], y, m)
+                            and matches_bank(r["caratulado"], frags)]
+                    log(f"[W{widx}] corte {cv}/trib {tv} {y}-{m:02d}: "
+                        f"{len(rows)} rows, {len(keep)} kept")
+                    if args.limit:
+                        keep = keep[:args.limit]
+                    if keep and not seeded:
+                        upsert("pjud_tribunales", [tribunal])
+                        seeded = True
+                    for c in keep:
+                        try:
+                            scrape_causa(page, api, c, tribunal)
+                        except Exception as e:
+                            log(f"[ERR] trib {tv} {c['rol']}: {e}")
+            except Exception as e:
+                log(f"[W{widx}] trib {tv} failed: {e}")
+            flush_buffer()
+        context.close()
+        browser.close()
+
+
+def _run_pool(args, cortes):
+    """Parent: enumerate every tribunal, then run a work-stealing pool of N worker
+    processes sharing one queue — every worker keeps pulling tribunals until the
+    queue is drained, so none sit idle. Dedups Ruts at the end."""
     pairs = enumerate_tribunals(cortes)
     if not pairs:
         raise SystemExit("[FATAL] enumerated 0 tribunals")
     n = max(1, args.workers)
-    size = (len(pairs) + n - 1) // n
-    groups = [pairs[i:i + size] for i in range(0, len(pairs), size)]
     SCRATCH.mkdir(parents=True, exist_ok=True)
-    log(f"[WORKERS] {len(pairs)} tribunals → {len(groups)} workers (~{size} each)")
+    banks = resolve_banks(args, gstore.Store())
+    q = multiprocessing.Queue()
+    for p in pairs:
+        q.put(p)
+    for _ in range(n):
+        q.put(None)                 # one sentinel per worker
+    log(f"[POOL] {len(pairs)} tribunals across {n} work-stealing workers")
     procs = []
-    for i, g in enumerate(groups):
-        tasks = ",".join(f"{cv}:{tv}" for cv, tv in g)
-        cmd = [sys.executable, os.path.abspath(__file__),
-               "--mode", args.mode, "--tasks", tasks, "--workers", "1",
-               "--proc", args.proc]
-        if args.desde:
-            cmd += ["--desde", args.desde]
-        if args.hasta:
-            cmd += ["--hasta", args.hasta]
-        if args.limit:
-            cmd += ["--limit", str(args.limit)]
-        if args.skip_docs:
-            cmd.append("--skip-docs")
-        if args.skip_geo:
-            cmd.append("--skip-geo")
-        logpath = SCRATCH / f"pjud_worker_{i}.log"
-        lf = open(logpath, "w", encoding="utf-8")
-        log(f"[WORKERS] worker {i}: {len(g)} tribunals -> {logpath}")
-        procs.append((i, len(g), subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf))
-        time.sleep(3)   # stagger startup so N guest sessions don't hit OJV at once
-    rc = 0
-    for i, ntribs, p, lf in procs:
-        r = p.wait()
-        lf.close()
-        log(f"[WORKERS] worker {i} ({ntribs} tribunals) exited {r}")
-        rc = rc or r
-    log(f"[WORKERS] all workers done (rc={rc})")
-    # Dedup the only cross-worker-duplicable tab (Ruts): same debtor in 2 cortes.
+    for i in range(n):
+        pr = multiprocessing.Process(target=_worker_loop, args=(q, args, banks, i))
+        pr.start()
+        procs.append(pr)
+        time.sleep(3)               # stagger startup so N sessions don't hit OJV at once
+    for pr in procs:
+        pr.join()
+    log("[POOL] all workers done")
     try:
         removed = gstore.Store().dedup("Ruts")
         log(f"[DEDUP] Ruts: removed {removed} duplicate rows")
     except Exception as e:
         log(f"[WARN] dedup Ruts: {e}")
-    if rc:
-        raise SystemExit(rc)
 
 
 def main():
@@ -1438,9 +1483,9 @@ def main():
     sel = [x.strip() for x in (args.corte or "").split(",") if x.strip()]
     cortes = [c for c in CORTES if (not sel or c[0] in sel)]
 
-    # Parent fan-out: enumerate tribunals and split across N parallel workers.
+    # Parent: work-stealing pool over all tribunals (all workers busy until done).
     if args.workers > 1 and len(cortes) >= 1:
-        _run_workers(args, cortes)
+        _run_pool(args, cortes)
         return
 
     if not DRY:
