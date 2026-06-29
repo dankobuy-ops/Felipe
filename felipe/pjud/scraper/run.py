@@ -586,14 +586,16 @@ def months_to_scan(args):
 
 # ── Detalle modal ─────────────────────────────────────────────────────────────
 
-def open_detail(page, jwt):
+def open_detail(page, jwt, rol):
     page.evaluate("j => detalleCausaCivil(j)", jwt)
-    # Bootstrap modal is position:fixed (offsetParent null), so wait on its
-    # content rather than visibility: the header ROL text appears after AJAX.
+    # Wait for the modal to show THIS causa's ROL — not just any 'ROL:'. A stale
+    # modal from the previous causa would otherwise be read, mis-attributing its
+    # header/litigantes to this rol (e.g. an Ordinario causa stored as Ejecutivo).
     page.wait_for_function(
-        "() => { const m = document.querySelector('#modalDetalleCivil');"
-        " return m && /ROL:/.test(m.innerText); }", timeout=15_000)
-    page.wait_for_timeout(1200)
+        "rol => { const m = document.querySelector('#modalDetalleCivil');"
+        " return m && m.innerText.includes('ROL:') && m.innerText.includes(rol); }",
+        arg=rol, timeout=15_000)
+    page.wait_for_timeout(800)
 
 
 def parse_header(page):
@@ -844,7 +846,7 @@ def scrape_causa(page, api, causa, tribunal):
     rol = causa["rol"]
     causa_id = f'{tribunal["id"]}-{rol}'
     log(f"\n[CAUSA] {tribunal['tribunal']} · {rol} — {causa['caratulado'][:50]}")
-    open_detail(page, causa["jwt"])
+    open_detail(page, causa["jwt"], rol)
     header = parse_header(page)
 
     # Procedure gate: only scrape causas whose Proc. matches PROC_FILTER exactly.
