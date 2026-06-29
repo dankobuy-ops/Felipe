@@ -520,12 +520,15 @@ def _next_fecha_page(page):
     return False                        # no change → treat as last page
 
 
-def search_month_paginated(page, trib_val, year, month):
-    """Search one tribunal for one calendar month; return ALL rows across pages."""
+def _do_fecha_search(page, trib_val, year, month):
+    """One search attempt for a (tribunal, month). Verifies the tribunal actually
+    got selected (else searches the wrong one), fires, and collects all pages.
+    Raises on a transient failure worth retrying; returns [] only for a real empty."""
     _select(page, "#fecTribunal", trib_val, "tribunal(fecha)")
+    if page.eval_on_selector("#fecTribunal", "e => e.value") != trib_val:
+        raise RuntimeError(f"tribunal {trib_val} not selected (cascade not ready)")
     last = calendar.monthrange(year, month)[1]
-    # #fecDesde/#fecHasta are readonly jQuery datepickers — page.fill() can't type
-    # into them, so set the value via JS (strip readonly + dispatch change).
+    # #fecDesde/#fecHasta are readonly jQuery datepickers — set value via JS.
     page.evaluate(
         """([desde, hasta]) => {
             const set = (id, v) => { const e = document.getElementById(id);
@@ -536,12 +539,9 @@ def search_month_paginated(page, trib_val, year, month):
         [f"01/{month:02d}/{year}", f"{last:02d}/{month:02d}/{year}"])
     page.evaluate("() => { const t=document.querySelector('#dtaTableDetalleFecha tbody');"
                   " if(t)t.innerHTML=''; }")
-    # Fire via JS (not page.click) — under load the button's actionability check
-    # times out at 30s; e.click() dispatches immediately and is load-resilient.
-    page.eval_on_selector("#btnConConsultaFec", "e=>e.click()")
+    page.eval_on_selector("#btnConConsultaFec", "e=>e.click()")   # JS click (load-resilient)
     if not _wait_fecha_results(page):
-        page.wait_for_timeout(PACE_MS)
-        return []
+        return []                                  # search fired, genuinely no rows
     by_rol, pages = {}, 0
     while pages < 60:
         for r in _collect_fecha_page(page):
@@ -550,8 +550,23 @@ def search_month_paginated(page, trib_val, year, month):
         pages += 1
         if not _next_fecha_page(page):
             break
-    page.wait_for_timeout(PACE_MS)
     return list(by_rol.values())
+
+
+def search_month_paginated(page, trib_val, year, month):
+    """Search one tribunal for one month, retrying transient failures so a flaky
+    search (timeout / unsettled cascade) doesn't silently drop the tribunal."""
+    for attempt in range(3):
+        try:
+            rows = _do_fecha_search(page, trib_val, year, month)
+            page.wait_for_timeout(PACE_MS)
+            return rows
+        except Exception as e:
+            log(f"[WARN] search trib {trib_val} {year}-{month:02d} "
+                f"attempt {attempt + 1}/3: {e}")
+            page.wait_for_timeout(1500)
+    log(f"[WARN] search trib {trib_val} {year}-{month:02d}: gave up after 3 tries")
+    return []
 
 
 def _in_month(fecha, year, month):
