@@ -1474,7 +1474,7 @@ def sweep_claim(args, banks, queue_path, widx):
                         browser.close()
                     except Exception:
                         pass
-                    if deaths > 8:
+                    if deaths > 60:
                         log(f"[W{widx}] too many browser deaths — exiting")
                         break
                     browser, context, page, api = fresh()
