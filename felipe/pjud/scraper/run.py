@@ -520,6 +520,17 @@ def _next_fecha_page(page):
     return False                        # no change → treat as last page
 
 
+_DEAD_SIGNS = ("Target crashed", "Connection closed", "Browser closed",
+               "has been closed", "Target page, context or browser has been closed")
+
+
+def _browser_dead(e):
+    """True if the exception means the browser/driver died (not just a bad causa) —
+    pointless to keep going in this process; let it exit so the tribunal is retried."""
+    s = str(e)
+    return any(sig in s for sig in _DEAD_SIGNS)
+
+
 def _do_fecha_search(page, trib_val, year, month):
     """One search attempt for a (tribunal, month). Verifies the tribunal actually
     got selected (else searches the wrong one), fires, and collects all pages.
@@ -562,6 +573,8 @@ def search_month_paginated(page, trib_val, year, month):
             page.wait_for_timeout(PACE_MS)
             return rows
         except Exception as e:
+            if _browser_dead(e):
+                raise               # dead browser → abort so this tribunal is retried
             log(f"[WARN] search trib {trib_val} {year}-{month:02d} "
                 f"attempt {attempt + 1}/3: {e}")
             page.wait_for_timeout(1500)
@@ -1142,9 +1155,9 @@ def parse_args():
     p.add_argument("--workers", type=int, default=1,
                    help="Parallel worker subprocesses kept running by the dynamic pool "
                         "(default 1). They pull tribunal batches until the job is done.")
-    p.add_argument("--batch", type=int, default=6,
-                   help="Tribunals per worker batch (smaller = better load balance, more "
-                        "guest sessions; larger = fewer sessions, coarser balance).")
+    p.add_argument("--batch", type=int, default=1,
+                   help="Tribunals per worker job (default 1 = each tribunal is its own "
+                        "fresh-browser job; a crash kills only that tribunal and it's retried).")
     p.add_argument("--tasks", default="",
                    help="Internal: a worker's tribunal list 'corte:trib,corte:trib,…'.")
     p.add_argument("--skip-geo", action="store_true",
@@ -1341,6 +1354,8 @@ def sweep_tasks(page, api, context, banks, pairs, args):
                     scrape_causa(page, api, c, tribunal)
                     ok += 1
                 except Exception as e:
+                    if _browser_dead(e):
+                        raise           # browser died → exit non-zero so the pool retries
                     log(f"[ERR] trib {tv} {c['rol']}: {e}")
         flush_buffer()
     log(f"\n[DONE tasks] {ok}/{total} causas over {len(pairs)} tribunals.")
@@ -1379,25 +1394,41 @@ def _run_pool(args, cortes):
         lf = open(SCRATCH / f"pjud_worker_{slot}.log", "a", encoding="utf-8")
         return subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf
 
-    bi, slots, done = 0, {}, 0
-    for slot in range(min(n, len(batches))):
-        slots[slot] = (*launch(slot, batches[bi]), bi)
-        bi += 1
+    from collections import deque
+    MAX_TRIES = 3
+    pending = deque((b, 0) for b in batches)   # (batch, tries)
+    total = len(batches)
+    slots, done = {}, 0
+
+    def fill(slot):
+        if not pending:
+            return False
+        batch, tries = pending.popleft()
+        slots[slot] = (*launch(slot, batch), batch, tries)
+        return True
+
+    for slot in range(n):
+        if not fill(slot):
+            break
         time.sleep(3)               # stagger startup so N sessions don't hit OJV at once
     while slots:
         time.sleep(2)
-        for slot, (p, lf, b) in list(slots.items()):
+        for slot, (p, lf, batch, tries) in list(slots.items()):
             if p.poll() is None:
                 continue
             lf.close()
-            done += 1
-            if bi < len(batches):
-                slots[slot] = (*launch(slot, batches[bi]), bi)
-                bi += 1
+            rc = p.returncode
+            if rc != 0 and tries + 1 < MAX_TRIES:
+                pending.append((batch, tries + 1))      # crashed → retry the tribunal
+                log(f"[POOL] slot {slot} crashed (rc={rc}); re-queued (try {tries + 2})")
             else:
+                done += 1
+                if rc != 0:
+                    log(f"[POOL] slot {slot} gave up after {tries + 1} tries (rc={rc})")
+                log(f"[POOL] {done}/{total} done; {len(pending)} queued, {len(slots) - 1} active")
+            if not fill(slot):
                 del slots[slot]
-            log(f"[POOL] batch {done}/{len(batches)} done; "
-                f"{len(batches) - bi} queued, {len(slots)} active")
+            break
     log("[POOL] all batches done")
     try:
         removed = gstore.Store().dedup("Ruts")
