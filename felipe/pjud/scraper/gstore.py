@@ -242,6 +242,31 @@ class Store:
                         for i, c in enumerate(cols)})
         return out
 
+    def hard_clear(self, keep=("Bancos",)):
+        """Delete ALL data rows (shrink each tab's grid → reclaim the workbook's cell
+        quota) from every tab except `keep`, then rewrite headers. Clearing values
+        alone does NOT reclaim cells — append/INSERT_ROWS grows the grid forever and
+        eventually hits the 10M-cell limit. Deleting rows is the only real reset."""
+        meta = self.sheets.spreadsheets().get(
+            spreadsheetId=self.sheet_id,
+            fields="sheets(properties(sheetId,title,gridProperties(rowCount)))").execute()
+        reqs = []
+        for sh in meta.get("sheets", []):
+            p = sh["properties"]
+            if p["title"] in keep or p["title"] not in TABS:
+                continue
+            rows = p.get("gridProperties", {}).get("rowCount", 1)
+            if rows > 1:
+                reqs.append({"deleteDimension": {"range": {
+                    "sheetId": p["sheetId"], "dimension": "ROWS",
+                    "startIndex": 1, "endIndex": rows}}})
+        if reqs:
+            self.sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self.sheet_id, body={"requests": reqs}).execute()
+        self._index.clear()
+        _write_headers(self.sheets, self.sheet_id)
+        log(f"[RESET] hard-cleared {len(reqs)} tabs (grid shrunk, cells reclaimed)")
+
     def dedup(self, table):
         """Remove duplicate rows keyed on column A (keep last). Used after a parallel
         run where multiple workers appended the same key (e.g. a rut) without seeing
