@@ -255,17 +255,18 @@ class Store:
             p = sh["properties"]
             if p["title"] in keep or p["title"] not in TABS:
                 continue
-            rows = p.get("gridProperties", {}).get("rowCount", 1)
-            if rows > 1:
-                reqs.append({"deleteDimension": {"range": {
-                    "sheetId": p["sheetId"], "dimension": "ROWS",
-                    "startIndex": 1, "endIndex": rows}}})
+            if p.get("gridProperties", {}).get("rowCount", 1) > 2:
+                # Shrink the grid to 2 rows (header + 1) — truncates + reclaims cells.
+                reqs.append({"updateSheetProperties": {
+                    "properties": {"sheetId": p["sheetId"],
+                                   "gridProperties": {"rowCount": 2}},
+                    "fields": "gridProperties.rowCount"}})
         if reqs:
             self.sheets.spreadsheets().batchUpdate(
                 spreadsheetId=self.sheet_id, body={"requests": reqs}).execute()
         self._index.clear()
         _write_headers(self.sheets, self.sheet_id)
-        log(f"[RESET] hard-cleared {len(reqs)} tabs (grid shrunk, cells reclaimed)")
+        log(f"[RESET] hard-cleared {len(reqs)} tabs (grid shrunk to 2 rows, cells reclaimed)")
 
     def dedup(self, table):
         """Remove duplicate rows keyed on column A (keep last). Used after a parallel
