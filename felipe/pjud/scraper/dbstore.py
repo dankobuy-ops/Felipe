@@ -1,0 +1,269 @@
+"""Supabase (Postgres) metadata layer + Drive file store for the PJUD scraper.
+
+Drop-in replacement for gstore.py: exposes the same surface (`provision`, `Store`
+with `.upsert`/`.read_tab`/`.upload_pdf`/`.dedup`/`.hard_clear`, plus the module
+constants `TABS`/`TAB_ORDER`/`TABLE_TO_TAB`/`load_config`/`save_config`/`log`), so
+`run.py` only swaps `import gstore` → `import dbstore as gstore`.
+
+  - Metadata → Postgres (one table per entity, TEXT columns, PK = the entity's
+    deterministic id). Writes are idempotent UPSERTs (INSERT … ON CONFLICT DO
+    UPDATE) keyed on that id — no append/grid bloat, no dedup pass.
+  - Files/PDFs → Google Drive, reusing gstore's Drive provisioning + upload. The DB
+    only stores the Drive link.
+
+The Postgres connection string is a SECRET and this repo is PUBLIC — it is read from
+the `SUPABASE_DB_URL` env var or the gitignored `pjud_config.json` ("supabase_db_url")
+and is never committed.
+"""
+
+import io
+import os
+import re
+
+import psycopg2
+import psycopg2.extras
+from googleapiclient.http import MediaIoBaseUpload
+
+import gauth
+import gstore
+
+# Reuse gstore's schema + config + Drive helpers so the two backends never diverge.
+TABS = gstore.TABS
+TAB_ORDER = gstore.TAB_ORDER
+TABLE_TO_TAB = gstore.TABLE_TO_TAB
+load_config = gstore.load_config
+save_config = gstore.save_config
+log = gstore.log
+
+
+def _sqlcol(name):
+    """'Causa ID' -> 'causa_id'  (a tab header → a Postgres column name)."""
+    return re.sub(r"\s+", "_", name.strip().lower())
+
+
+def _sql_table(tab):
+    """'Notificaciones Receptor' -> 'notificaciones_receptor'."""
+    return re.sub(r"\s+", "_", tab.strip().lower())
+
+
+def _dsn(cfg=None):
+    dsn = os.environ.get("SUPABASE_DB_URL") or (cfg or load_config() or {}).get("supabase_db_url")
+    if not dsn:
+        raise SystemExit(
+            "[FATAL] no Supabase connection string. Set the SUPABASE_DB_URL env var or "
+            "add 'supabase_db_url' to pjud_config.json (gitignored — repo is PUBLIC, "
+            "never commit it).")
+    return dsn
+
+
+# ── schema ──────────────────────────────────────────────────────────────────────
+
+def _ddl():
+    """One CREATE TABLE per entity: TEXT columns, PK = the first (id) column.
+    v1 has no enforced foreign keys — referential integrity is carried by the
+    deterministic ids (causa_id, cuaderno_id, …); FKs can be layered on later."""
+    stmts = []
+    for tab in TAB_ORDER:
+        sqlcols = [_sqlcol(c) for c in TABS[tab]]
+        lines = [f'"{sqlcols[0]}" TEXT PRIMARY KEY']
+        lines += [f'"{c}" TEXT' for c in sqlcols[1:]]
+        stmts.append(f'CREATE TABLE IF NOT EXISTS "{_sql_table(tab)}" (\n  '
+                     + ",\n  ".join(lines) + "\n);")
+    return stmts
+
+
+def _create_schema(dsn):
+    conn = psycopg2.connect(dsn)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            for stmt in _ddl():
+                cur.execute(stmt)
+    finally:
+        conn.close()
+
+
+# ── provisioning (run once via --setup; idempotent) ────────────────────────────
+
+def provision(creds=None):
+    """Create (or reuse) the Drive folder + Documentos subfolder and the Postgres
+    tables. Idempotent. Returns + saves the config (Drive ids; the DSN must already
+    be in env/config)."""
+    creds = creds or gauth.credentials(allow_login=True)
+    drive = gauth.drive_client(creds)
+    cfg = load_config() or {}
+
+    folder_id = cfg.get("folder_id") or gstore._find(
+        drive, gstore.FOLDER_NAME, gstore._FOLDER_MIME)
+    if not folder_id:
+        folder_id = drive.files().create(
+            body={"name": gstore.FOLDER_NAME, "mimeType": gstore._FOLDER_MIME},
+            fields="id").execute()["id"]
+        log(f"[SETUP] created folder '{gstore.FOLDER_NAME}' ({folder_id})")
+    else:
+        log(f"[SETUP] folder exists ({folder_id})")
+
+    docs_id = cfg.get("documentos_folder_id") or gstore._find(
+        drive, gstore.DOCS_SUBFOLDER, gstore._FOLDER_MIME, parent=folder_id)
+    if not docs_id:
+        docs_id = drive.files().create(
+            body={"name": gstore.DOCS_SUBFOLDER, "mimeType": gstore._FOLDER_MIME,
+                  "parents": [folder_id]}, fields="id").execute()["id"]
+        log(f"[SETUP] created subfolder '{gstore.DOCS_SUBFOLDER}' ({docs_id})")
+    gstore._make_public_reader(drive, docs_id)
+
+    cfg.update({"folder_id": folder_id, "documentos_folder_id": docs_id})
+    save_config(cfg)
+
+    _create_schema(_dsn(cfg))
+    log(f"[SETUP] Postgres tables ready ({len(TAB_ORDER)} tables)")
+    log("[SETUP] config saved -> pjud_config.json")
+    return cfg
+
+
+# ── Store: Postgres upsert + Drive PDF upload ──────────────────────────────────
+
+class Store:
+    """Live handle to the Postgres DB + Drive Documentos folder."""
+
+    def __init__(self, config=None, creds=None):
+        cfg = config or load_config()
+        if not cfg:
+            raise SystemExit("[FATAL] not provisioned. Run: python run.py --setup")
+        self.cfg = cfg
+        self.dsn = _dsn(cfg)
+        self.conn = psycopg2.connect(self.dsn)
+        self.conn.autocommit = True
+        # Drive (PDFs) — lazily set up only if upload_pdf is called.
+        self._creds = creds
+        self._drive = None
+        self.docs_folder = cfg.get("documentos_folder_id")
+        self._doc_cache = None
+
+    def _reconnect(self):
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+        self.conn = psycopg2.connect(self.dsn)
+        self.conn.autocommit = True
+
+    # -- metadata upsert --
+    def upsert(self, table, rows):
+        """Idempotent UPSERT of dict rows keyed on the table's id column (first
+        column). Rows may repeat an id within the batch — last one wins."""
+        if not rows:
+            return 0
+        tab = TABLE_TO_TAB.get(table, table)
+        headers = TABS[tab]
+        sqlcols = [_sqlcol(c) for c in headers]
+        pk = sqlcols[0]
+        sqltab = _sql_table(tab)
+
+        merged = {}
+        for r in rows:
+            k = str(r.get(headers[0], "")).strip()
+            if k:
+                merged[k] = r
+        if not merged:
+            return 0
+        tuples = [tuple(str(r.get(h, "") or "") for h in headers)
+                  for r in merged.values()]
+
+        collist = ", ".join(f'"{c}"' for c in sqlcols)
+        setcols = [c for c in sqlcols if c != pk]
+        if setcols:
+            upd = ", ".join(f'"{c}"=EXCLUDED."{c}"' for c in setcols)
+            sql = (f'INSERT INTO "{sqltab}" ({collist}) VALUES %s '
+                   f'ON CONFLICT ("{pk}") DO UPDATE SET {upd}')
+        else:
+            sql = (f'INSERT INTO "{sqltab}" ({collist}) VALUES %s '
+                   f'ON CONFLICT ("{pk}") DO NOTHING')
+
+        for attempt in (1, 2):
+            try:
+                with self.conn.cursor() as cur:
+                    psycopg2.extras.execute_values(cur, sql, tuples)
+                return len(merged)
+            except psycopg2.OperationalError:
+                if attempt == 1:
+                    self._reconnect()
+                    continue
+                raise
+
+    def read_tab(self, table):
+        """Return all rows of `table` as dicts keyed by the tab's headers."""
+        tab = TABLE_TO_TAB.get(table, table)
+        headers = TABS[tab]
+        sqlcols = [_sqlcol(c) for c in headers]
+        sqltab = _sql_table(tab)
+        sel = ", ".join(f'"{c}"' for c in sqlcols)
+        for attempt in (1, 2):
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute(f'SELECT {sel} FROM "{sqltab}"')
+                    data = cur.fetchall()
+                break
+            except psycopg2.OperationalError:
+                if attempt == 1:
+                    self._reconnect()
+                    continue
+                raise
+        return [{h: ("" if v is None else str(v)) for h, v in zip(headers, row)}
+                for row in data]
+
+    def dedup(self, table):
+        """No-op: UPSERT on the PK is already idempotent (kept for surface parity)."""
+        return 0
+
+    def hard_clear(self, keep=("Bancos",)):
+        """Empty every table except `keep` (the DB equivalent of the Sheets reset)."""
+        tabs = [t for t in TAB_ORDER if t not in keep]
+        sqltabs = ", ".join(f'"{_sql_table(t)}"' for t in tabs)
+        with self.conn.cursor() as cur:
+            cur.execute(f"TRUNCATE {sqltabs}")
+        log(f"[RESET] truncated {len(tabs)} tables")
+
+    # -- pdf upload (Drive, reused from gstore) --
+    @property
+    def drive(self):
+        if self._drive is None:
+            self._creds = self._creds or gauth.credentials()
+            self._drive = gauth.drive_client(self._creds)
+        return self._drive
+
+    def _load_doc_cache(self):
+        if self._doc_cache is not None:
+            return self._doc_cache
+        cache, page_token = {}, None
+        while True:
+            resp = self.drive.files().list(
+                q=f"'{self.docs_folder}' in parents and trashed = false",
+                fields="nextPageToken, files(id, name, webViewLink)",
+                pageSize=1000, pageToken=page_token).execute()
+            for f in resp.get("files", []):
+                cache[f["name"]] = f.get("webViewLink", "")
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+        self._doc_cache = cache
+        return cache
+
+    def upload_pdf(self, object_path, data):
+        """Upload PDF bytes to the Drive Documentos folder; return its link.
+        Skips re-upload if a file with the same flattened name already exists."""
+        if len(data) < 1024:
+            raise RuntimeError(f"download too small ({len(data)}B) for {object_path}")
+        name = gstore._flatten_name(object_path)
+        cache = self._load_doc_cache()
+        if name in cache and cache[name]:
+            return cache[name]
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/pdf",
+                                  resumable=False)
+        f = self.drive.files().create(
+            body={"name": name, "parents": [self.docs_folder]},
+            media_body=media, fields="id, webViewLink").execute()
+        gstore._make_public_reader(self.drive, f["id"])
+        link = f.get("webViewLink", "")
+        cache[name] = link
+        return link

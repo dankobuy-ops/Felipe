@@ -38,7 +38,12 @@ from pathlib import Path
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
-import gstore
+# Storage backend: Supabase/Postgres (default) or the legacy Google Sheets layer.
+# Both expose the same surface; set PJUD_BACKEND=sheets to use the old one.
+if os.environ.get("PJUD_BACKEND", "supabase").lower() == "sheets":
+    import gstore
+else:
+    import dbstore as gstore
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
