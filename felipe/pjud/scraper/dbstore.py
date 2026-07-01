@@ -46,14 +46,25 @@ def _sql_table(tab):
     return re.sub(r"\s+", "_", tab.strip().lower())
 
 
-def _dsn(cfg=None):
-    dsn = os.environ.get("SUPABASE_DB_URL") or (cfg or load_config() or {}).get("supabase_db_url")
-    if not dsn:
-        raise SystemExit(
-            "[FATAL] no Supabase connection string. Set the SUPABASE_DB_URL env var or "
-            "add 'supabase_db_url' to pjud_config.json (gitignored — repo is PUBLIC, "
-            "never commit it).")
-    return dsn
+def _conn_kwargs(cfg=None):
+    """Connection params for psycopg2.connect(**kwargs). Any Postgres (Neon,
+    Supabase, self-hosted). Prefers the component dict `pg_conn` in config (password
+    used literally — safe for chars that would break a URL), then PG_CONN_URL env,
+    then a 'pg_conn_url' string. All are gitignored secrets — repo is PUBLIC, never
+    commit them."""
+    cfg = cfg or load_config() or {}
+    db = cfg.get("pg_conn") or cfg.get("supabase_db")   # supabase_db kept for back-compat
+    if isinstance(db, dict) and db.get("host"):
+        kw = dict(db)
+        kw.setdefault("sslmode", "require")
+        return kw
+    url = os.environ.get("PG_CONN_URL") or cfg.get("pg_conn_url")
+    if url:
+        return {"dsn": url}
+    raise SystemExit(
+        "[FATAL] no Postgres connection. Add 'pg_conn' (host/port/user/password/"
+        "dbname) to pjud_config.json, or set PG_CONN_URL (gitignored — repo is "
+        "PUBLIC, never commit it).")
 
 
 # ── schema ──────────────────────────────────────────────────────────────────────
@@ -72,8 +83,8 @@ def _ddl():
     return stmts
 
 
-def _create_schema(dsn):
-    conn = psycopg2.connect(dsn)
+def _create_schema(conn_kwargs):
+    conn = psycopg2.connect(**conn_kwargs)
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
@@ -115,7 +126,7 @@ def provision(creds=None):
     cfg.update({"folder_id": folder_id, "documentos_folder_id": docs_id})
     save_config(cfg)
 
-    _create_schema(_dsn(cfg))
+    _create_schema(_conn_kwargs(cfg))
     log(f"[SETUP] Postgres tables ready ({len(TAB_ORDER)} tables)")
     log("[SETUP] config saved -> pjud_config.json")
     return cfg
@@ -131,8 +142,8 @@ class Store:
         if not cfg:
             raise SystemExit("[FATAL] not provisioned. Run: python run.py --setup")
         self.cfg = cfg
-        self.dsn = _dsn(cfg)
-        self.conn = psycopg2.connect(self.dsn)
+        self._ck = _conn_kwargs(cfg)
+        self.conn = psycopg2.connect(**self._ck)
         self.conn.autocommit = True
         # Drive (PDFs) — lazily set up only if upload_pdf is called.
         self._creds = creds
@@ -145,7 +156,7 @@ class Store:
             self.conn.close()
         except Exception:
             pass
-        self.conn = psycopg2.connect(self.dsn)
+        self.conn = psycopg2.connect(**self._ck)
         self.conn.autocommit = True
 
     # -- metadata upsert --
