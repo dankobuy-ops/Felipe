@@ -16,6 +16,7 @@ the `SUPABASE_DB_URL` env var or the gitignored `pjud_config.json` ("supabase_db
 and is never committed.
 """
 
+import datetime
 import io
 import os
 import re
@@ -34,6 +35,19 @@ TABLE_TO_TAB = gstore.TABLE_TO_TAB
 load_config = gstore.load_config
 save_config = gstore.save_config
 log = gstore.log
+
+# DB-managed columns beyond the scrape schema (TABS). They are NEVER written by
+# upsert(), so re-running Pass-1 discovery never resets a user's `fill` flag or the
+# scraper's `fill_status`. `fill` is the manual "I want this one" checkbox (set in
+# AppSheet); `fill_status` is Pass-2's progress ('' | 'done' | 'error').
+EXTRA_COLS = {
+    "Causas": [("fill", "BOOLEAN NOT NULL DEFAULT false"),
+               ("fill_status", "TEXT NOT NULL DEFAULT ''")],
+}
+
+
+def _now():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
 def _sqlcol(name):
@@ -78,8 +92,14 @@ def _ddl():
         sqlcols = [_sqlcol(c) for c in TABS[tab]]
         lines = [f'"{sqlcols[0]}" TEXT PRIMARY KEY']
         lines += [f'"{c}" TEXT' for c in sqlcols[1:]]
+        lines += [f'"{name}" {decl}' for name, decl in EXTRA_COLS.get(tab, [])]
         stmts.append(f'CREATE TABLE IF NOT EXISTS "{_sql_table(tab)}" (\n  '
                      + ",\n  ".join(lines) + "\n);")
+    # Pass-1 resumability: which (corte, tribunal, month) have been swept.
+    stmts.append(
+        'CREATE TABLE IF NOT EXISTS "sweep_progress" (\n'
+        '  "key" TEXT PRIMARY KEY,\n  "corte" TEXT,\n  "tribunal" TEXT,\n'
+        '  "month" TEXT,\n  "status" TEXT,\n  "updated_at" TEXT\n);')
     return stmts
 
 
@@ -90,6 +110,12 @@ def _create_schema(conn_kwargs):
         with conn.cursor() as cur:
             for stmt in _ddl():
                 cur.execute(stmt)
+            # Migrate already-created tables: add any EXTRA_COLS that are missing.
+            for tab, cols in EXTRA_COLS.items():
+                t = _sql_table(tab)
+                for name, decl in cols:
+                    cur.execute(
+                        f'ALTER TABLE "{t}" ADD COLUMN IF NOT EXISTS "{name}" {decl}')
     finally:
         conn.close()
 
@@ -226,6 +252,37 @@ class Store:
     def dedup(self, table):
         """No-op: UPSERT on the PK is already idempotent (kept for surface parity)."""
         return 0
+
+    # -- Pass-1 resumability (sweep_progress) --
+    def swept_keys(self):
+        """Set of '<corte>-<tribunal>-<month>' already fully swept in Pass 1."""
+        for attempt in (1, 2):
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute("SELECT key FROM sweep_progress WHERE status='done'")
+                    return {r[0] for r in cur.fetchall()}
+            except psycopg2.OperationalError:
+                if attempt == 1:
+                    self._reconnect()
+                    continue
+                raise
+
+    def mark_swept(self, corte, tribunal, month, status="done"):
+        key = f"{corte}-{tribunal}-{month}"
+        sql = ('INSERT INTO sweep_progress (key,corte,tribunal,month,status,updated_at) '
+               'VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (key) DO UPDATE SET '
+               'status=EXCLUDED.status, updated_at=EXCLUDED.updated_at')
+        for attempt in (1, 2):
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute(sql, (key, str(corte), str(tribunal), str(month),
+                                      status, _now()))
+                return
+            except psycopg2.OperationalError:
+                if attempt == 1:
+                    self._reconnect()
+                    continue
+                raise
 
     def hard_clear(self, keep=("Bancos",)):
         """Empty every table except `keep` (the DB equivalent of the Sheets reset)."""
