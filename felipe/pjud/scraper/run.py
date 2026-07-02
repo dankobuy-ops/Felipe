@@ -28,6 +28,7 @@ import argparse
 import calendar
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -226,6 +227,31 @@ def establish_form(page, context, kind, retries=5):
     raise RuntimeError(f"could not establish the {kind} search form: {last}")
 
 
+def establish_gentle(page, context, widx=0, captcha_wait_ms=300_000):
+    """Headed, CAPTCHA-tolerant establish for gentle discovery. Navigates to the guest
+    consulta; if the intermittent distorted-text CAPTCHA appears, WAITS (up to
+    captcha_wait_ms) for the operator to solve it in the visible window, then opens the
+    date tab. One manual solve per worker session; the session is then reused."""
+    page.goto(HOME, wait_until="load", timeout=45_000)
+    page.wait_for_timeout(2000)
+    if page.evaluate("typeof accesoConsultaCausas === 'function'"):
+        page.evaluate("accesoConsultaCausas()")
+    log(f"[W{widx}] reaching guest form — if a CAPTCHA appears, SOLVE IT in this window…")
+    waited, step = 0, 2000
+    while waited < captcha_wait_ms:
+        try:
+            if page.query_selector("a[href='#BusFecha']"):
+                break
+        except Exception:
+            pass
+        page.wait_for_timeout(step)
+        waited += step
+    else:
+        raise RuntimeError("date form never appeared (CAPTCHA left unsolved?)")
+    open_date_tab(page)
+    log(f"[W{widx}] guest form ready.")
+
+
 def open_search_tab(page):
     """Activate the 'Rut Persona Jurídica' tab and lock competencia = Civil.
     Done once per page; corte/tribunal are then iterated by the sweep. The consulta
@@ -398,6 +424,23 @@ def bank_fragments(banks):
 def matches_bank(caratulado, frags):
     c = _norm(caratulado)
     return any(f in c for f in frags)
+
+
+def demandante_matches_bank(caratulado, frags):
+    """True if a bank fragment appears in the DEMANDANTE slot — the part of the
+    caratulado BEFORE the first '/' (caratulados are 'DEMANDANTE / DEMANDADO'). This
+    keeps only causas where a bank is the plaintiff, cheaply, at the list level."""
+    dte = (caratulado or "").split("/", 1)[0]
+    return matches_bank(dte, frags)
+
+
+# Gentle Pass-1 pacing (randomized, human-like) to stay under the WAF's bot defense.
+DISC_SEARCH_PACE = (4000, 10000)   # ms between tribunal/month searches
+DISC_OPEN_PACE   = (2000, 6000)    # ms between detail-modal (header) opens
+
+
+def _pace(lo_ms, hi_ms):
+    time.sleep(random.uniform(lo_ms, hi_ms) / 1000.0)
 
 
 def open_date_tab(page):
@@ -1167,6 +1210,12 @@ def parse_args():
     p.add_argument("--pool-claim", default="",
                    help="Internal: long-lived worker — claim tribunals from this queue file.")
     p.add_argument("--worker-id", type=int, default=0, help="Internal: worker index.")
+    p.add_argument("--discover", action="store_true",
+                   help="Pass 1: gentle discovery (list + header filter) → DB (fill=false).")
+    p.add_argument("--discover-worker", default="",
+                   help="Internal: a discovery worker claiming (corte,month) units from this queue.")
+    p.add_argument("--year", type=int, default=None,
+                   help="Target year for --discover (default: current year).")
     p.add_argument("--skip-geo", action="store_true",
                    help="Don't resolve georref sub-modals (defer to a later pass) — big speed-up.")
     p.add_argument("--max-tribunals", type=int, default=0,
@@ -1294,9 +1343,14 @@ def sweep_rut(page, api, context, banks, cortes, args, start_date):
     log(f"\n[DONE rut] {ok}/{total} causas. banks={len(banks)} cortes={len(cortes)}.")
 
 
-def _new_context(browser):
-    return browser.new_context(user_agent=UA, locale="es-CL", accept_downloads=True,
-                               viewport={"width": 1400, "height": 1000})
+def _new_context(browser, stealth=False):
+    ctx = browser.new_context(user_agent=UA, locale="es-CL", accept_downloads=True,
+                              viewport={"width": 1400, "height": 1000})
+    if stealth:
+        # Hide the most obvious automation tell so the WAF sees a normal browser.
+        ctx.add_init_script(
+            "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});")
+    return ctx
 
 
 def enumerate_tribunals(cortes):
@@ -1542,6 +1596,169 @@ def _run_pool(args, cortes):
         log(f"[WARN] dedup Ruts: {e}")
 
 
+# ── Pass 1: gentle discovery (list + header filter; no far data) ───────────────
+
+def _selected_cortes(args):
+    if args.corte:
+        want = {c.strip() for c in args.corte.split(",") if c.strip()}
+        return [(v, n) for (v, n) in CORTES if v in want]
+    return list(CORTES)
+
+
+def discover_months(args, year):
+    """Months of `year` to sweep: 1..12, but never past the current month."""
+    now = time.localtime()
+    last = now.tm_mon if year >= now.tm_year else 12
+    return list(range(1, last + 1))
+
+
+def discover_unit(page, cv, cname, tv, tname, year, month, frags):
+    """Sweep ONE (corte,tribunal,month): date-search → keep C- rows where a bank is the
+    DEMANDANTE → open each modal for the HEADER ONLY → store if Ejecutivo OD & live.
+    Returns (rows_seen, stored)."""
+    rows = search_month_paginated(page, tv, year, month)
+    tribunal = {"id": tv, "corte": cname, "tribunal": tname}
+    stored, seeded = 0, False
+    for r in rows:
+        if not r["rol"].upper().startswith("C") or not r["jwt"]:
+            continue
+        if not _in_month(r["fecha"], year, month):
+            continue
+        if not demandante_matches_bank(r["caratulado"], frags):
+            continue
+        _pace(*DISC_OPEN_PACE)
+        try:
+            open_detail(page, r["jwt"], r["rol"])
+            h = parse_header(page)
+            _close_detail(page)
+        except Exception as e:
+            if _browser_dead(e):
+                raise
+            log(f"[ERR] header {tv} {r['rol']}: {e}")
+            continue
+        if _norm(h.get("procedimiento", "")) != _norm(PROC_FILTER):
+            continue
+        if _norm(h.get("estado_adm", "")) == _norm("Archivada"):
+            continue
+        if _norm(h.get("estado_proc", "")) == _norm("Concluido"):
+            continue
+        if not seeded:
+            upsert("pjud_tribunales", [tribunal])
+            seeded = True
+        upsert("pjud_causas", [{
+            "causa_id": f"{tv}-{r['rol']}", "rol": r["rol"], **h,
+            "tribunal_id": tv, "competencia": "Civil", "ebook": "",
+            "updated_at": _now(),
+        }])
+        stored += 1
+    flush_buffer()
+    return len(rows), stored
+
+
+def discover_worker(args, banks, queue_path, widx):
+    """One gentle, CAPTCHA-solved-once session that claims (corte,month) units and
+    sweeps every tribunal it hasn't done yet (skips via sweep_progress). Self-heals on
+    browser death (re-queue the unit + relaunch)."""
+    frags = bank_fragments(banks)
+    with sync_playwright() as pw:
+        def fresh():
+            b = pw.chromium.launch(headless=False, channel="chrome",
+                                   args=["--start-maximized"])
+            ctx = _new_context(b, stealth=True)
+            pg = ctx.new_page()
+            establish_gentle(pg, ctx, widx)
+            return b, ctx, pg
+
+        browser, context, page = fresh()
+        swept = STORE.swept_keys()
+        cur_corte, tribmap, deaths = None, {}, 0
+        while True:
+            item = _claim_next(queue_path)
+            if item is None:
+                break
+            cv, cname, yr, m = item
+            try:
+                if not date_form_alive(page):
+                    reopen_date(page, context)
+                    cur_corte = None
+                if cv != cur_corte:
+                    opts = select_corte_fecha(page, cv, cname)
+                    tribmap = {o["v"]: o["t"] for o in opts if o["v"] not in ("", "0")}
+                    cur_corte = cv
+                for tv, tname in tribmap.items():
+                    key = f"{cv}-{tv}-{yr}-{m:02d}"
+                    if key in swept:
+                        continue
+                    n_rows, stored = discover_unit(page, cv, cname, tv, tname, yr, m, frags)
+                    STORE.mark_swept(cv, tv, f"{yr}-{m:02d}")
+                    swept.add(key)
+                    log(f"[W{widx}] corte {cv}/trib {tv} {yr}-{m:02d}: "
+                        f"{n_rows} rows, {stored} stored")
+                    _pace(*DISC_SEARCH_PACE)
+            except Exception as e:
+                if _browser_dead(e):
+                    deaths += 1
+                    log(f"[W{widx}] browser died on corte {cv} {yr}-{m:02d} "
+                        f"(death {deaths}) — re-queue + relaunch")
+                    _BUFFER.clear()
+                    _requeue(queue_path, item)
+                    try:
+                        context.close(); browser.close()
+                    except Exception:
+                        pass
+                    if deaths > 20:
+                        log(f"[W{widx}] too many browser deaths — exiting")
+                        break
+                    browser, context, page = fresh()
+                    cur_corte = None
+                    swept = STORE.swept_keys()
+                else:
+                    log(f"[W{widx}] corte {cv} {yr}-{m:02d} failed: {e}")
+                    flush_buffer()
+        try:
+            context.close(); browser.close()
+        except Exception:
+            pass
+        log(f"[W{widx}] queue empty — done")
+
+
+def _run_discover(args):
+    """Pass-1 parent: build (corte×month) units, spawn ≤3 gentle worker windows (each
+    solves its CAPTCHA once), and let them claim units until the queue drains. Resumable
+    via sweep_progress — re-running skips already-swept (corte,tribunal,month)."""
+    year = args.year or time.localtime().tm_year
+    cortes = _selected_cortes(args)
+    months = discover_months(args, year)
+    units = [[cv, cname, year, m] for (cv, cname) in cortes for m in months]
+    n = max(1, min(args.workers, 3))
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    qpath = SCRATCH / "pjud_discover_queue.json"
+    qpath.write_text(json.dumps(units), encoding="utf-8")
+    lock = str(qpath) + ".lock"
+    if os.path.exists(lock):
+        os.unlink(lock)
+    for slot in range(n):
+        (SCRATCH / f"pjud_disc_{slot}.log").write_text("", encoding="utf-8")
+    log(f"[DISCOVER] year {year}: {len(cortes)} cortes × {len(months)} months "
+        f"= {len(units)} units; {n} gentle worker window(s)")
+    log("[DISCOVER] each worker opens a Chrome window — SOLVE ITS CAPTCHA if one appears.")
+    procs = []
+    for i in range(n):
+        cmd = [sys.executable, os.path.abspath(__file__),
+               "--discover-worker", str(qpath), "--worker-id", str(i),
+               "--year", str(year), "--proc", args.proc]
+        if args.corte:
+            cmd += ["--corte", args.corte]
+        lf = open(SCRATCH / f"pjud_disc_{i}.log", "a", encoding="utf-8")
+        procs.append((i, subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf))
+        time.sleep(6)      # stagger so the operator can solve each window's CAPTCHA
+    for i, p, lf in procs:
+        p.wait()
+        lf.close()
+        log(f"[DISCOVER] worker {i} exited {p.returncode}")
+    log("[DISCOVER] all workers done")
+
+
 def main():
     global STORE, DRY, SKIP_DOCS, PROC_FILTER, SKIP_GEO, BANK_RUTS
     args = parse_args()
@@ -1563,6 +1780,19 @@ def main():
 
     DRY = args.dry_run
     SKIP_DOCS = args.skip_docs
+
+    # Pass-1 discovery worker (gentle, CAPTCHA-once): claim (corte,month) units.
+    if args.discover_worker:
+        STORE = gstore.Store()
+        banks = resolve_banks(args, STORE)
+        SCRATCH.mkdir(parents=True, exist_ok=True)
+        discover_worker(args, banks, args.discover_worker, args.worker_id)
+        return
+
+    # Pass-1 discovery parent: spawn the gentle worker window(s).
+    if args.discover:
+        _run_discover(args)
+        return
 
     # Long-lived work-stealing worker: claim tribunals from the shared queue.
     if args.pool_claim:
