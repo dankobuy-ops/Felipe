@@ -1798,13 +1798,46 @@ def wait_for_consulta_form(page, timeout_ms=900_000):
     raise RuntimeError("consulta form never appeared (operator step not completed)")
 
 
+def try_recover_form(page, attempts=3, per_wait_ms=60_000):
+    """On a dropped session, try to re-reach the consulta form automatically (re-run the
+    guest entry). Returns True if the search form comes back within `attempts`. A CAPTCHA
+    can't be auto-solved, so those attempts fail → the caller then waits for the operator."""
+    for i in range(1, attempts + 1):
+        log(f"[COLLAB] session dropped — auto-recover attempt {i}/{attempts}…")
+        try:
+            page.goto(HOME, wait_until="load", timeout=45_000)
+            page.wait_for_timeout(2000)
+            if page.evaluate("typeof accesoConsultaCausas === 'function'"):
+                page.evaluate("accesoConsultaCausas()")
+        except Exception as e:
+            if _browser_dead(e):
+                raise
+            log(f"[COLLAB] recover nav failed: {e}")
+        waited, step = 0, 2000
+        while waited < per_wait_ms:
+            try:
+                if page.query_selector("a[href='#BusFecha']"):
+                    log(f"[COLLAB] auto-recovered on attempt {i}.")
+                    return True
+            except Exception as e:
+                if _browser_dead(e):
+                    raise
+            page.wait_for_timeout(step)
+            waited += step
+        log(f"[COLLAB] auto-recover attempt {i} did not reach the form (CAPTCHA/block?).")
+    return False
+
+
 def ensure_form_ready(page, cv, cname):
-    """Make sure the date form is live and the given corte is selected; if the session
-    dropped (CAPTCHA/block mid-sweep), wait for the operator to restore Consulta Causas,
-    then re-open the date tab. Returns the corte's {trib_val: trib_name} map."""
+    """Make sure the date form is live and the given corte is selected. If the session
+    dropped mid-sweep, first try to auto-recover (up to 3 re-navigations); only if that
+    fails (a CAPTCHA/block it can't self-clear) do we wait for the operator. Returns the
+    corte's {trib_val: trib_name} map."""
     if not date_form_alive(page):
-        log("[COLLAB] search form dropped — restore it in the window (solve any CAPTCHA).")
-        wait_for_consulta_form(page)
+        if not try_recover_form(page, attempts=3):
+            log("[COLLAB] auto-recover exhausted — RESTORE Consulta Causas in the window "
+                "(solve the CAPTCHA). Waiting for you…")
+            wait_for_consulta_form(page)
         open_date_tab(page)
     opts = select_corte_fecha(page, cv, cname)
     return {o["v"]: o["t"] for o in opts if o["v"] not in ("", "0")}
