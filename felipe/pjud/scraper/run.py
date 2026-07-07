@@ -1826,12 +1826,15 @@ def scrape_collab(args):
 
     # Group targets by corte → tribunal → (year, month) from each causa's f_ingreso, so we
     # only re-search the months that actually contain causas (no wasted searches).
+    want_cortes = {c.strip() for c in (args.corte or "").split(",") if c.strip()}
     targets, unmapped = {}, 0
     for causa_id, tv, rol, fing in STORE.fill_targets(only_selected=args.selected):
         iso = parse_fecha(fing)
         cv = name2corte.get(trib_corte.get(tv, ""), "")
         if not iso or not cv:
             unmapped += 1
+            continue
+        if want_cortes and cv not in want_cortes:
             continue
         yy, mm = int(iso[:4]), int(iso[5:7])
         if (args.year and yy != args.year) or (args.month and mm != args.month):
@@ -1857,12 +1860,19 @@ def scrape_collab(args):
         try:
             wait_for_consulta_form(page)
             open_date_tab(page)
+            filled, stop = 0, False
             for cv, tribmap in targets.items():
+                if stop:
+                    break
                 trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
                 for tv, permonth in tribmap.items():
+                    if stop:
+                        break
                     tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
                                 "tribunal": trib_names.get(tv, tv)}
                     for (yy, mm), rols in permonth.items():
+                        if stop:
+                            break
                         try:
                             if not date_form_alive(page):
                                 trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
@@ -1881,13 +1891,20 @@ def scrape_collab(args):
                             try:
                                 scrape_causa(page, api, r, tribunal, enforce_gates=False)
                                 STORE.mark_filled(f"{tv}-{rol}", "done")
+                                filled += 1
                             except Exception as e:
                                 if _browser_dead(e):
                                     raise
                                 log(f"[COLLAB][ERR] fill {tv}-{rol}: {e}")
                                 STORE.mark_filled(f"{tv}-{rol}", "error")
                                 _close_detail(page)
+                            if args.limit and filled >= args.limit:
+                                log(f"[COLLAB] --limit {args.limit} reached — stopping.")
+                                stop = True
+                                break
                         flush_buffer()
+                        if stop:
+                            break
                         _pace(*DISC_SEARCH_PACE)
         finally:
             try:
