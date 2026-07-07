@@ -34,6 +34,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+import urllib.request
 from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
@@ -1612,6 +1613,40 @@ def discover_months(args, year):
     return list(range(1, last + 1))
 
 
+_CHROME_CANDIDATES = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+]
+
+
+def _find_chrome():
+    for p in _CHROME_CANDIDATES:
+        if os.path.exists(p):
+            return p
+    raise RuntimeError("Google Chrome not found (install it or fix _CHROME_CANDIDATES)")
+
+
+def _launch_cdp_chrome(widx):
+    """Launch a REAL Chrome (no automation flags → navigator.webdriver stays false, no
+    WAF fingerprint) with a debug port + its own profile, opened on the OJV home. Returns
+    (proc, port). We then drive it over CDP — exactly the manual setup that passes."""
+    exe = _find_chrome()
+    port = 9330 + widx
+    profile = str(SCRATCH / f"chrome_disc_{widx}")
+    proc = subprocess.Popen(
+        [exe, f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+         "--no-first-run", "--no-default-browser-check", "--start-maximized", HOME],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(60):
+        try:
+            urllib.request.urlopen(f"http://localhost:{port}/json/version", timeout=2)
+            return proc, port
+        except Exception:
+            time.sleep(0.5)
+    raise RuntimeError(f"Chrome CDP endpoint never came up on :{port}")
+
+
 def discover_unit(page, cv, cname, tv, tname, year, month, frags):
     """Sweep ONE (corte,tribunal,month): date-search → keep C- rows where a bank is the
     DEMANDANTE → open each modal for the HEADER ONLY → store if Ejecutivo OD & live.
@@ -1662,14 +1697,31 @@ def discover_worker(args, banks, queue_path, widx):
     frags = bank_fragments(banks)
     with sync_playwright() as pw:
         def fresh():
-            b = pw.chromium.launch(headless=False, channel="chrome",
-                                   args=["--start-maximized"])
-            ctx = _new_context(b, stealth=True)
-            pg = ctx.new_page()
+            # Real Chrome over CDP (no automation flags) — the setup proven to pass the
+            # WAF. We attach to its existing tab (opened on HOME) and drive it.
+            proc, port = _launch_cdp_chrome(widx)
+            b = pw.chromium.connect_over_cdp(f"http://localhost:{port}")
+            ctx = b.contexts[0]
+            try:
+                ctx.add_init_script(
+                    "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});")
+            except Exception:
+                pass
+            pg = ctx.pages[0] if ctx.pages else ctx.new_page()
             establish_gentle(pg, ctx, widx)
-            return b, ctx, pg
+            return proc, b, ctx, pg
 
-        browser, context, page = fresh()
+        def shutdown(proc, b):
+            try:
+                b.close()
+            except Exception:
+                pass
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
+        chrome_proc, browser, context, page = fresh()
         swept = STORE.swept_keys()
         cur_corte, tribmap, deaths = None, {}, 0
         while True:
@@ -1702,23 +1754,17 @@ def discover_worker(args, banks, queue_path, widx):
                         f"(death {deaths}) — re-queue + relaunch")
                     _BUFFER.clear()
                     _requeue(queue_path, item)
-                    try:
-                        context.close(); browser.close()
-                    except Exception:
-                        pass
+                    shutdown(chrome_proc, browser)
                     if deaths > 20:
                         log(f"[W{widx}] too many browser deaths — exiting")
                         break
-                    browser, context, page = fresh()
+                    chrome_proc, browser, context, page = fresh()
                     cur_corte = None
                     swept = STORE.swept_keys()
                 else:
                     log(f"[W{widx}] corte {cv} {yr}-{m:02d} failed: {e}")
                     flush_buffer()
-        try:
-            context.close(); browser.close()
-        except Exception:
-            pass
+        shutdown(chrome_proc, browser)
         log(f"[W{widx}] queue empty — done")
 
 
