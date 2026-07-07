@@ -435,9 +435,13 @@ def demandante_matches_bank(caratulado, frags):
     return matches_bank(dte, frags)
 
 
-# Gentle Pass-1 pacing (randomized, human-like) to stay under the WAF's bot defense.
+# Gentle Pass-1 (guest-entry) pacing (randomized, human-like) vs the WAF's bot defense.
 DISC_SEARCH_PACE = (4000, 10000)   # ms between tribunal/month searches
 DISC_OPEN_PACE   = (2000, 6000)    # ms between detail-modal (header) opens
+# Fill (Pass 2) runs inside the operator's already-established human session, which the
+# WAF barely scrutinizes → much lighter pacing than guest-entry discovery.
+FILL_SEARCH_PACE = (800, 2500)
+FILL_OPEN_PACE   = (300, 1200)
 
 
 def _pace(lo_ms, hi_ms):
@@ -1884,7 +1888,7 @@ def scrape_collab(args):
         return
 
     with sync_playwright() as pw:
-        proc, port = _launch_cdp_chrome(0)
+        proc, port = _launch_cdp_chrome(args.worker_id)
         b = pw.chromium.connect_over_cdp(f"http://localhost:{port}")
         ctx = b.contexts[0]
         page = next((p for p in ctx.pages if "pjud" in (p.url or "")),
@@ -1906,21 +1910,33 @@ def scrape_collab(args):
                     for (yy, mm), rols in permonth.items():
                         if stop:
                             break
-                        try:
-                            if not date_form_alive(page):
-                                trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
-                                tribunal["tribunal"] = trib_names.get(tv, tv)
-                            rows = search_month_paginated(page, tv, yy, mm)
-                        except Exception as e:
-                            if _browser_dead(e):
-                                raise
-                            log(f"[COLLAB][ERR] search {tv} {yy}-{mm:02d}: {e}")
-                            continue
-                        want = {r["rol"]: r for r in rows if r["rol"] in rols and r["jwt"]}
+                        # Search; if a tribunal we KNOW has targets returns 0 matches
+                        # (cascade hiccup), re-select the corte and retry (up to 2×).
+                        want, tries = {}, 0
+                        while True:
+                            try:
+                                if not date_form_alive(page):
+                                    trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                                    tribunal["tribunal"] = trib_names.get(tv, tv)
+                                rows = search_month_paginated(page, tv, yy, mm)
+                            except Exception as e:
+                                if _browser_dead(e):
+                                    raise
+                                log(f"[COLLAB][ERR] search {tv} {yy}-{mm:02d}: {e}")
+                                rows = []
+                            want = {r["rol"]: r for r in rows if r["rol"] in rols and r["jwt"]}
+                            if want or tries >= 2:
+                                break
+                            tries += 1
+                            log(f"[COLLAB] trib {tv} {yy}-{mm:02d}: 0/{len(rols)} matched — "
+                                f"retry {tries} (re-select corte)")
+                            trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                            tribunal["tribunal"] = trib_names.get(tv, tv)
                         log(f"[COLLAB] corte {cv}/trib {tv} {yy}-{mm:02d}: "
-                            f"matched {len(want)}/{len(rols)}")
+                            f"matched {len(want)}/{len(rols)}"
+                            + ("  (!! still 0 after retries)" if rols and not want else ""))
                         for rol, r in want.items():
-                            _pace(*DISC_OPEN_PACE)
+                            _pace(*FILL_OPEN_PACE)
                             try:
                                 scrape_causa(page, api, r, tribunal, enforce_gates=False)
                                 STORE.mark_filled(f"{tv}-{rol}", "done")
@@ -1938,7 +1954,7 @@ def scrape_collab(args):
                         flush_buffer()
                         if stop:
                             break
-                        _pace(*DISC_SEARCH_PACE)
+                        _pace(*FILL_SEARCH_PACE)
         finally:
             try:
                 b.close()
@@ -1949,6 +1965,65 @@ def scrape_collab(args):
             except Exception:
                 pass
     log("[COLLAB] fill complete.")
+
+
+def _run_fill_pool(args):
+    """Parent for a multi-window fill: split the target cortes across N (≤3) worker
+    windows (balanced by causa count), each a separate --fill child (own Chrome window +
+    port) that the operator drives past entry/CAPTCHA. Runs when --fill --workers>1 with
+    no explicit --corte."""
+    from collections import Counter
+    store = gstore.Store()
+    name2corte = {n: v for (v, n) in CORTES}
+    trib_corte = {r["id"]: r.get("corte", "") for r in store.read_tab("Tribunales")}
+    counts = Counter()
+    for causa_id, tv, rol, fing in store.fill_targets(only_selected=args.selected):
+        iso = parse_fecha(fing)
+        cv = name2corte.get(trib_corte.get(tv, ""), "")
+        if not iso or not cv:
+            continue
+        yy, mm = int(iso[:4]), int(iso[5:7])
+        if (args.year and yy != args.year) or (args.month and mm != args.month):
+            continue
+        counts[cv] += 1
+    if not counts:
+        log("[FILL-POOL] nothing to fill.")
+        return
+    n = max(1, min(args.workers, 3))
+    bins, load = [[] for _ in range(n)], [0] * n
+    for cv, _ in counts.most_common():          # greedy balance by causa count
+        i = load.index(min(load))
+        bins[i].append(cv)
+        load[i] += counts[cv]
+    bins = [(b, load[i]) for i, b in enumerate(bins) if b]
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    for i in range(len(bins)):
+        (SCRATCH / f"pjud_fill_{i}.log").write_text("", encoding="utf-8")
+    log(f"[FILL-POOL] {sum(counts.values())} causas / {len(counts)} cortes → {len(bins)} "
+        f"windows: " + "; ".join(f"W{i}={load}" for i, (_, load) in enumerate(bins)))
+    log("[FILL-POOL] each worker opens a Chrome window — navigate EACH past entry/CAPTCHA.")
+    procs = []
+    for i, (b, _) in enumerate(bins):
+        cmd = [sys.executable, os.path.abspath(__file__), "--fill",
+               "--corte", ",".join(b), "--worker-id", str(i), "--proc", args.proc]
+        if args.year:
+            cmd += ["--year", str(args.year)]
+        if args.month:
+            cmd += ["--month", str(args.month)]
+        if args.selected:
+            cmd.append("--selected")
+        if args.skip_geo:
+            cmd.append("--skip-geo")
+        if args.skip_docs:
+            cmd.append("--skip-docs")
+        lf = open(SCRATCH / f"pjud_fill_{i}.log", "a", encoding="utf-8")
+        procs.append((i, subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT), lf))
+        time.sleep(8)          # stagger so the operator can navigate each window in turn
+    for i, p, lf in procs:
+        p.wait()
+        lf.close()
+        log(f"[FILL-POOL] worker {i} exited {p.returncode}")
+    log("[FILL-POOL] all fill workers done")
 
 
 def _run_discover(args):
@@ -2024,8 +2099,12 @@ def main():
         return
 
     # Pass-2 collaborative fill (operator drives a real Chrome past entry/CAPTCHA).
+    # --workers>1 with no explicit --corte → split cortes across N worker windows.
     if args.fill:
-        scrape_collab(args)
+        if args.workers > 1 and not args.corte:
+            _run_fill_pool(args)
+        else:
+            scrape_collab(args)
         return
 
     # Long-lived work-stealing worker: claim tribunals from the shared queue.
