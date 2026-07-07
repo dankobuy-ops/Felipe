@@ -1216,7 +1216,14 @@ def parse_args():
     p.add_argument("--discover-worker", default="",
                    help="Internal: a discovery worker claiming (corte,month) units from this queue.")
     p.add_argument("--year", type=int, default=None,
-                   help="Target year for --discover (default: current year).")
+                   help="Target year for --discover / --fill (default: current year).")
+    p.add_argument("--fill", action="store_true",
+                   help="Pass 2 (collaborative): full-scrape causas needing far data "
+                        "(metadata refresh → docs + GPS) via date search per tribunal.")
+    p.add_argument("--month", type=int, default=None,
+                   help="Restrict --fill to a single month (1-12); default: all so far.")
+    p.add_argument("--selected", action="store_true",
+                   help="With --fill: only causas the user marked fill=true (else all).")
     p.add_argument("--skip-geo", action="store_true",
                    help="Don't resolve georref sub-modals (defer to a later pass) — big speed-up.")
     p.add_argument("--max-tribunals", type=int, default=0,
@@ -1768,6 +1775,121 @@ def discover_worker(args, banks, queue_path, widx):
         log(f"[W{widx}] queue empty — done")
 
 
+def wait_for_consulta_form(page, timeout_ms=900_000):
+    """Block until the OPERATOR has navigated past entry/CAPTCHA to the Consulta Causas
+    page (the search tabs are present). This is the manual, human-in-the-loop step — we
+    never auto-navigate the guest entry (that's what the WAF blocks)."""
+    log("[COLLAB] >>> In the Chrome window: reach 'Consulta Causas' (solve any CAPTCHA). "
+        "Waiting for the search form…")
+    waited, step = 0, 2500
+    while waited < timeout_ms:
+        try:
+            if page.query_selector("a[href='#BusFecha']"):
+                log("[COLLAB] search form detected — taking over.")
+                return
+        except Exception:
+            pass
+        page.wait_for_timeout(step)
+        waited += step
+    raise RuntimeError("consulta form never appeared (operator step not completed)")
+
+
+def ensure_form_ready(page, cv, cname):
+    """Make sure the date form is live and the given corte is selected; if the session
+    dropped (CAPTCHA/block mid-sweep), wait for the operator to restore Consulta Causas,
+    then re-open the date tab. Returns the corte's {trib_val: trib_name} map."""
+    if not date_form_alive(page):
+        log("[COLLAB] search form dropped — restore it in the window (solve any CAPTCHA).")
+        wait_for_consulta_form(page)
+        open_date_tab(page)
+    opts = select_corte_fecha(page, cv, cname)
+    return {o["v"]: o["t"] for o in opts if o["v"] not in ("", "0")}
+
+
+def scrape_collab(args):
+    """Collaborative full scrape/fill over a REAL Chrome the operator drives past the
+    entry/CAPTCHA. Targets causas that still need their far data (all not-'done', or only
+    fill=true with --selected), grouped by corte→tribunal; for each we re-run the date
+    search (fresh tokens), open ONLY the target rols, and full-scrape (metadata refresh →
+    docs + GPS). Resumable via causas.fill_status; gentle randomized pacing."""
+    global STORE, BANK_RUTS
+    STORE = gstore.Store()
+    banks = resolve_banks(args, STORE)
+    BANK_RUTS = set()            # targeting known causas → skip the litigante demandante gate
+    year = args.year or time.localtime().tm_year
+    months = [args.month] if args.month else discover_months(args, year)
+    cortemap = dict(CORTES)
+    name2corte = {n: v for (v, n) in CORTES}
+    trib_corte = {r["id"]: r.get("corte", "") for r in STORE.read_tab("Tribunales")}
+
+    targets, unmapped = {}, 0
+    for causa_id, tv, rol in STORE.fill_targets(only_selected=args.selected):
+        cv = name2corte.get(trib_corte.get(tv, ""), "")
+        if not cv:
+            unmapped += 1
+            continue
+        targets.setdefault(cv, {}).setdefault(tv, set()).add(rol)
+    n_causas = sum(len(rs) for tm in targets.values() for rs in tm.values())
+    n_tribs = sum(len(tm) for tm in targets.values())
+    log(f"[COLLAB] fill{'(selected)' if args.selected else ''}: {n_causas} causas · "
+        f"{n_tribs} tribunals · {len(targets)} cortes · year={year} months={months}"
+        + (f" · {unmapped} unmapped(skipped)" if unmapped else ""))
+    if not n_causas:
+        log("[COLLAB] nothing to fill.")
+        return
+
+    with sync_playwright() as pw:
+        proc, port = _launch_cdp_chrome(0)
+        b = pw.chromium.connect_over_cdp(f"http://localhost:{port}")
+        ctx = b.contexts[0]
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        api = ctx.request
+        try:
+            wait_for_consulta_form(page)
+            open_date_tab(page)
+            for cv, tribmap in targets.items():
+                trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                for tv, rols in tribmap.items():
+                    tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
+                                "tribunal": trib_names.get(tv, tv)}
+                    for m in months:
+                        try:
+                            if not date_form_alive(page):
+                                trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                            rows = search_month_paginated(page, tv, year, m)
+                        except Exception as e:
+                            if _browser_dead(e):
+                                raise
+                            log(f"[COLLAB][ERR] search {tv} {year}-{m:02d}: {e}")
+                            continue
+                        want = {r["rol"]: r for r in rows if r["rol"] in rols and r["jwt"]}
+                        log(f"[COLLAB] corte {cv}/trib {tv} {year}-{m:02d}: "
+                            f"matched {len(want)}/{len(rols)}")
+                        for rol, r in want.items():
+                            _pace(*DISC_OPEN_PACE)
+                            try:
+                                scrape_causa(page, api, r, tribunal)     # FULL: docs + GPS
+                                STORE.mark_filled(f"{tv}-{rol}", "done")
+                            except Exception as e:
+                                if _browser_dead(e):
+                                    raise
+                                log(f"[COLLAB][ERR] fill {tv}-{rol}: {e}")
+                                STORE.mark_filled(f"{tv}-{rol}", "error")
+                                _close_detail(page)
+                        flush_buffer()
+                        _pace(*DISC_SEARCH_PACE)
+        finally:
+            try:
+                b.close()
+            except Exception:
+                pass
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+    log("[COLLAB] fill complete.")
+
+
 def _run_discover(args):
     """Pass-1 parent: build (corte×month) units, spawn ≤3 gentle worker windows (each
     solves its CAPTCHA once), and let them claim units until the queue drains. Resumable
@@ -1838,6 +1960,11 @@ def main():
     # Pass-1 discovery parent: spawn the gentle worker window(s).
     if args.discover:
         _run_discover(args)
+        return
+
+    # Pass-2 collaborative fill (operator drives a real Chrome past entry/CAPTCHA).
+    if args.fill:
+        scrape_collab(args)
         return
 
     # Long-lived work-stealing worker: claim tribunals from the shared queue.

@@ -267,6 +267,38 @@ class Store:
                     continue
                 raise
 
+    # -- Pass-2 fill targeting/progress (causas.fill / fill_status) --
+    def fill_targets(self, only_selected=False):
+        """[(causa_id, tribunal_id, rol)] of causas still needing their far data.
+        only_selected=True restricts to the user's fill=true picks; otherwise every
+        not-yet-'done' causa (used for the January baseline fill)."""
+        where = ("fill = true AND fill_status <> 'done'" if only_selected
+                 else "fill_status <> 'done'")
+        for attempt in (1, 2):
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute(f"SELECT causa_id, tribunal_id, rol FROM causas "
+                                f"WHERE {where}")
+                    return cur.fetchall()
+            except psycopg2.OperationalError:
+                if attempt == 1:
+                    self._reconnect()
+                    continue
+                raise
+
+    def mark_filled(self, causa_id, status="done"):
+        for attempt in (1, 2):
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute("UPDATE causas SET fill_status=%s WHERE causa_id=%s",
+                                (status, causa_id))
+                return
+            except psycopg2.OperationalError:
+                if attempt == 1:
+                    self._reconnect()
+                    continue
+                raise
+
     def mark_swept(self, corte, tribunal, month, status="done"):
         key = f"{corte}-{tribunal}-{month}"
         sql = ('INSERT INTO sweep_progress (key,corte,tribunal,month,status,updated_at) '
