@@ -921,28 +921,32 @@ def _close_detail(page):
     page.wait_for_timeout(600)
 
 
-def scrape_causa(page, api, causa, tribunal):
+def scrape_causa(page, api, causa, tribunal, enforce_gates=True):
     rol = causa["rol"]
     causa_id = f'{tribunal["id"]}-{rol}'
     log(f"\n[CAUSA] {tribunal['tribunal']} · {rol} — {causa['caratulado'][:50]}")
     open_detail(page, causa["jwt"], rol)
     header = parse_header(page)
 
-    # Procedure gate: only scrape causas whose Proc. matches PROC_FILTER exactly.
-    if PROC_FILTER and _norm(header.get("procedimiento", "")) != _norm(PROC_FILTER):
-        log(f"[SKIP] {rol}: proc={header.get('procedimiento', '')!r} ≠ {PROC_FILTER!r}")
-        _close_detail(page)
-        return
-    # Skip administratively archived causas.
-    if _norm(header.get("estado_adm", "")) == _norm("Archivada"):
-        log(f"[SKIP] {rol}: estado_adm = Archivada")
-        _close_detail(page)
-        return
-    # Skip concluded causas.
-    if _norm(header.get("estado_proc", "")) == _norm("Concluido"):
-        log(f"[SKIP] {rol}: estado_proc = Concluido")
-        _close_detail(page)
-        return
+    # Discovery gates (Pass 1 only). In fill/Pass 2 (enforce_gates=False) we re-scrape
+    # KNOWN causas regardless of current state — else a causa that concluded/was archived
+    # since discovery would be skipped and never marked done (infinite retry).
+    if enforce_gates:
+        # Procedure gate: only scrape causas whose Proc. matches PROC_FILTER exactly.
+        if PROC_FILTER and _norm(header.get("procedimiento", "")) != _norm(PROC_FILTER):
+            log(f"[SKIP] {rol}: proc={header.get('procedimiento', '')!r} ≠ {PROC_FILTER!r}")
+            _close_detail(page)
+            return
+        # Skip administratively archived causas.
+        if _norm(header.get("estado_adm", "")) == _norm("Archivada"):
+            log(f"[SKIP] {rol}: estado_adm = Archivada")
+            _close_detail(page)
+            return
+        # Skip concluded causas.
+        if _norm(header.get("estado_proc", "")) == _norm("Concluido"):
+            log(f"[SKIP] {rol}: estado_proc = Concluido")
+            _close_detail(page)
+            return
 
     # Demandante gate: keep ONLY if a target-bank RUT is the demandante (DTE.).
     litigantes = parse_litigantes(page)
@@ -1816,23 +1820,28 @@ def scrape_collab(args):
     STORE = gstore.Store()
     banks = resolve_banks(args, STORE)
     BANK_RUTS = set()            # targeting known causas → skip the litigante demandante gate
-    year = args.year or time.localtime().tm_year
-    months = [args.month] if args.month else discover_months(args, year)
     cortemap = dict(CORTES)
     name2corte = {n: v for (v, n) in CORTES}
     trib_corte = {r["id"]: r.get("corte", "") for r in STORE.read_tab("Tribunales")}
 
+    # Group targets by corte → tribunal → (year, month) from each causa's f_ingreso, so we
+    # only re-search the months that actually contain causas (no wasted searches).
     targets, unmapped = {}, 0
-    for causa_id, tv, rol in STORE.fill_targets(only_selected=args.selected):
+    for causa_id, tv, rol, fing in STORE.fill_targets(only_selected=args.selected):
+        iso = parse_fecha(fing)
         cv = name2corte.get(trib_corte.get(tv, ""), "")
-        if not cv:
+        if not iso or not cv:
             unmapped += 1
             continue
-        targets.setdefault(cv, {}).setdefault(tv, set()).add(rol)
-    n_causas = sum(len(rs) for tm in targets.values() for rs in tm.values())
+        yy, mm = int(iso[:4]), int(iso[5:7])
+        if (args.year and yy != args.year) or (args.month and mm != args.month):
+            continue
+        targets.setdefault(cv, {}).setdefault(tv, {}).setdefault((yy, mm), set()).add(rol)
+    n_causas = sum(len(rs) for tm in targets.values()
+                   for pm in tm.values() for rs in pm.values())
     n_tribs = sum(len(tm) for tm in targets.values())
     log(f"[COLLAB] fill{'(selected)' if args.selected else ''}: {n_causas} causas · "
-        f"{n_tribs} tribunals · {len(targets)} cortes · year={year} months={months}"
+        f"{n_tribs} tribunals · {len(targets)} cortes"
         + (f" · {unmapped} unmapped(skipped)" if unmapped else ""))
     if not n_causas:
         log("[COLLAB] nothing to fill.")
@@ -1842,33 +1851,35 @@ def scrape_collab(args):
         proc, port = _launch_cdp_chrome(0)
         b = pw.chromium.connect_over_cdp(f"http://localhost:{port}")
         ctx = b.contexts[0]
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        page = next((p for p in ctx.pages if "pjud" in (p.url or "")),
+                    ctx.pages[0] if ctx.pages else ctx.new_page())
         api = ctx.request
         try:
             wait_for_consulta_form(page)
             open_date_tab(page)
             for cv, tribmap in targets.items():
                 trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
-                for tv, rols in tribmap.items():
+                for tv, permonth in tribmap.items():
                     tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
                                 "tribunal": trib_names.get(tv, tv)}
-                    for m in months:
+                    for (yy, mm), rols in permonth.items():
                         try:
                             if not date_form_alive(page):
                                 trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
-                            rows = search_month_paginated(page, tv, year, m)
+                                tribunal["tribunal"] = trib_names.get(tv, tv)
+                            rows = search_month_paginated(page, tv, yy, mm)
                         except Exception as e:
                             if _browser_dead(e):
                                 raise
-                            log(f"[COLLAB][ERR] search {tv} {year}-{m:02d}: {e}")
+                            log(f"[COLLAB][ERR] search {tv} {yy}-{mm:02d}: {e}")
                             continue
                         want = {r["rol"]: r for r in rows if r["rol"] in rols and r["jwt"]}
-                        log(f"[COLLAB] corte {cv}/trib {tv} {year}-{m:02d}: "
+                        log(f"[COLLAB] corte {cv}/trib {tv} {yy}-{mm:02d}: "
                             f"matched {len(want)}/{len(rols)}")
                         for rol, r in want.items():
                             _pace(*DISC_OPEN_PACE)
                             try:
-                                scrape_causa(page, api, r, tribunal)     # FULL: docs + GPS
+                                scrape_causa(page, api, r, tribunal, enforce_gates=False)
                                 STORE.mark_filled(f"{tv}-{rol}", "done")
                             except Exception as e:
                                 if _browser_dead(e):

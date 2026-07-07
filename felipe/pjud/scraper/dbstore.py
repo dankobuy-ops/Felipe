@@ -269,15 +269,15 @@ class Store:
 
     # -- Pass-2 fill targeting/progress (causas.fill / fill_status) --
     def fill_targets(self, only_selected=False):
-        """[(causa_id, tribunal_id, rol)] of causas still needing their far data.
-        only_selected=True restricts to the user's fill=true picks; otherwise every
+        """[(causa_id, tribunal_id, rol, f_ingreso)] of causas still needing their far
+        data. only_selected=True restricts to the user's fill=true picks; otherwise every
         not-yet-'done' causa (used for the January baseline fill)."""
         where = ("fill = true AND fill_status <> 'done'" if only_selected
                  else "fill_status <> 'done'")
         for attempt in (1, 2):
             try:
                 with self.conn.cursor() as cur:
-                    cur.execute(f"SELECT causa_id, tribunal_id, rol FROM causas "
+                    cur.execute(f"SELECT causa_id, tribunal_id, rol, f_ingreso FROM causas "
                                 f"WHERE {where}")
                     return cur.fetchall()
             except psycopg2.OperationalError:
