@@ -438,10 +438,11 @@ def demandante_matches_bank(caratulado, frags):
 # Gentle Pass-1 (guest-entry) pacing (randomized, human-like) vs the WAF's bot defense.
 DISC_SEARCH_PACE = (4000, 10000)   # ms between tribunal/month searches
 DISC_OPEN_PACE   = (2000, 6000)    # ms between detail-modal (header) opens
-# Fill (Pass 2) runs inside the operator's already-established human session, which the
-# WAF barely scrutinizes → much lighter pacing than guest-entry discovery.
-FILL_SEARCH_PACE = (800, 2500)
-FILL_OPEN_PACE   = (300, 1200)
+# Fill (Pass 2) runs inside the operator's established human session. Moderate pacing:
+# lighter than guest-entry discovery, but NOT aggressive — the WAF re-flagged this IP
+# under 3 concurrent windows, so single-window + this pacing is the safe envelope.
+FILL_SEARCH_PACE = (2500, 6000)
+FILL_OPEN_PACE   = (1200, 3500)
 
 
 def _pace(lo_ms, hi_ms):
