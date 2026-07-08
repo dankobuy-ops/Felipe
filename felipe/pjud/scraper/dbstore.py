@@ -93,6 +93,9 @@ def _ddl():
         lines = [f'"{sqlcols[0]}" TEXT PRIMARY KEY']
         lines += [f'"{c}" TEXT' for c in sqlcols[1:]]
         lines += [f'"{name}" {decl}' for name, decl in EXTRA_COLS.get(tab, [])]
+        # Standard UUID (v4) as TEXT — a stable, AppSheet-friendly unique key for every
+        # row on every table. Auto-generated; never written by upsert (stays stable).
+        lines.append('"uid" TEXT NOT NULL DEFAULT gen_random_uuid()::text')
         stmts.append(f'CREATE TABLE IF NOT EXISTS "{_sql_table(tab)}" (\n  '
                      + ",\n  ".join(lines) + "\n);")
     # Pass-1 resumability: which (corte, tribunal, month) have been swept.
@@ -116,6 +119,14 @@ def _create_schema(conn_kwargs):
                 for name, decl in cols:
                     cur.execute(
                         f'ALTER TABLE "{t}" ADD COLUMN IF NOT EXISTS "{name}" {decl}')
+            # Every table gets a stable UUID key column `uid` (backfilled per-row on add)
+            # + a unique index, so AppSheet has a clean single-column key everywhere.
+            for tab in TAB_ORDER:
+                t = _sql_table(tab)
+                cur.execute(f'ALTER TABLE "{t}" ADD COLUMN IF NOT EXISTS "uid" '
+                            f'TEXT NOT NULL DEFAULT gen_random_uuid()::text')
+                cur.execute(f'CREATE UNIQUE INDEX IF NOT EXISTS "{t}_uid_uk" '
+                            f'ON "{t}" ("uid")')
     finally:
         conn.close()
 
