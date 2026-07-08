@@ -370,6 +370,18 @@ class Store:
         self._doc_cache = cache
         return cache
 
+    def upload_pdfs_parallel(self, items, workers=5):
+        """Sequential fallback (Sheets backend) matching dbstore's parallel API."""
+        out = {}
+        for p, d in items:
+            if not d or len(d) < 1024:
+                continue
+            try:
+                out[p] = self.upload_pdf(p, d)
+            except Exception as e:
+                log(f"[WARN] upload {p}: {e}")
+        return out
+
     def upload_pdf(self, object_path, data):
         """Upload PDF bytes to the Documentos folder; return its Drive link.
         Skips re-upload if a file with the same flattened name already exists."""

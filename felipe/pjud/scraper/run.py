@@ -144,6 +144,16 @@ def upload_pdf(object_path, data):
     return STORE.upload_pdf(object_path, data)
 
 
+def upload_pdfs_parallel(items):
+    """items: [(object_path, data)]. Returns {object_path: link}. Drive uploads run in
+    parallel (the OJV fetch upstream stays sequential). Tiny/corrupt bytes are skipped."""
+    if DRY or STORE is None:
+        for p, d in items:
+            log(f"[DRY] upload {p} ({len(d)}B)")
+        return {p: f"DRY://{p}" for p, d in items}
+    return STORE.upload_pdfs_parallel(items)
+
+
 # ── RUT / name parsing ────────────────────────────────────────────────────────
 
 def norm_rut(rut):
@@ -1037,6 +1047,7 @@ def scrape_causa(page, api, causa, tribunal, enforce_gates=True):
 
     # Cuadernos (iterate selCuaderno) -> historia rows + docs/anexos
     cuad_rows, esc_rows, doc_rows, anex_rows = [], [], [], []
+    pending_uploads = []          # (object_path, bytes, row) — Drive uploads batched below
     for ci, opt in enumerate(cuads):
         cuaderno = opt["txt"]                       # readable name, e.g. "1 - Principal"
         cnum = _cuaderno_num(cuaderno, ci + 1)      # plain number for IDs, e.g. "1"
@@ -1065,33 +1076,37 @@ def scrape_causa(page, api, causa, tribunal, enforce_gates=True):
                 "fecha_diligencia": _paren_date(h["fecha"]),
                 "foja": h["foja"], "georref": georref,
             })
-            # documents on this row attach to THIS trámite row (cuaderno_id = cid)
+            # documents on this row attach to THIS trámite row (cuaderno_id = cid).
+            # Fetch bytes from the OJV sequentially (gentle); the Drive upload is deferred
+            # to a parallel batch after the loop (row["url"] filled in then).
             for kind, form, sink in (("doc", h["doc"], doc_rows),
                                      ("anexo", h["anexo"], anex_rows)):
                 if not form or SKIP_DOCS:
                     continue
                 body = download_form(api, form)
-                if not body:
+                if not body or len(body) < 1024:
                     continue
                 obj = f"{causa_id}/c{cnum}/{folio}-{n}-{kind}.pdf".replace(" ", "_")
-                try:
-                    url = upload_pdf(obj, body)
-                except Exception as e:
-                    log(f"[WARN] upload {obj}: {e}")
-                    continue
                 if kind == "doc":
-                    sink.append({"id": f"{cid}-doc", "cuaderno_id": cid,
-                                 "origen": form["action"], "folio": folio,
-                                 "descripcion": h["desc"], "url": url})
+                    row = {"id": f"{cid}-doc", "cuaderno_id": cid,
+                           "origen": form["action"], "folio": folio,
+                           "descripcion": h["desc"], "url": ""}
                 else:
-                    sink.append({"id": f"{cid}-anexo", "cuaderno_id": cid,
-                                 "origen": form["action"], "folio": folio,
-                                 "fecha": h["fecha"], "referencia": h["desc"],
-                                 "url": url})
+                    row = {"id": f"{cid}-anexo", "cuaderno_id": cid,
+                           "origen": form["action"], "folio": folio,
+                           "fecha": h["fecha"], "referencia": h["desc"], "url": ""}
+                sink.append(row)
+                pending_uploads.append((obj, body, row))
         # escritos are cuaderno-level → FK the causa, keep cuaderno NAME as text
         for ei, e in enumerate(parse_escritos(page), 1):
             esc_rows.append({"id": f"{causa_id}-c{cnum}-e{ei}",
                              "causa_id": causa_id, "cuaderno": cuaderno, **e})
+
+    # Parallel Drive upload of everything fetched for this causa, then fill in the URLs.
+    if pending_uploads:
+        urls = upload_pdfs_parallel([(obj, body) for obj, body, _ in pending_uploads])
+        for obj, _, row in pending_uploads:
+            row["url"] = urls.get(obj, "")
 
     upsert("pjud_cuadernos", cuad_rows)
     upsert("pjud_escritos", esc_rows)

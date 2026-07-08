@@ -19,7 +19,10 @@ and is never committed.
 import datetime
 import io
 import os
+import queue
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import psycopg2
 import psycopg2.extras
@@ -202,6 +205,8 @@ class Store:
         self._drive = None
         self.docs_folder = cfg.get("documentos_folder_id")
         self._doc_cache = None
+        self._upool = None          # ThreadPoolExecutor for Drive uploads (built once)
+        self._uclients = None       # queue of per-worker Drive clients (built once)
 
     def _reconnect(self):
         try:
@@ -374,6 +379,55 @@ class Store:
                 break
         self._doc_cache = cache
         return cache
+
+    def upload_pdfs_parallel(self, items, workers=5):
+        """Upload many PDFs to Drive concurrently and return {object_path: link}. The
+        OJV FETCH stays sequential upstream (gentle on the WAF) — only these Drive
+        uploads run in parallel. Reuses one thread pool + a fixed set of Drive clients
+        (built once, borrowed per task) so there's no per-causa client-build overhead.
+        Skips re-upload of names already in the Documentos folder (locked cache)."""
+        items = [(p, d) for p, d in items if d and len(d) >= 1024]
+        if not items:
+            return {}
+        if self._upool is None:
+            self._creds = self._creds or gauth.credentials()
+            self._uclients = queue.Queue()
+            for _ in range(workers):
+                self._uclients.put(gauth.drive_client(self._creds))
+            self._upool = ThreadPoolExecutor(max_workers=workers)
+        cache = self._load_doc_cache()
+        lock = threading.Lock()
+
+        def _one(path, data):
+            name = gstore._flatten_name(path)
+            with lock:
+                hit = cache.get(name)
+            if hit:
+                return path, hit
+            drive = self._uclients.get()
+            try:
+                media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/pdf",
+                                          resumable=False)
+                f = drive.files().create(
+                    body={"name": name, "parents": [self.docs_folder]},
+                    media_body=media, fields="id, webViewLink").execute()
+                gstore._make_public_reader(drive, f["id"])
+            finally:
+                self._uclients.put(drive)
+            link = f.get("webViewLink", "")
+            with lock:
+                cache[name] = link
+            return path, link
+
+        out = {}
+        futs = {self._upool.submit(_one, p, d): p for p, d in items}
+        for fu in futs:
+            try:
+                p, link = fu.result()
+                out[p] = link
+            except Exception as e:
+                log(f"[WARN] parallel upload {futs[fu]}: {e}")
+        return out
 
     def upload_pdf(self, object_path, data):
         """Upload PDF bytes to the Drive Documentos folder; return its link.
