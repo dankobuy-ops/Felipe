@@ -50,6 +50,18 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
+# Short (10-char base62) unique-id generator — a compact, stable, AppSheet-friendly key
+# (~5.8e17 space → collision-free at our scale). Used as the DEFAULT for every `uid`.
+_SHORT_UID_FN = """
+CREATE OR REPLACE FUNCTION short_uid(len int DEFAULT 10) RETURNS text AS $fn$
+  SELECT string_agg(
+      substr('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+             (floor(random() * 62)::int) + 1, 1), '')
+  FROM generate_series(1, len)
+$fn$ LANGUAGE sql VOLATILE;
+"""
+
+
 def _sqlcol(name):
     """'Causa ID' -> 'causa_id'  (a tab header → a Postgres column name)."""
     return re.sub(r"\s+", "_", name.strip().lower())
@@ -93,9 +105,9 @@ def _ddl():
         lines = [f'"{sqlcols[0]}" TEXT PRIMARY KEY']
         lines += [f'"{c}" TEXT' for c in sqlcols[1:]]
         lines += [f'"{name}" {decl}' for name, decl in EXTRA_COLS.get(tab, [])]
-        # Standard UUID (v4) as TEXT — a stable, AppSheet-friendly unique key for every
-        # row on every table. Auto-generated; never written by upsert (stays stable).
-        lines.append('"uid" TEXT NOT NULL DEFAULT gen_random_uuid()::text')
+        # Short (10-char) stable unique key for every row — AppSheet-friendly. Auto-
+        # generated; never written by upsert (stays stable).
+        lines.append('"uid" TEXT NOT NULL DEFAULT short_uid(10)')
         stmts.append(f'CREATE TABLE IF NOT EXISTS "{_sql_table(tab)}" (\n  '
                      + ",\n  ".join(lines) + "\n);")
     # Pass-1 resumability: which (corte, tribunal, month) have been swept.
@@ -111,6 +123,7 @@ def _create_schema(conn_kwargs):
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
+            cur.execute(_SHORT_UID_FN)          # short_uid() must exist before the DDL
             for stmt in _ddl():
                 cur.execute(stmt)
             # Migrate already-created tables: add any EXTRA_COLS that are missing.
@@ -124,7 +137,9 @@ def _create_schema(conn_kwargs):
             for tab in TAB_ORDER:
                 t = _sql_table(tab)
                 cur.execute(f'ALTER TABLE "{t}" ADD COLUMN IF NOT EXISTS "uid" '
-                            f'TEXT NOT NULL DEFAULT gen_random_uuid()::text')
+                            f'TEXT NOT NULL DEFAULT short_uid(10)')
+                cur.execute(f'ALTER TABLE "{t}" ALTER COLUMN "uid" '
+                            f'SET DEFAULT short_uid(10)')
                 cur.execute(f'CREATE UNIQUE INDEX IF NOT EXISTS "{t}_uid_uk" '
                             f'ON "{t}" ("uid")')
     finally:
