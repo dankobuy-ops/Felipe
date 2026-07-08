@@ -1917,7 +1917,23 @@ def scrape_collab(args):
             for cv, tribmap in targets.items():
                 if stop:
                     break
-                trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                # Corte setup is transient-error-prone (a stray navigation destroys the
+                # execution context). Retry once after a pause; skip the corte if it still
+                # fails (its causas stay not-done → picked up on a re-run) — never crash
+                # the whole session over one blip.
+                trib_names = None
+                for setup_try in (1, 2, 3):
+                    try:
+                        trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                        break
+                    except Exception as e:
+                        if _browser_dead(e):
+                            raise
+                        log(f"[COLLAB][ERR] corte {cv} setup try {setup_try}/3: {e}")
+                        page.wait_for_timeout(3000)
+                if trib_names is None:
+                    log(f"[COLLAB] corte {cv} skipped after 3 setup failures.")
+                    continue
                 for tv, permonth in tribmap.items():
                     if stop:
                         break
