@@ -44,11 +44,15 @@ def parse_args():
                    help="One-time: OAuth login + provision the Drive folder/Sheet, then exit.")
     p.add_argument("--wipe", action="store_true",
                    help="Clear all data rows from the Sheet (keep headers), then exit.")
+    p.add_argument("--all", action="store_true",
+                   help="Batch mode: scrape every active RUT of every juzgado from the "
+                        "Sheet's RutsConsulta tab (no --search-code/--target-url needed).")
     p.add_argument("--job-id",      default="")
     p.add_argument("--search-code", default="")
     p.add_argument("--target-url",  default="")
     p.add_argument("--max-seconds", type=int, default=240)
     p.add_argument("--year",        default="", help="Keep only entries whose fecha_proceso contains this year (e.g. 2024). Empty = all years.")
+    p.add_argument("--from-year",   default="2020", help="Batch mode: keep causas from this year onward (default 2020).")
     p.add_argument("--juzgado",     default="", help="Court identifier (e.g. vitacura, lobarnechea)")
     return p.parse_args()
 
@@ -72,6 +76,20 @@ def filter_by_year(records, year):
         return records
     kept = [r for r in records if extract_year(r.get("fecha_proceso", "")) in (year, None)]
     log(f"[INFO] Year filter {year!r}: {len(kept)} / {len(records)} causas match")
+    return kept
+
+
+def filter_min_year(records, from_year):
+    """Return only records from `from_year` onward. Unparseable dates are kept."""
+    try:
+        fy = int(from_year)
+    except (TypeError, ValueError):
+        return records
+    def ok(r):
+        y = extract_year(r.get("fecha_proceso", ""))
+        return y is None or int(y) >= fy
+    kept = [r for r in records if ok(r)]
+    log(f"[INFO] Year filter >= {fy}: {len(kept)} / {len(records)} causas match")
     return kept
 
 
@@ -840,126 +858,142 @@ def download_pdfs(context, docs, store, juzgado, rol):
     return pdf_urls
 
 
-# ── Main loop ─────────────────────────────────────────────────────────────────
+# ── Scrape one (juzgado, RUT) into the Sheet/Drive ─────────────────────────────
+
+def scrape_target(ctx, store, juzgado_id, target_url, search_code, deadline,
+                  year="", from_year=None):
+    """Scrape every causa for one RUT at one court. Reuses the shared browser
+    context `ctx`; caller owns launch/close and completion/status.
+
+    Returns (target_rols, done_rols, hit_limit).
+    """
+    page   = ctx.new_page()
+    active = enter_via_parent(page, ctx, target_url)
+    active = search_rut(active, search_code, year=year, juzgado=juzgado_id)
+    records = get_results_list(active)
+    records = (filter_min_year(records, from_year) if from_year is not None
+               else filter_by_year(records, year))
+
+    # Dedupe by ROL: the results list can repeat a ROL.
+    seen_rol, unique = set(), []
+    for r in records:
+        rid = r.get("rol")
+        if rid and rid not in seen_rol:
+            seen_rol.add(rid)
+            unique.append(r)
+    if len(unique) != len(records):
+        log(f"[INFO] Deduped {len(records)} -> {len(unique)} unique ROLs")
+    records = unique
+
+    results_url = active.url  # remember Level 2 URL to return after each detail
+
+    target_rols = {r["rol"] for r in records if r.get("rol")}
+    done_rols = set()
+    hit_limit = False
+    for rec in records:
+        rol = rec["rol"]
+        if not rol:
+            continue
+
+        caso_id = f"{juzgado_id or 'jpl'}/{rol}"
+        # Resume off the Sheet: a caso_id already present means fully written
+        # (Causas is upserted last, after its trámites/docs/links).
+        if store.has("Causas", caso_id):
+            log(f"[INFO] Skip (already in Sheet): ROL {rol}")
+            done_rols.add(rol)
+            continue
+
+        if time.monotonic() >= deadline:
+            log("[INFO] Time limit — stopping for re-dispatch")
+            hit_limit = True
+            break
+
+        log(f"[INFO] Processing ROL {rol} — {rec.get('descripcion', '')}")
+        try:
+            # Level 2 → Level 3
+            open_causa(active, rec, results_url)
+            detail = extract_level3(active)
+
+            # Remove the demandante (search RUT) from demandados — some JPL
+            # layouts include the plaintiff in Section A.1 alongside defendants.
+            search_norm = norm_rut(search_code)
+            detail['demandados'] = [
+                d for d in detail.get('demandados', [])
+                if norm_rut(d.get('rut', '')) != search_norm
+            ]
+
+            log(f"[INFO] Extracted: {len(detail.get('tramites', []))} trámites, "
+                f"{len(detail.get('demandados', []))} demandados")
+
+            case_data = {**rec, **detail}
+
+            # Download PDFs (Sección C + D) via the captured MostrarPDF.aspx
+            # hrefs, using the authenticated session → upload to Drive.
+            all_docs = detail.get("tramites", []) + detail.get("adjuntos", [])
+            pdf_urls = download_pdfs(ctx, all_docs, store, juzgado_id, rol)
+
+            # Drop adjuntos with no downloaded PDF before persisting
+            case_data['adjuntos'] = [
+                a for a in case_data.get('adjuntos', []) if a.get('pdf_url')
+            ]
+
+            tabs, cid = normalize_causa(juzgado_id, search_code, case_data)
+            # Insert-only for enrichment-bearing tabs so a re-scrape never
+            # clobbers email (Ruts) / vehicle data (Patentes) added later.
+            tabs["Ruts"] = [r for r in tabs["Ruts"]
+                            if not store.has("Ruts", r["rut"])]
+            tabs["Patentes"] = [r for r in tabs["Patentes"]
+                                if not store.has("Patentes", r["patente"])]
+            # Causas LAST — its presence is the resume "done" sentinel.
+            for tab in ("Ruts", "Patentes", "Tramites", "Documentos",
+                        "CausaXRut", "CausaXPatente", "Causas"):
+                store.upsert(tab, tabs[tab])
+
+            done_rols.add(rol)
+            log(f"[INFO] Done ROL {rol} — {len(pdf_urls)} PDFs saved")
+
+            # Back to Level 2
+            try:
+                active.goto(results_url, wait_until="domcontentloaded", timeout=45_000)
+                active.wait_for_selector(SEL_RESULTS, timeout=15_000)
+            except PlaywrightTimeout:
+                # Site is slow — re-enter via parent to recover session
+                log(f"[WARN] Return to results timed out — re-entering via parent")
+                active = enter_via_parent(active, ctx, target_url)
+                active = search_rut(active, search_code, year=year, juzgado=juzgado_id)
+                active.wait_for_selector(SEL_RESULTS, timeout=20_000)
+                results_url = active.url
+
+        except PlaywrightTimeout as e:
+            log(f"[WARN] Timeout on ROL {rol}: {e}")
+            write_status("incomplete")
+        except Exception as e:
+            log(f"[WARN] Error on ROL {rol}: {e}")
+
+    try:
+        page.close()
+    except Exception:
+        pass
+    return target_rols, done_rols, hit_limit
+
+
+# ── Single-RUT mode (scrape.yml) ──────────────────────────────────────────────
 
 def scrape(args, store):
     deadline = time.monotonic() + args.max_seconds
-    juzgado_id = args.juzgado
-
-    # Seed the court registry (referenced by Causas.juzgado_id).
-    store.upsert("Juzgados", JUZGADOS_SEED)
+    store.upsert("Juzgados", JUZGADOS_SEED)   # court registry (Causas.juzgado_id FK)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         ctx     = browser.new_context(accept_downloads=True, ignore_https_errors=True)
-        page    = ctx.new_page()
+        try:
+            target_rols, done_rols, hit_limit = scrape_target(
+                ctx, store, args.juzgado, args.target_url, args.search_code,
+                deadline, year=args.year)
+        finally:
+            ctx.close()
+            browser.close()
 
-        # Level 1 → Level 2
-        active = enter_via_parent(page, ctx, args.target_url)
-        active = search_rut(active, args.search_code, year=args.year, juzgado=args.juzgado)
-        records = get_results_list(active)
-        records = filter_by_year(records, args.year)
-
-        # Dedupe by ROL: the results list can repeat a ROL.
-        seen_rol, unique = set(), []
-        for r in records:
-            rid = r.get("rol")
-            if rid and rid not in seen_rol:
-                seen_rol.add(rid)
-                unique.append(r)
-        if len(unique) != len(records):
-            log(f"[INFO] Deduped {len(records)} -> {len(unique)} unique ROLs")
-        records = unique
-
-        results_url = active.url  # remember Level 2 URL to return after each detail
-
-        target_rols = {r["rol"] for r in records if r.get("rol")}
-        done_rols = set()
-        hit_limit = False
-        for rec in records:
-            rol = rec["rol"]
-            if not rol:
-                continue
-
-            caso_id = f"{juzgado_id or 'jpl'}/{rol}"
-            # Resume off the Sheet: a caso_id already present means fully written
-            # (Causas is upserted last, after its trámites/docs/links).
-            if store.has("Causas", caso_id):
-                log(f"[INFO] Skip (already in Sheet): ROL {rol}")
-                done_rols.add(rol)
-                continue
-
-            if time.monotonic() >= deadline:
-                log("[INFO] Time limit — stopping for re-dispatch")
-                hit_limit = True
-                break
-
-            log(f"[INFO] Processing ROL {rol} — {rec.get('descripcion', '')}")
-            try:
-                # Level 2 → Level 3
-                open_causa(active, rec, results_url)
-                detail = extract_level3(active)
-
-                # Remove the demandante (search RUT) from demandados — some JPL
-                # layouts include the plaintiff in Section A.1 alongside defendants.
-                search_norm = norm_rut(args.search_code)
-                detail['demandados'] = [
-                    d for d in detail.get('demandados', [])
-                    if norm_rut(d.get('rut', '')) != search_norm
-                ]
-
-                log(f"[INFO] Extracted: {len(detail.get('tramites', []))} trámites, "
-                    f"{len(detail.get('demandados', []))} demandados")
-
-                case_data = {**rec, **detail}
-
-                # Download PDFs (Sección C + D) via the captured MostrarPDF.aspx
-                # hrefs, using the authenticated session → upload to Drive.
-                all_docs = detail.get("tramites", []) + detail.get("adjuntos", [])
-                pdf_urls = download_pdfs(ctx, all_docs, store, juzgado_id, rol)
-
-                # Drop adjuntos with no downloaded PDF before persisting
-                case_data['adjuntos'] = [
-                    a for a in case_data.get('adjuntos', []) if a.get('pdf_url')
-                ]
-
-                tabs, cid = normalize_causa(juzgado_id, args.search_code, case_data)
-                # Insert-only for enrichment-bearing tabs so a re-scrape never
-                # clobbers email (Ruts) / vehicle data (Patentes) added later.
-                tabs["Ruts"] = [r for r in tabs["Ruts"]
-                                if not store.has("Ruts", r["rut"])]
-                tabs["Patentes"] = [r for r in tabs["Patentes"]
-                                    if not store.has("Patentes", r["patente"])]
-                # Causas LAST — its presence is the resume "done" sentinel.
-                for tab in ("Ruts", "Patentes", "Tramites", "Documentos",
-                            "CausaXRut", "CausaXPatente", "Causas"):
-                    store.upsert(tab, tabs[tab])
-
-                done_rols.add(rol)
-                log(f"[INFO] Done ROL {rol} — {len(pdf_urls)} PDFs saved")
-
-                # Back to Level 2
-                try:
-                    active.goto(results_url, wait_until="domcontentloaded", timeout=45_000)
-                    active.wait_for_selector(SEL_RESULTS, timeout=15_000)
-                except PlaywrightTimeout:
-                    # Site is slow — re-enter via parent to recover session
-                    log(f"[WARN] Return to results timed out — re-entering via parent")
-                    active = enter_via_parent(active, ctx, args.target_url)
-                    active = search_rut(active, args.search_code, year=args.year, juzgado=args.juzgado)
-                    active.wait_for_selector(SEL_RESULTS, timeout=20_000)
-                    results_url = active.url
-
-            except PlaywrightTimeout as e:
-                log(f"[WARN] Timeout on ROL {rol}: {e}")
-                write_status("incomplete")
-            except Exception as e:
-                log(f"[WARN] Error on ROL {rol}: {e}")
-
-        ctx.close()
-        browser.close()
-
-    # Completion = every target ROL written this run or already present.
     all_done = not hit_limit and target_rols.issubset(done_rols)
     if all_done:
         write_status("complete")
@@ -969,13 +1003,60 @@ def scrape(args, store):
         log(f"[INFO] Job incomplete — {len(done_rols)}/{len(target_rols)} done, will re-dispatch")
 
 
+# ── Batch mode (scrape-all.yml): every active RUT of every juzgado ─────────────
+
+def scrape_all(args, store):
+    """Scrape the whole RutsConsulta matrix (one click, no input), causas >= from_year."""
+    deadline = time.monotonic() + args.max_seconds
+    store.upsert("Juzgados", JUZGADOS_SEED)
+    store.ensure_search_tab()
+    url_map = {j["juzgado_id"]: j["url"] for j in JUZGADOS_SEED}
+    combos = [c for c in store.read_search_ruts() if c["activo"]]
+    log(f"[INFO] Batch: {len(combos)} active (juzgado, rut) combos; causas >= {args.from_year}")
+
+    incomplete = False
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx     = browser.new_context(accept_downloads=True, ignore_https_errors=True)
+        try:
+            for c in combos:
+                if time.monotonic() >= deadline:
+                    log("[INFO] Global time limit reached — will re-dispatch")
+                    incomplete = True
+                    break
+                url = url_map.get(c["juzgado_id"])
+                if not url:
+                    log(f"[WARN] Unknown juzgado {c['juzgado_id']!r} — skipping")
+                    continue
+                log(f"[INFO] ===== {c['juzgado_id']} | {c['rut']} =====")
+                try:
+                    target, done, hit = scrape_target(
+                        ctx, store, c["juzgado_id"], url, c["rut"],
+                        deadline, from_year=args.from_year)
+                    if hit or not target.issubset(done):
+                        incomplete = True
+                except Exception as e:
+                    log(f"[WARN] Combo {c['juzgado_id']}|{c['rut']} failed: {e}")
+                    incomplete = True
+        finally:
+            ctx.close()
+            browser.close()
+
+    if incomplete:
+        write_status("incomplete")
+        log("[INFO] Batch incomplete — will re-dispatch")
+    else:
+        write_status("complete")
+        log("[INFO] Batch complete — all active RUTs scraped")
+
+
 def main():
     args = parse_args()
 
     if args.setup:
         gstore.provision()
-        log("[SETUP] done. Now dispatch a scrape: python run.py --search-code <RUT> "
-            "--target-url <URL> --juzgado <vitacura|lobarnechea>")
+        log("[SETUP] done. Batch: python run.py --all  (or single: --search-code <RUT> "
+            "--target-url <URL> --juzgado <vitacura|lobarnechea>)")
         return
 
     if args.wipe:
@@ -983,12 +1064,15 @@ def main():
         log("[WIPE] cleared all data rows from the Sheet (headers kept)")
         return
 
-    if not (args.search_code and args.target_url):
-        sys.exit("ERROR: --search-code and --target-url are required (or use --setup).")
-
     try:
         store = gstore.Store()
-        scrape(args, store)
+        if args.all:
+            scrape_all(args, store)
+        else:
+            if not (args.search_code and args.target_url):
+                sys.exit("ERROR: --search-code and --target-url are required "
+                         "(or use --all for batch, or --setup).")
+            scrape(args, store)
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)

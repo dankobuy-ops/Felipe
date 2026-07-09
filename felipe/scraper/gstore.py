@@ -44,6 +44,26 @@ TAB_ORDER = list(TABS)
 # run.py passes tab names directly; identity fallback keeps this generic.
 TABLE_TO_TAB = {}
 
+# ── Search config: the RUTs to scrape per juzgado (human-editable, batch mode) ──
+# Its own tab (NOT in TABS) so --wipe never clears it and headers stay put.
+# Batch mode (run.py --all) reads the `activo` rows here as the scrape matrix.
+SEARCH_TAB = "RutsConsulta"
+SEARCH_HEADER = ["Juzgado", "RUT", "Activo"]
+SEARCH_SEED = [
+    ["vitacura",    "76496130-7", "TRUE"],
+    ["vitacura",    "76376061-8", "TRUE"],
+    ["vitacura",    "99548570-2", "TRUE"],
+    ["vitacura",    "99588750-9", "TRUE"],
+    ["lobarnechea", "76496130-7", "TRUE"],
+    ["lobarnechea", "77015092-2", "TRUE"],
+]
+_SEARCH_TRUE = {"", "TRUE", "1", "SI", "SÍ", "X", "YES", "VERDADERO"}
+
+
+def _norm_juzgado(s):
+    s = (s or "").strip().lower()
+    return {"lo barnechea": "lobarnechea"}.get(s, s.replace(" ", ""))
+
 FOLDER_NAME = "Juzgado de Policía Local"
 DOCS_SUBFOLDER = "Documentos"
 SHEET_NAME = "JPL — Base de datos"
@@ -134,6 +154,7 @@ def provision(creds=None):
         log(f"[SETUP] Sheet exists ({sheet_id})")
         _write_headers(sheets, sheet_id)
     _make_public_reader(drive, sheet_id)
+    _ensure_search_tab(sheets, sheet_id)   # RUTs-to-scrape list (batch mode)
 
     cfg.update({"folder_id": folder_id, "documentos_folder_id": docs_id,
                 "spreadsheet_id": sheet_id})
@@ -149,6 +170,26 @@ def _write_headers(sheets, sheet_id):
     sheets.spreadsheets().values().batchUpdate(
         spreadsheetId=sheet_id,
         body={"valueInputOption": "RAW", "data": data}).execute()
+
+
+def _ensure_search_tab(sheets, sheet_id, seed=True):
+    """Create the RutsConsulta tab (header + seed rows) if missing/empty. Idempotent."""
+    meta = sheets.spreadsheets().get(
+        spreadsheetId=sheet_id, fields="sheets.properties.title").execute()
+    titles = [s["properties"]["title"] for s in meta.get("sheets", [])]
+    if SEARCH_TAB not in titles:
+        sheets.spreadsheets().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": SEARCH_TAB}}}]}
+        ).execute()
+    got = sheets.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range=f"'{SEARCH_TAB}'!A1:C1").execute()
+    if got.get("values"):
+        return                       # already initialised — leave the user's edits
+    rows = [SEARCH_HEADER] + (SEARCH_SEED if seed else [])
+    sheets.spreadsheets().values().update(
+        spreadsheetId=sheet_id, range=f"'{SEARCH_TAB}'!A1",
+        valueInputOption="RAW", body={"values": rows}).execute()
 
 
 # ── Store: incremental upsert + PDF upload ─────────────────────────────────────
@@ -181,6 +222,23 @@ class Store:
     def has(self, tab, key):
         """True if `key` already exists in column A of `tab` (used for resume)."""
         return key in self._load_index(tab)
+
+    def ensure_search_tab(self, seed=True):
+        """Create + seed the RutsConsulta tab if needed (safe to call every run)."""
+        _ensure_search_tab(self.sheets, self.sheet_id, seed=seed)
+
+    def read_search_ruts(self):
+        """Return [{juzgado_id, rut, activo}] from the RutsConsulta tab."""
+        got = self.sheets.spreadsheets().values().get(
+            spreadsheetId=self.sheet_id, range=f"'{SEARCH_TAB}'!A2:C").execute()
+        out = []
+        for r in got.get("values", []):
+            juz = _norm_juzgado(r[0] if len(r) > 0 else "")
+            rut = (r[1] if len(r) > 1 else "").strip()
+            activo = ((r[2] if len(r) > 2 else "").strip().upper() in _SEARCH_TRUE)
+            if juz and rut:
+                out.append({"juzgado_id": juz, "rut": rut, "activo": activo})
+        return out
 
     def clear_data(self, tabs=None):
         """Clear data rows (keep the header row) of `tabs` (default: all)."""
