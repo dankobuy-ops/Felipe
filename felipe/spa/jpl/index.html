@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Consulta JPL</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    .batch-block { margin: 0 0 1.3rem; padding: 1rem; border: 1px solid #d0d7de; border-radius: 10px; background: #f6f8fa; }
+    #batch-run-btn { width: 100%; padding: .9rem 1rem; background: #1f883d; color: #fff; border: none; border-radius: 8px; font-weight: 700; font-size: 1rem; cursor: pointer; }
+    #batch-run-btn:disabled { background: #8c959f; cursor: default; }
+    .batch-status { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; font-size: .9rem; color: #24292f; }
+    #batch-progress-wrap { margin-top: .6rem; height: 6px; background: #d0d7de; border-radius: 3px; overflow: hidden; }
+    #batch-progress-bar { height: 100%; width: 40%; background: #1f883d; border-radius: 3px; animation: batch-indet 1.2s ease-in-out infinite; }
+    @keyframes batch-indet { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+    .batch-block .hint { margin: .65rem 0 0; font-size: .8rem; }
+  </style>
 </head>
 <body>
 
@@ -32,17 +42,21 @@
         <button id="change-token" class="link-btn" title="Cambiar token de GitHub">🔑</button>
       </div>
 
-      <!-- Batch scraper (all RUTs, 2020+) — runs on GitHub Actions, one click -->
-      <a class="workflow-cta"
-         href="https://github.com/dankobuy-ops/Felipe/actions/workflows/scrape-all.yml"
-         target="_blank" rel="noopener"
-         style="display:block;margin:0 0 .6rem;padding:.8rem 1rem;background:#1f6feb;color:#fff;border-radius:8px;text-decoration:none;text-align:center;font-weight:600;">
-        ⚙️ Consulta masiva — todos los RUT (2020+) →
-      </a>
-      <p class="hint" style="margin:0 0 1.2rem;text-align:center;">
-        Abre GitHub Actions y pulsa <strong>“Run workflow”</strong>. Edita los RUT en la
-        pestaña <code>RutsConsulta</code> de la planilla.
-      </p>
+      <!-- Batch scraper (all RUTs, 2020+) — dispatched here, runs on GitHub Actions -->
+      <div id="batch-block" class="batch-block">
+        <button id="batch-run-btn" type="button">▶️ Iniciar consulta masiva — todos los RUT (2020+)</button>
+        <div id="batch-status" class="batch-status hidden">
+          <div class="spinner"></div>
+          <span id="batch-status-text"></span>
+        </div>
+        <div id="batch-progress-wrap" class="hidden"><div id="batch-progress-bar"></div></div>
+        <p class="hint">
+          Corre en GitHub Actions y se reanuda solo hasta terminar — no ocupa tu equipo.
+          Edita los RUT en la pestaña <code>RutsConsulta</code> de la planilla.
+          <a href="https://github.com/dankobuy-ops/Felipe/actions/workflows/scrape-all.yml"
+             target="_blank" rel="noopener">Ver en GitHub&nbsp;↗</a>
+        </p>
+      </div>
 
       <div class="juzgado-selector">
         <button type="button" class="juzgado-btn" data-juzgado="vitacura">
@@ -115,6 +129,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=35"></script>
+  <script src="app.js?v=36"></script>
 </body>
 </html>

@@ -40,6 +40,7 @@ const SHEET_TABS = ["Causas", "CausaXRut", "Ruts", "Tramites", "Documentos",
 
 const GH_REPO          = "dankobuy-ops/Felipe";
 const WORKFLOW_FILE    = "scrape.yml";
+const BATCH_WORKFLOW   = "scrape-all.yml";
 const ENRICH_WORKFLOW   = "enrich.yml";
 const POLL_INTERVAL_MS  = 8000;
 
@@ -211,6 +212,109 @@ document.querySelectorAll(".juzgado-btn").forEach((btn) => {
   });
 });
 
+// ── Batch job: dispatch scrape-all.yml + live running indicator ───────────────
+let batchPollTimer = null;
+
+async function batchLatestRun() {
+  const r = await fetch(
+    `https://api.github.com/repos/${GH_REPO}/actions/workflows/${BATCH_WORKFLOW}/runs?per_page=1`,
+    { headers: { Authorization: `Bearer ${getPAT()}`, Accept: "application/vnd.github+json" } }
+  );
+  if (r.status === 401) { reauth(); return null; }
+  if (!r.ok) return null;
+  const { workflow_runs = [] } = await r.json();
+  return workflow_runs[0] || null;
+}
+
+async function batchCausaCount() {
+  try { return (await fetchTab("Causas")).length; } catch (_) { return null; }
+}
+
+function _batchSpinner(on) {
+  const sp = document.querySelector("#batch-status .spinner");
+  if (sp) sp.classList.toggle("hidden", !on);
+}
+
+// Poll the batch workflow's latest run; reflect running/idle + live causa count.
+async function pollBatch() {
+  clearTimeout(batchPollTimer);
+  const btn        = document.getElementById("batch-run-btn");
+  if (!btn) return;
+  const statusWrap = document.getElementById("batch-status");
+  const statusText = document.getElementById("batch-status-text");
+  const barWrap    = document.getElementById("batch-progress-wrap");
+
+  let run = null;
+  try { run = await batchLatestRun(); } catch (_) {}
+  const active = run && ["in_progress", "queued", "requested", "waiting", "pending"].includes(run.status);
+  const count  = await batchCausaCount();
+  const countTxt = count == null ? "" : ` · ${count} causas en la planilla`;
+
+  statusWrap.classList.remove("hidden");
+  if (active) {
+    btn.disabled = true;
+    btn.textContent = "⏳ Consulta en curso…";
+    _batchSpinner(true);
+    barWrap.classList.remove("hidden");
+    statusText.textContent = `Ejecutando en GitHub${countTxt}`;
+    batchPollTimer = setTimeout(pollBatch, POLL_INTERVAL_MS);
+  } else {
+    btn.disabled = false;
+    btn.textContent = "▶️ Iniciar consulta masiva — todos los RUT (2020+)";
+    _batchSpinner(false);
+    barWrap.classList.add("hidden");
+    if (run) {
+      const when  = run.updated_at ? new Date(run.updated_at).toLocaleString() : "";
+      const concl = run.conclusion === "success"   ? "completada ✓"
+                  : run.conclusion === "cancelled" ? "detenida"
+                  : run.conclusion ? run.conclusion : "—";
+      statusText.textContent = `Última consulta: ${concl}${countTxt}${when ? " · " + when : ""}`;
+    } else {
+      statusWrap.classList.add("hidden");
+    }
+  }
+}
+
+function startBatchWatch() {
+  if (getPAT()) pollBatch();
+}
+
+document.getElementById("batch-run-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("batch-run-btn");
+  btn.disabled = true;
+  btn.textContent = "Iniciando…";
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${GH_REPO}/actions/workflows/${BATCH_WORKFLOW}/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getPAT()}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        body: JSON.stringify({ ref: "main", inputs: {} }),
+      }
+    );
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      if (r.status === 401) reauth();
+      throw new Error(`GitHub ${r.status}: ${body || "sin detalle"}`);
+    }
+    document.getElementById("batch-status").classList.remove("hidden");
+    _batchSpinner(true);
+    document.getElementById("batch-status-text").textContent = "Iniciando en GitHub…";
+    // Give GitHub a few seconds to register the run, then start polling.
+    clearTimeout(batchPollTimer);
+    batchPollTimer = setTimeout(pollBatch, 5000);
+  } catch (ex) {
+    btn.disabled = false;
+    btn.textContent = "Error — reintentar";
+    btn.title = ex.message;
+  }
+});
+
 // ── Screen router ─────────────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => {
@@ -224,6 +328,7 @@ function init() {
   } else {
     showScreen("screen-trigger");
     renderJobHistory();
+    startBatchWatch();
   }
 }
 
@@ -241,6 +346,7 @@ document.getElementById("setup-form").addEventListener("submit", async (e) => {
     setPAT(pat);
     showScreen("screen-trigger");
     renderJobHistory();
+    startBatchWatch();
   } catch (ex) {
     err.textContent = ex.message;
     err.classList.remove("hidden");
@@ -364,6 +470,7 @@ let _resultsRut         = "";
 let _resultsDispatchedAt = "";
 
 function showResultsScreen(jobId, rut, year = "", juzgado = "") {
+  clearTimeout(batchPollTimer);   // pause the batch watcher while viewing results
   _currentJuzgado = juzgado || _currentJuzgado;
   _resultsRut = rut;
   // 60s back-buffer so a client clock ahead of GitHub's still matches a run we
@@ -405,6 +512,7 @@ document.getElementById("back-btn").addEventListener("click", () => {
   document.getElementById("submit-btn").textContent = "Consultar";
   showScreen("screen-trigger");
   renderJobHistory();
+  startBatchWatch();
 });
 
 // ── Job history (previous jobs) ───────────────────────────────────────────────
