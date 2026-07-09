@@ -21,6 +21,10 @@ on:
         description: "Uso interno — no modificar"
         required: false
         default: "0"
+      sweep_start:
+        description: "Uso interno — no modificar"
+        required: false
+        default: ""
 
 env:
   MAX_RESUME_ATTEMPTS: "50"
@@ -50,7 +54,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('felipe/scraper/requirements.txt') }}
 
-      - name: Resolve job ID
+      - name: Resolve job ID + sweep
         id: job
         run: |
           provided="${{ github.event.inputs.job_id }}"
@@ -61,6 +65,13 @@ jobs:
             echo "id=$provided" >> "$GITHUB_OUTPUT"
             echo "Resuming batch: $provided"
           fi
+          # A sweep = one full refresh pass. Generated once on the first dispatch
+          # and forwarded across re-dispatches so the refresh resumes (doesn't
+          # restart) and skips causas already refreshed in this sweep.
+          sweep="${{ github.event.inputs.sweep_start }}"
+          if [ -z "$sweep" ]; then sweep="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; fi
+          echo "sweep_start=$sweep" >> "$GITHUB_OUTPUT"
+          echo "Sweep: $sweep"
 
       - name: Install dependencies
         run: pip install -r felipe/scraper/requirements.txt
@@ -105,7 +116,8 @@ jobs:
         run: |
           cd felipe/scraper && python run.py --all \
             --max-seconds "$MAX_RUNTIME_SECONDS" \
-            --from-year "$FROM_YEAR"
+            --from-year "$FROM_YEAR" \
+            --sweep-start "${{ steps.job.outputs.sweep_start }}"
 
       - name: Re-dispatch if not complete
         if: ${{ !cancelled() && steps.cap.outputs.capped != 'true' }}
@@ -120,7 +132,8 @@ jobs:
             gh workflow run scrape-all.yml \
               --repo "${{ github.repository }}" \
               --field job_id="${{ steps.job.outputs.id }}" \
-              --field resume_attempt="$next_attempt"
+              --field resume_attempt="$next_attempt" \
+              --field sweep_start="${{ steps.job.outputs.sweep_start }}"
           else
             echo "Batch $status — sin re-despacho."
           fi

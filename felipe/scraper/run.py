@@ -53,6 +53,7 @@ def parse_args():
     p.add_argument("--max-seconds", type=int, default=240)
     p.add_argument("--year",        default="", help="Keep only entries whose fecha_proceso contains this year (e.g. 2024). Empty = all years.")
     p.add_argument("--from-year",   default="2020", help="Batch mode: keep causas from this year onward (default 2020).")
+    p.add_argument("--sweep-start", default="", help="Batch mode: ISO timestamp marking this refresh sweep. Causas whose updated_at is >= this are skipped (already refreshed this sweep); older ones are re-scraped and updated. Auto-generated if empty; forwarded across re-dispatches.")
     p.add_argument("--juzgado",     default="", help="Court identifier (e.g. vitacura, lobarnechea)")
     return p.parse_args()
 
@@ -780,6 +781,7 @@ def normalize_causa(juzgado_id, search_code, case_data):
         "boleta_fecha": causa.get("boleta_fecha", ""),
         "monto_demandado": _first(causa, "monto", "monto_demandado", "cuantia",
                                   "cuantía", "monto_multa"),
+        "updated_at": now,
     })
 
     # Demandante = the searched RUT (empresa)
@@ -861,12 +863,21 @@ def download_pdfs(context, docs, store, juzgado, rol):
 # ── Scrape one (juzgado, RUT) into the Sheet/Drive ─────────────────────────────
 
 def scrape_target(ctx, store, juzgado_id, target_url, search_code, deadline,
-                  year="", from_year=None):
+                  year="", from_year=None, sweep_start=None, refreshed=None):
     """Scrape every causa for one RUT at one court. Reuses the shared browser
     context `ctx`; caller owns launch/close and completion/status.
 
+    Skip / update behaviour:
+      - sweep_start is None (single-RUT mode): a causa already in the Sheet is
+        skipped (pure resume — never re-scraped).
+      - sweep_start set (batch/refresh mode): a causa is re-scraped and UPDATED
+        unless it was already refreshed in THIS sweep (its updated_at is
+        >= sweep_start). This picks up new trámites / files while still
+        resuming across re-dispatches within one sweep.
+
     Returns (target_rols, done_rols, hit_limit).
     """
+    refreshed = refreshed or {}
     page   = ctx.new_page()
     active = enter_via_parent(page, ctx, target_url)
     active = search_rut(active, search_code, year=year, juzgado=juzgado_id)
@@ -896,12 +907,20 @@ def scrape_target(ctx, store, juzgado_id, target_url, search_code, deadline,
             continue
 
         caso_id = f"{juzgado_id or 'jpl'}/{rol}"
-        # Resume off the Sheet: a caso_id already present means fully written
-        # (Causas is upserted last, after its trámites/docs/links).
-        if store.has("Causas", caso_id):
-            log(f"[INFO] Skip (already in Sheet): ROL {rol}")
-            done_rols.add(rol)
-            continue
+        if sweep_start is None:
+            # Single-RUT mode: resume — skip anything already in the Sheet.
+            if store.has("Causas", caso_id):
+                log(f"[INFO] Skip (already in Sheet): ROL {rol}")
+                done_rols.add(rol)
+                continue
+        else:
+            # Batch/refresh mode: skip only if already refreshed THIS sweep;
+            # otherwise re-scrape and update (new trámites / files).
+            prev = refreshed.get(caso_id, "")
+            if prev and prev >= sweep_start:
+                log(f"[INFO] Skip (refreshed this sweep): ROL {rol}")
+                done_rols.add(rol)
+                continue
 
         if time.monotonic() >= deadline:
             log("[INFO] Time limit — stopping for re-dispatch")
@@ -1008,11 +1027,14 @@ def scrape(args, store):
 def scrape_all(args, store):
     """Scrape the whole RutsConsulta matrix (one click, no input), causas >= from_year."""
     deadline = time.monotonic() + args.max_seconds
+    sweep_start = args.sweep_start or _now()   # stable across a sweep's re-dispatches
     store.upsert("Juzgados", JUZGADOS_SEED)
     store.ensure_search_tab()
     url_map = {j["juzgado_id"]: j["url"] for j in JUZGADOS_SEED}
     combos = [c for c in store.read_search_ruts() if c["activo"]]
-    log(f"[INFO] Batch: {len(combos)} active (juzgado, rut) combos; causas >= {args.from_year}")
+    refreshed = store.read_causa_updated()     # caso_id -> updated_at (skip this-sweep dups)
+    log(f"[INFO] Batch: {len(combos)} active combos; causas >= {args.from_year}; "
+        f"sweep {sweep_start}; {len(refreshed)} causas already in Sheet")
 
     incomplete = False
     with sync_playwright() as pw:
@@ -1032,7 +1054,8 @@ def scrape_all(args, store):
                 try:
                     target, done, hit = scrape_target(
                         ctx, store, c["juzgado_id"], url, c["rut"],
-                        deadline, from_year=args.from_year)
+                        deadline, from_year=args.from_year,
+                        sweep_start=sweep_start, refreshed=refreshed)
                     if hit or not target.issubset(done):
                         incomplete = True
                 except Exception as e:

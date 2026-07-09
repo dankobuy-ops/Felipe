@@ -30,7 +30,7 @@ TABS = {
              "updated_at"],
     "Causas": ["caso_id", "rol", "juzgado_id", "materia", "fecha_causa",
                "fecha_citacion", "fecha_estado", "estado", "boleta_numero",
-               "boleta_fecha", "monto_demandado"],
+               "boleta_fecha", "monto_demandado", "updated_at"],
     "Tramites": ["tramite_id", "caso_id", "fecha", "descripcion", "pdf_url"],
     "Documentos": ["documento_id", "caso_id", "descripcion", "pdf_url"],
     "Patentes": ["patente", "rut_propietario", "nombre_propietario", "tipo",
@@ -226,6 +226,13 @@ class Store:
     def ensure_search_tab(self, seed=True):
         """Create + seed the RutsConsulta tab if needed (safe to call every run)."""
         _ensure_search_tab(self.sheets, self.sheet_id, seed=seed)
+
+    def read_causa_updated(self):
+        """Return {caso_id: updated_at} for every causa already in the Sheet.
+        Batch mode uses this to skip only causas already refreshed in the
+        current sweep (so a refresh updates old causas but still resumes)."""
+        return {r["caso_id"]: r.get("updated_at", "")
+                for r in self.read_tab("Causas") if r.get("caso_id")}
 
     def read_search_ruts(self):
         """Return [{juzgado_id, rut, activo}] from the RutsConsulta tab."""
