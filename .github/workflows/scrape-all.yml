@@ -78,7 +78,14 @@ jobs:
       - name: Restore config (Sheet/folder IDs)
         env:
           JPL_CONFIG: ${{ secrets.JPL_CONFIG }}
-        run: printf '%s' "$JPL_CONFIG" > felipe/scraper/jpl_config.json
+        run: |
+          if [ -n "$JPL_CONFIG" ]; then
+            printf '%s' "$JPL_CONFIG" > felipe/scraper/jpl_config.json
+            echo "jpl_config.json restored ($(wc -c < felipe/scraper/jpl_config.json) bytes)"
+          else
+            echo "::error::JPL_CONFIG secret is not set. Run 'python run.py --setup' locally, then paste felipe/scraper/jpl_config.json into a repo secret named JPL_CONFIG."
+            exit 1
+          fi
 
       - name: Check resume cap
         id: cap
