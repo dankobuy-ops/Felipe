@@ -6,19 +6,19 @@
   <title>Consulta JPL</title>
   <link rel="stylesheet" href="style.css" />
   <style>
-    .batch-block { margin: 0 0 1.3rem; padding: 1rem; border: 1px solid #d0d7de; border-radius: 10px; background: #f6f8fa; }
-    #batch-run-btn { width: 100%; padding: .9rem 1rem; background: #1f883d; color: #fff; border: none; border-radius: 8px; font-weight: 700; font-size: 1rem; cursor: pointer; }
+    .batch-block { margin: 0; }
+    #batch-run-btn { width: 100%; padding: 1rem 1rem; background: #1f883d; color: #fff; border: none; border-radius: 8px; font-weight: 700; font-size: 1.05rem; cursor: pointer; }
     #batch-run-btn:disabled { background: #8c959f; cursor: default; }
-    .batch-status { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; font-size: .9rem; color: #24292f; }
-    #batch-progress-wrap { margin-top: .6rem; height: 6px; background: #d0d7de; border-radius: 3px; overflow: hidden; }
-    #batch-progress-bar { height: 100%; width: 40%; background: #1f883d; border-radius: 3px; animation: batch-indet 1.2s ease-in-out infinite; }
+    .batch-status { display: flex; align-items: center; gap: .5rem; margin-top: .9rem; font-size: .92rem; color: #24292f; }
+    #batch-progress-wrap { margin-top: .6rem; height: 8px; background: #d0d7de; border-radius: 4px; overflow: hidden; }
+    #batch-progress-bar { height: 100%; width: 40%; background: #1f883d; border-radius: 4px; animation: batch-indet 1.2s ease-in-out infinite; }
     @keyframes batch-indet { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
-    .batch-block .hint { margin: .65rem 0 0; font-size: .8rem; }
+    .batch-block .hint { margin: 1rem 0 0; font-size: .8rem; }
   </style>
 </head>
 <body>
 
-  <!-- Screen: First-time setup (PAT required) -->
+  <!-- First-time setup (GitHub token required to start the job) -->
   <div id="screen-setup" class="screen hidden">
     <div class="card">
       <h1>Configuración inicial</h1>
@@ -34,15 +34,10 @@
     </div>
   </div>
 
-  <!-- Screen 1: Trigger -->
+  <!-- Main screen: just the batch button + progress -->
   <div id="screen-trigger" class="screen hidden">
     <div class="card">
-      <div class="top-bar">
-        <h1>Consulta JPL</h1>
-        <button id="change-token" class="link-btn" title="Cambiar token de GitHub">🔑</button>
-      </div>
-
-      <!-- Batch scraper (all RUTs, 2020+) — dispatched here, runs on GitHub Actions -->
+      <h1>Consulta JPL</h1>
       <div id="batch-block" class="batch-block">
         <button id="batch-run-btn" type="button">▶️ Iniciar consulta masiva — todos los RUT (2020+)</button>
         <div id="batch-status" class="batch-status hidden">
@@ -52,83 +47,14 @@
         <div id="batch-progress-wrap" class="hidden"><div id="batch-progress-bar"></div></div>
         <p class="hint">
           Corre en GitHub Actions y se reanuda solo hasta terminar — no ocupa tu equipo.
-          Edita los RUT en la pestaña <code>RutsConsulta</code> de la planilla.
-          <a href="https://github.com/dankobuy-ops/Felipe/actions/workflows/scrape-all.yml"
-             target="_blank" rel="noopener">Ver en GitHub&nbsp;↗</a>
+          Los datos quedan en la
+          <a href="https://docs.google.com/spreadsheets/d/1SqP0w1XjvMGoEpBnbXI16EuneJMhrrSJq3hvvw_Azuo/edit" target="_blank" rel="noopener">planilla</a>;
+          edita los RUT en la pestaña <code>RutsConsulta</code>.
         </p>
       </div>
-
-      <div class="juzgado-selector">
-        <button type="button" class="juzgado-btn" data-juzgado="vitacura">
-          <span class="jb-name">Vitacura</span>
-        </button>
-        <button type="button" class="juzgado-btn" data-juzgado="lobarnechea">
-          <span class="jb-name">Lo Barnechea</span>
-        </button>
-      </div>
-      <form id="trigger-form">
-        <label>
-          RUT
-          <select id="search-code" required disabled>
-            <option value="">— Selecciona un juzgado primero —</option>
-          </select>
-        </label>
-        <label>
-          Año (opcional — deja vacío para todos)
-          <input type="number" id="year-filter" placeholder="Ej: 2024" min="2000" max="2099" />
-        </label>
-        <button type="submit" id="submit-btn">Consultar</button>
-      </form>
-      <p id="trigger-error" class="error hidden"></p>
-
-      <div id="history-block" class="history-block hidden">
-        <div class="history-head">
-          <h2>Consultas anteriores</h2>
-          <button id="history-refresh" class="link-btn" title="Actualizar">↻</button>
-          <button id="history-clear" class="link-btn" title="Borrar historial local">🗑</button>
-          <button id="supabase-wipe" class="link-btn" title="Limpiar datos">🧹</button>
-        </div>
-        <ul id="history-list" class="history-list"></ul>
-      </div>
     </div>
   </div>
 
-  <!-- Screen 2: Results -->
-  <div id="screen-results" class="screen hidden">
-    <div class="card wide">
-      <div class="results-header">
-        <h1>Resultados</h1>
-        <span id="job-status-badge" class="badge">ejecutando</span>
-        <div id="spinner" class="spinner hidden"></div>
-        <button id="stop-btn" class="danger hidden">Detener</button>
-        <button id="enrich-btn" class="secondary">Buscar Emails</button>
-        <button id="stop-enrich-btn" class="danger hidden">Detener búsqueda</button>
-        <span id="enrich-status" class="enrich-status hidden"></span>
-        <button id="patente-btn" class="secondary">Buscar Patentes</button>
-        <button id="stop-patente-btn" class="danger hidden">Detener patentes</button>
-        <span id="patente-status" class="enrich-status hidden"></span>
-        <button id="back-btn" class="secondary">Nueva consulta</button>
-      </div>
-      <p class="job-meta">RUT: <strong id="rut-display"></strong> &nbsp;·&nbsp; Año: <strong id="year-display">todos</strong> &nbsp;·&nbsp; Job: <code id="job-id-display"></code></p>
-      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-      <p id="progress-label">Iniciando…</p>
-      <table id="results-table">
-        <thead>
-          <tr>
-            <th>N° Causa</th>
-            <th>Materia</th>
-            <th>Fecha ingreso</th>
-            <th>Estado</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="results-body"></tbody>
-      </table>
-      <p id="results-empty" class="hint hidden">Sin resultados aún — esperando al scraper…</p>
-      <p id="results-error" class="error hidden"></p>
-    </div>
-  </div>
-
-  <script src="app.js?v=36"></script>
+  <script src="app.js?v=37"></script>
 </body>
 </html>
