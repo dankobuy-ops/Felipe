@@ -178,6 +178,7 @@ def enrich_plates(store, session, plates, dry_run=False, _is_retry=False):
         try:
             # result keys (patente, rut_propietario, marca, ...) match the Patentes
             # tab columns, so the dict upserts straight into that plate's row.
+            result["estado"] = "con datos"
             store.upsert("Patentes", [result])
             found += 1
             print(f"  -> guardado: {result}")
