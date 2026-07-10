@@ -44,13 +44,34 @@ def _has_data(txt: str) -> bool:
     return sum(m in txt for m in DATA_MARKERS) >= 2
 
 
+def _fill(page, sel, value):
+    """Fill a field, falling back to a JS value-set if an ad overlay blocks it."""
+    try:
+        page.fill(sel, value, timeout=8_000)
+    except Exception:
+        page.eval_on_selector(
+            sel, "(el, v) => { el.value = v; "
+                 "el.dispatchEvent(new Event('input', {bubbles: true})); }", value)
+
+
+def _click_search(page):
+    """Trigger the search. Normal click first; if an ad overlay intercepts it,
+    fire the button's own click() via JS so the search still runs."""
+    try:
+        page.click("#searchBtn", timeout=5_000)
+    except Exception:
+        page.eval_on_selector("#searchBtn", "el => el.click()")
+
+
 def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
     """Search one plate on an already-past-Cloudflare session. Returns the parsed
     fields, None if the site has no data, or raises CFChallenge if the wall
     reappeared (so the caller retries after a re-solve)."""
     page = session.goto_home()
-    page.fill("#inputTerm", patente, timeout=10_000)
-    page.click("#searchBtn", timeout=8_000)
+    session.dismiss_popups()                 # clear any ad tab/overlay first
+    _fill(page, "#inputTerm", patente)
+    session.dismiss_popups()
+    _click_search(page)
 
     deadline = time.monotonic() + 120
     saw_challenge = False

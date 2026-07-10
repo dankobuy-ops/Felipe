@@ -148,6 +148,25 @@ class Session:
             self._attach()
         return self._page
 
+    def dismiss_popups(self):
+        """Close ad pop-ups / pop-unders (extra tabs) and dismiss simple overlay
+        ads. Safe: only closes tabs that are NOT the patentechile page."""
+        if self._browser is None:
+            return
+        try:
+            for p in list(self._browser.contexts[0].pages):
+                if p is not self._page and "patentechile" not in (p.url or ""):
+                    try:
+                        p.close()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        try:
+            self._page.keyboard.press("Escape")   # dismisses many overlay ads
+        except Exception:
+            pass
+
     # ── Cloudflare wall ──────────────────────────────────────────────────────
     def _http_pages(self):
         try:
