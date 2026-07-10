@@ -17,6 +17,7 @@ import argparse
 import os
 import random
 import time
+from datetime import date
 
 import gstore
 from enrich_patentes import _extract_html
@@ -162,6 +163,13 @@ def enrich_plates(store, session, plates, dry_run=False, _is_retry=False):
         delay = max(DELAY_MIN, delay * 0.85)
         if not result:
             print("  -> sin datos")
+            # Mark it checked so it isn't re-searched every run (site has no record).
+            if not dry_run and store is not None:
+                try:
+                    store.upsert("Patentes", [{"patente": patente,
+                                               "estado": f"sin datos {date.today().isoformat()}"}])
+                except Exception as e:
+                    print(f"  -> (no se pudo marcar sin datos: {e})")
             continue
         if dry_run:
             found += 1
@@ -193,7 +201,8 @@ def plates_to_enrich(store):
     to_enrich = sorted(
         r["patente"] for r in rows
         if r.get("patente") and not (r.get("marca") or r.get("modelo")
-                                     or r.get("rut_propietario")))
+                                     or r.get("rut_propietario"))
+        and not r.get("estado"))          # skip plates already checked (no data)
     print(f"[patentes] {len(rows)} en la planilla, {len(to_enrich)} por enriquecer")
     return to_enrich
 
@@ -207,6 +216,8 @@ def main():
     # The Sheet is only needed to pick targets and/or save. Pure --plates --dry-run
     # needs neither.
     store = None if (args.dry_run and args.plates) else gstore.Store()
+    if store is not None:
+        store.ensure_headers("Patentes")          # make sure the 'estado' column exists
     if args.plates:
         to_enrich = sorted({p.strip().upper() for p in args.plates.split(",") if p.strip()})
     else:

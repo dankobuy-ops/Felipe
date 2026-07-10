@@ -19,6 +19,10 @@ POLL_SECONDS = 30
 
 def main():
     print(f"[watcher] vigilando la pestaña Patentes cada {POLL_SECONDS}s — Ctrl+C para salir")
+    try:
+        gstore.Store().ensure_headers("Patentes")   # make sure the 'estado' column exists
+    except Exception as e:
+        print(f"[watcher] aviso: no se pudo asegurar el encabezado: {e}")
     session = Session().start()          # opens Chrome; solve Cloudflare once
     try:
         while True:

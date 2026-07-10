@@ -35,7 +35,7 @@ TABS = {
     "Documentos": ["documento_id", "caso_id", "descripcion", "pdf_url"],
     "Patentes": ["patente", "rut_propietario", "nombre_propietario", "tipo",
                  "marca", "modelo", "anio", "color", "num_motor", "num_chasis",
-                 "combustible"],
+                 "combustible", "estado"],
     "CausaXRut": ["vinculo_id", "caso_id", "rut", "rol_parte", "updated_at"],
     "CausaXPatente": ["vinculo_id", "caso_id", "patente", "updated_at"],
 }
@@ -226,6 +226,13 @@ class Store:
     def ensure_search_tab(self, seed=True):
         """Create + seed the RutsConsulta tab if needed (safe to call every run)."""
         _ensure_search_tab(self.sheets, self.sheet_id, seed=seed)
+
+    def ensure_headers(self, tab):
+        """Write the canonical header row for `tab` (idempotent). Lets us add a
+        column (e.g. Patentes 'estado') without a full re-provision."""
+        self.sheets.spreadsheets().values().update(
+            spreadsheetId=self.sheet_id, range=f"{tab}!A1",
+            valueInputOption="RAW", body={"values": [TABS[tab]]}).execute()
 
     def read_causa_updated(self):
         """Return {caso_id: updated_at} for every causa already in the Sheet.
