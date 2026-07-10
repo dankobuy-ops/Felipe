@@ -39,6 +39,15 @@ CHALLENGE_MARKERS = ("verificación de seguridad", "just a moment",
 DATA_MARKERS = ("propietario", "marca", "modelo", "n° motor", "nro motor",
                 "combustible", "año", "chasis")
 
+# Adaptive pacing between plates. It starts brisk and self-tunes: every clean
+# request nudges the wait DOWN toward DELAY_MIN; every Cloudflare block bumps it
+# UP toward DELAY_MAX. So it runs about as fast as the site currently tolerates
+# and slows down on its own the moment it starts tripping. Override via env vars
+# (e.g. set PATENTE_DELAY_MIN=6 to be more cautious).
+DELAY_MIN   = float(os.environ.get("PATENTE_DELAY_MIN",   "4"))
+DELAY_MAX   = float(os.environ.get("PATENTE_DELAY_MAX",   "14"))
+DELAY_START = float(os.environ.get("PATENTE_DELAY_START", "5"))
+
 
 def _is_challenge(txt: str) -> bool:
     return any(m in txt for m in CHALLENGE_MARKERS)
@@ -71,7 +80,7 @@ def _wait_for_form(page, patente, timeout=150):
                 print(f"  [{patente}] ⚠ Cloudflare captcha on the homepage — solve it "
                       f"in the browser window; I'll continue once it clears…")
                 warned = True
-        page.wait_for_timeout(1_500)
+        page.wait_for_timeout(1_000)
     return False
 
 
@@ -88,7 +97,7 @@ def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
     deadline = time.monotonic() + 120
     warned = saw_challenge = False
     while time.monotonic() < deadline:
-        page.wait_for_timeout(1_500)
+        page.wait_for_timeout(800)
         txt = (page.inner_text("body") or "").lower()
         if "no encontr" in txt or "sin resultado" in txt:
             print(f"  [{patente}] no results on site")
@@ -151,11 +160,12 @@ def enrich_plates(store, page, plates, dry_run=False, _is_retry=False):
     plates = list(plates)
     found = 0
     challenged = []
+    delay = max(DELAY_MIN, min(DELAY_MAX, DELAY_START))  # adaptive; self-tunes below
     for i, patente in enumerate(plates):
         if i:
-            delay = random.uniform(7, 14)  # slower than before — fewer CF challenges
-            print(f"  (waiting {delay:.0f}s before next plate…)")
-            time.sleep(delay)
+            wait = random.uniform(delay * 0.8, delay * 1.2)  # jitter — stay human
+            print(f"  (waiting {wait:.0f}s before next plate…)")
+            time.sleep(wait)
         if page.is_closed():
             print("[patentes] browser/page closed — stopping early")
             break
@@ -163,13 +173,17 @@ def enrich_plates(store, page, plates, dry_run=False, _is_retry=False):
         try:
             result = scrape_patente(page, patente, diag=(i == 0 and not _is_retry))
         except CFChallenge as e:
-            print(f"  [{patente}] cloudflare blocked ({e}); will retry")
+            delay = min(DELAY_MAX, delay * 1.8)   # tripped a challenge — back off
+            print(f"  [{patente}] cloudflare blocked ({e}); slowing to ~{delay:.0f}s, will retry")
             challenged.append(patente)
             continue
         except Exception as e:
             print(f"  [{patente}] error ({e}); will retry")
             challenged.append(patente)
             continue
+        # The request got through cleanly (real data or a genuine 'no results'),
+        # so Cloudflare is calm — inch the pace back down toward the floor.
+        delay = max(DELAY_MIN, delay * 0.85)
         if not result:
             print("  -> not found")
             continue
