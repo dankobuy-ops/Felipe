@@ -27,6 +27,11 @@ CHALLENGE_MARKERS = ("verificación de seguridad", "just a moment",
                      "performing security verification")
 DATA_MARKERS = ("propietario", "marca", "modelo", "n° motor", "nro motor",
                 "combustible", "año", "chasis")
+# The site's genuine "no data" page reads "No SE encontraron resultados" — the old
+# "no encontr" marker missed it (the "se" breaks the match), so unknown plates hung
+# the full timeout instead of being skipped quickly.
+NORESULT_MARKERS = ("no se encontraron resultados", "no se encontr", "no encontr",
+                    "sin resultado", "no existe", "no hay resultado")
 
 # Adaptive pacing between plates. It starts brisk and self-tunes: every clean
 # request nudges the wait DOWN toward DELAY_MIN; every Cloudflare block bumps it
@@ -42,6 +47,10 @@ def _is_challenge(txt: str) -> bool:
 
 def _has_data(txt: str) -> bool:
     return sum(m in txt for m in DATA_MARKERS) >= 2
+
+
+def _no_result(txt: str) -> bool:
+    return any(m in txt for m in NORESULT_MARKERS)
 
 
 def _fill(page, sel, value):
@@ -73,22 +82,39 @@ def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
     session.dismiss_popups()
     _click_search(page)
 
-    deadline = time.monotonic() + 120
+    start = time.monotonic()
+    deadline = start + 45
     saw_challenge = False
+    nores_since = None
     while time.monotonic() < deadline:
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(700)
         try:
             txt = (page.inner_text("body") or "").lower()
         except Exception:
             txt = ""
-        if "no encontr" in txt or "sin resultado" in txt:
-            print(f"  [{patente}] sin resultados en el sitio")
-            return None
         if _has_data(txt):
             break
         if _is_challenge(txt):
             saw_challenge = True
+            continue
+        if _no_result(txt):
+            # "No se encontraron resultados. Vuelve a consultar en unos segundos…"
+            # can be a brief loading placeholder, so allow a short grace for data
+            # to appear before concluding the plate has no record.
+            if nores_since is None:
+                nores_since = time.monotonic()
+            elif time.monotonic() - nores_since > 12:
+                print(f"  [{patente}] sin datos en el sitio")
+                return None
+            continue
+        # The search never left the homepage — the site rejected the input.
+        if "/resultados" not in (page.url or "") and time.monotonic() - start > 12:
+            print(f"  [{patente}] el sitio no aceptó la patente (sin datos)")
+            return None
     else:
+        if nores_since is not None:
+            print(f"  [{patente}] sin datos en el sitio")
+            return None
         if saw_challenge:
             raise CFChallenge("el desafío de Cloudflare reapareció en los resultados")
         raise CFChallenge("tiempo agotado esperando resultados")
