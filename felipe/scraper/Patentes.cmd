@@ -36,7 +36,8 @@ call ".venv\Scripts\activate.bat"
 python -m pip install --upgrade pip >nul
 pip install -r requirements.txt
 if errorlevel 1 goto fail
-python -m patchright install chromium
+REM No browser download needed: we drive your real Google Chrome (the only thing
+REM that gets past patentechile's Cloudflare check).
 goto envready
 :haveenv
 call ".venv\Scripts\activate.bat"
