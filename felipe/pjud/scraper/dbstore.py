@@ -53,6 +53,17 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
+# Causas at these late etapas are NOT filled (Pass 2 skips them) — excepciones,
+# contestación, sentencia, terminada. Matched exactly against causas.etapa.
+FILL_SKIP_ETAPAS = [
+    "2 Excepciones",
+    "3 Contestación Excepciones",
+    "5 Sentencia",
+    "6 Terminada",
+    "8 Terminada",
+]
+
+
 # Short (10-char base62) unique-id generator — a compact, stable, AppSheet-friendly key
 # (~5.8e17 space → collision-free at our scale). Used as the DEFAULT for every `uid`.
 _SHORT_UID_FN = """
@@ -302,14 +313,15 @@ class Store:
     def fill_targets(self, only_selected=False):
         """[(causa_id, tribunal_id, rol, f_ingreso)] of causas still needing their far
         data. only_selected=True restricts to the user's fill=true picks; otherwise every
-        not-yet-'done' causa (used for the January baseline fill)."""
+        not-yet-'done' causa. Causas at late etapas (FILL_SKIP_ETAPAS) are never filled."""
         where = ("fill = true AND fill_status <> 'done'" if only_selected
                  else "fill_status <> 'done'")
+        where += " AND (etapa IS NULL OR etapa <> ALL(%s))"
         for attempt in (1, 2):
             try:
                 with self.conn.cursor() as cur:
                     cur.execute(f"SELECT causa_id, tribunal_id, rol, f_ingreso FROM causas "
-                                f"WHERE {where}")
+                                f"WHERE {where}", (FILL_SKIP_ETAPAS,))
                     return cur.fetchall()
             except psycopg2.OperationalError:
                 if attempt == 1:
