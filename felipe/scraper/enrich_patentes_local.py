@@ -37,9 +37,9 @@ NORESULT_MARKERS = ("no se encontraron resultados", "no se encontr", "no encontr
 # Adaptive pacing between plates. It starts brisk and self-tunes: every clean
 # request nudges the wait DOWN toward DELAY_MIN; every Cloudflare block bumps it
 # UP toward DELAY_MAX. Override via env vars (e.g. PATENTE_DELAY_MIN=6).
-DELAY_MIN   = float(os.environ.get("PATENTE_DELAY_MIN",   "4"))
-DELAY_MAX   = float(os.environ.get("PATENTE_DELAY_MAX",   "14"))
-DELAY_START = float(os.environ.get("PATENTE_DELAY_START", "5"))
+DELAY_MIN   = float(os.environ.get("PATENTE_DELAY_MIN",   "5"))
+DELAY_MAX   = float(os.environ.get("PATENTE_DELAY_MAX",   "15"))
+DELAY_START = float(os.environ.get("PATENTE_DELAY_START", "6"))
 
 
 def _is_challenge(txt: str) -> bool:
