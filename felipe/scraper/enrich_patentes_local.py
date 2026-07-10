@@ -129,25 +129,66 @@ def scrape_patente(page, patente: str, diag: bool = False) -> dict | None:
     return result
 
 
-def open_context(pw):
-    """Open the persistent, visible browser context used for scraping.
+def _find_chrome():
+    """Locate a real Google Chrome executable across common OS locations."""
+    candidates = []
+    if sys.platform.startswith("win"):
+        for env in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            base = os.environ.get(env)
+            if base:
+                candidates.append(os.path.join(
+                    base, "Google", "Chrome", "Application", "chrome.exe"))
+    elif sys.platform == "darwin":
+        candidates.append(
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+    else:
+        candidates += ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+                       "/opt/google/chrome/chrome"]
+    return next((p for p in candidates if os.path.exists(p)), None)
 
-    Under patchright we follow its stealth guidance: real Chrome channel, persistent
-    context, no_viewport, and NO --disable-blink-features flag (patchright handles
-    the automation-detection surface itself; that flag is itself a tell)."""
+
+def open_context(pw):
+    """Open the persistent, VISIBLE (never headless) browser context used for scraping.
+
+    headless=False is deliberate and required: patentechile.com's Cloudflare
+    challenge detects headless/automated browsers, so a real on-screen window is
+    the only thing that gets through — you solve the challenge once and the cookie
+    persists in the profile. Under patchright we follow its stealth guidance: real
+    Chrome channel, persistent context, no_viewport, and NO
+    --disable-blink-features flag (patchright handles the automation-detection
+    surface itself; that flag is itself a tell)."""
     os.makedirs(PROFILE_DIR, exist_ok=True)
     print(f"[patentes] browser driver: {_DRIVER}")
     kwargs = dict(
-        headless=False,
+        headless=False,                 # visible window — do NOT set True (CF blocks it)
         no_viewport=True,
         locale="es-CL", timezone_id="America/Santiago",
     )
+    # Real Google Chrome ONLY. The bundled Chromium is far more detectable and
+    # Cloudflare blocks it, so we never fall back to it: try the 'chrome' channel,
+    # then an explicit Chrome path, and if neither works, stop with a clear message.
     try:
-        # Real Chrome + patchright is the strongest combo against CF fingerprinting.
-        return pw.chromium.launch_persistent_context(PROFILE_DIR, channel="chrome", **kwargs)
+        ctx = pw.chromium.launch_persistent_context(PROFILE_DIR, channel="chrome", **kwargs)
+        print("[patentes] using real Google Chrome (channel=chrome, visible window)")
+    except Exception as e:
+        chrome = _find_chrome()
+        if not chrome:
+            raise SystemExit(
+                "[FATAL] No pude abrir Google Chrome (y es obligatorio: el Chromium "
+                "interno lo bloquea Cloudflare).\n"
+                f"        Detalle: {e}\n"
+                "        Instala Chrome desde https://www.google.com/chrome/ y reintenta.")
+        print(f"[patentes] channel=chrome falló ({e}); abriendo Chrome real en {chrome}")
+        ctx = pw.chromium.launch_persistent_context(
+            PROFILE_DIR, executable_path=chrome, **kwargs)
+        print("[patentes] using real Google Chrome (executable_path, visible window)")
+    # Surface the window so the Cloudflare challenge is impossible to miss.
+    try:
+        pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+        pg.bring_to_front()
     except Exception:
-        print("[patentes] real Chrome not found; using bundled Chromium")
-        return pw.chromium.launch_persistent_context(PROFILE_DIR, **kwargs)
+        pass
+    return ctx
 
 
 def enrich_plates(store, page, plates, dry_run=False, _is_retry=False):
