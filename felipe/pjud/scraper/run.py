@@ -798,20 +798,54 @@ def parse_escritos(page):
 
 
 def close_overlay(page, sel):
-    """Close a nested sub-modal (receptor / geo) without disturbing #modalDetalleCivil."""
-    for s in (f"{sel} button.close", f"{sel} .close",
-              f"{sel} button[data-dismiss='modal']"):
+    """Close a nested sub-modal (receptor / geo) and VERIFY it's gone, without disturbing
+    #modalDetalleCivil. Escalates until the modal is actually hidden: Bootstrap hide →
+    close buttons → Escape → force-hide + clear the backdrop."""
+    def is_open():
         try:
-            page.click(s, timeout=1500)
-            page.wait_for_timeout(400)
-            return
+            return page.eval_on_selector(
+                sel,
+                "e => !!e && (e.classList.contains('show') || e.classList.contains('in')"
+                " || getComputedStyle(e).display !== 'none')") or False
         except Exception:
-            pass
-    try:                                # fallback: hide via the page's jQuery
+            return False
+
+    # 1) Bootstrap's own dismiss (most reliable — a stray .close click often doesn't take)
+    try:
         page.evaluate("s => { if (window.jQuery) jQuery(s).modal('hide'); }", sel)
+        page.wait_for_timeout(300)
     except Exception:
         pass
-    page.wait_for_timeout(300)
+    # 2) close buttons — but keep going until it's actually gone
+    if is_open():
+        for s in (f"{sel} button.close", f"{sel} .close",
+                  f"{sel} button[data-dismiss='modal']", f"{sel} [data-dismiss='modal']"):
+            try:
+                page.click(s, timeout=1000)
+                page.wait_for_timeout(300)
+                if not is_open():
+                    break
+            except Exception:
+                pass
+    # 3) Escape key
+    if is_open():
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
+    # 4) last resort: force-hide this modal + clear any leftover backdrop
+    if is_open():
+        try:
+            page.evaluate(
+                "s => { const m = document.querySelector(s);"
+                " if (m) { m.classList.remove('show','in'); m.style.display='none';"
+                "          m.setAttribute('aria-hidden','true'); }"
+                " document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());"
+                " document.body.classList.remove('modal-open'); }", sel)
+        except Exception:
+            pass
+    page.wait_for_timeout(250)
 
 
 # ── Notificaciones Receptor (causa-level sub-modal #modalReceptorCivil) ────────
