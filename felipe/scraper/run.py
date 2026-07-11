@@ -697,6 +697,14 @@ JUZGADOS_SEED = [
      "url": "https://mlobarnechea.custhelp.com/app/answers/detail/a_id/83/incidents.c$tipo_atencion/221"},
 ]
 
+# Juzgados that are temporarily un-scrapeable. Vitacura migrated its causa
+# consultation to a new portal (sistemas.smc.cl/VitacuraConsultaCausas) on
+# 2026-07 that is gated behind Clave Única (the national gov SSO); the old
+# public RUT search form no longer exists, so it can't be scraped unattended.
+# The batch skips these — cleanly, without marking the sweep incomplete, so it
+# stops re-dispatching forever. Re-enable simply by removing the id here.
+DISABLED_JUZGADOS = {"vitacura"}
+
 
 def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -999,6 +1007,13 @@ def scrape_target(ctx, store, juzgado_id, target_url, search_code, deadline,
 # ── Single-RUT mode (scrape.yml) ──────────────────────────────────────────────
 
 def scrape(args, store):
+    disabled_urls = {j["url"] for j in JUZGADOS_SEED
+                     if j["juzgado_id"] in DISABLED_JUZGADOS}
+    if args.juzgado in DISABLED_JUZGADOS or args.target_url in disabled_urls:
+        log(f"[INFO] Juzgado deshabilitado (el portal ahora exige Clave Única) — "
+            f"nada que hacer: {args.juzgado or args.target_url}")
+        write_status("complete")
+        return
     deadline = time.monotonic() + args.max_seconds
     store.upsert("Juzgados", JUZGADOS_SEED)   # court registry (Causas.juzgado_id FK)
 
@@ -1042,6 +1057,10 @@ def scrape_all(args, store):
         ctx     = browser.new_context(accept_downloads=True, ignore_https_errors=True)
         try:
             for c in combos:
+                if c["juzgado_id"] in DISABLED_JUZGADOS:
+                    log(f"[INFO] Omitiendo {c['juzgado_id']} — deshabilitado "
+                        f"(el portal ahora exige inicio de sesión con Clave Única)")
+                    continue
                 if time.monotonic() >= deadline:
                     log("[INFO] Global time limit reached — will re-dispatch")
                     incomplete = True
