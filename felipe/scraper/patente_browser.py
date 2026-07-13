@@ -119,6 +119,21 @@ class Session:
         except Exception:
             pass
 
+    def restart(self):
+        """Fully close Chrome and open a fresh window (same profile, so the solved
+        Cloudflare cookie carries over — no re-solve). Used to give each plate a
+        brand-new window with no leftover ad / vignette state. Waits for the debug
+        port to free before relaunching so the new Chrome can bind it cleanly."""
+        self.close()
+        deadline = time.time() + 15
+        while time.time() < deadline and self._http_pages():
+            time.sleep(0.5)
+        time.sleep(1.0)                       # let the profile lock release
+        self._proc = None
+        self._browser = None
+        self._page = None
+        return self.start()
+
     def __enter__(self):
         return self.start()
 
