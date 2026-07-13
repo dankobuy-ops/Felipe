@@ -77,10 +77,15 @@ def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
     """Search one plate on an already-past-Cloudflare session. Returns the parsed
     fields, None if the site has no data, or raises CFChallenge if the wall
     reappeared (so the caller retries after a re-solve)."""
+    # Fresh navigation to the homepage every time — never the results page's
+    # "Buscar otra" button. A full (re)load re-triggers the site's pop-up ad, which
+    # a real, ad-accepting browser is expected to open. Let it render and THEN close
+    # it; that's what stops patentechile.com from flagging us as a bot and serving a
+    # bogus "sin resultados" page for plates that actually have data.
     page = session.goto_home()
-    session.dismiss_popups()                 # clear any ad tab/overlay first
+    session.let_ad_settle()                   # let the pop-up ad open + load, then close it
     _fill(page, "#inputTerm", patente)
-    session.dismiss_popups()
+    session.dismiss_popups()                  # sweep any late pop-under before searching
     _click_search(page)
 
     start = time.monotonic()

@@ -84,6 +84,13 @@ class Session:
             f"--remote-debugging-port={self.port}",
             f"--user-data-dir={self.profile}",
             "--no-first-run", "--no-default-browser-check",
+            # patentechile.com serves its ads as pop-ups / pop-unders. Chrome blocks
+            # those by default, and the site reads a *blocked* pop-up as an ad-blocker
+            # (i.e. a bot) and degrades to a bogus "no se encontraron resultados" page
+            # even for plates that DO have data. Allowing the pop-up to open — a real,
+            # ad-accepting browser does — is what keeps the site serving real results.
+            # We open Chrome, let the ad render, then close it (see let_ad_settle).
+            "--disable-popup-blocking",
             HOME,
         ])
         self._pw = sync_playwright().start()
@@ -166,6 +173,19 @@ class Session:
             self._page.keyboard.press("Escape")   # dismisses many overlay ads
         except Exception:
             pass
+
+    def let_ad_settle(self, wait=2.5):
+        """Give the site's pop-up ad time to actually OPEN and load, then close it.
+
+        patentechile.com expects a real, ad-accepting browser to spawn its pop-under
+        when the homepage loads. Letting the pop-up render — instead of it being
+        silently blocked — is the signal that keeps the site from treating us as a
+        bot. We wait a beat so the ad's request fires, then dismiss it so the
+        workspace stays clean before we search."""
+        if self._browser is None:
+            self._attach()
+        time.sleep(wait)
+        self.dismiss_popups()
 
     # ── Cloudflare wall ──────────────────────────────────────────────────────
     def _http_pages(self):
