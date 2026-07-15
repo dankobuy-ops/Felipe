@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m venv .venv)",
+      "Bash(./.venv/Scripts/python.exe -m pip install --upgrade pip -q)",
+      "Bash(./.venv/Scripts/python.exe -m pip install -r requirements.txt)",
+      "Bash(./.venv/Scripts/python.exe C:/Users/Danko/AppData/Local/Temp/claude/C--Claude-webcam/55ccdb90-f8ae-487a-b10c-fd51bc270dbe/scratchpad/make_test_clip.py)",
+      "Bash(./.venv/Scripts/python.exe run.py process data/videos/_selftest.mp4)",
+      "Bash(./.venv/Scripts/python.exe run.py list)",
+      "Bash(./.venv/Scripts/python.exe run.py plates)",
+      "Bash(./.venv/Scripts/python.exe run.py stats)",
+      "Bash(git -C C:/Claude status --short -- webcam/)",
+      "Bash(git -C C:/Claude reset -q)",
+      "Bash(git -C C:/Claude add webcam .gitignore)",
+      "Bash(git -C C:/Claude diff --cached --name-status)",
+      "Bash(git -C C:/Claude diff --cached --name-only)",
+      "Bash(grep -v '^webcam/\\\\|^\\\\.gitignore$')"
+    ]
+  }
+}

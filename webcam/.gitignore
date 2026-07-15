@@ -1,0 +1,20 @@
+# Never commit captured footage, extracted images, or the plate database.
+# This is personal data — it stays on your machine.
+data/videos/*
+data/frames/*
+data/crops/*
+data/*.db
+data/*.db-journal
+data/*.db-wal
+
+# keep the empty folders in git so the layout survives a fresh clone
+!data/videos/.gitkeep
+!data/frames/.gitkeep
+!data/crops/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/

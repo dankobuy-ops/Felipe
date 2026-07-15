@@ -1,0 +1,30 @@
+# ── Bike ALPR configuration ───────────────────────────────────────────────
+# Everything the pipeline needs to tune. Edit freely; no code changes required.
+
+region: cl                 # Chile plate hints for normalization (4 letters + 2 digits)
+
+# fast-alpr models (downloaded automatically on first run, cached afterwards)
+detector_model: yolo-v9-t-384-license-plate-end2end
+ocr_model: global-plates-mobile-vit-v2-model
+
+# ── Frame handling ─────────────────────────────────────────────────────────
+frame_sample_every: 2      # process every Nth frame (1 = every frame, slower)
+
+# ── Confidence gates (drop weak reads) ─────────────────────────────────────
+min_ocr_confidence: 0.55   # ignore plate reads below this OCR confidence
+min_det_confidence: 0.30   # ignore plate detections below this box confidence
+
+# ── Deduplication ──────────────────────────────────────────────────────────
+merge_window_seconds: 3.0  # same plate seen within this gap = one sighting;
+                           # a longer gap starts a new sighting event
+
+# ── What to save ───────────────────────────────────────────────────────────
+save_full_frames: true     # keep the whole frame (evidence), not just the crop
+estimate_color: true       # approximate vehicle color from the area above the plate
+
+# ── Paths (relative to the project root) ───────────────────────────────────
+paths:
+  videos: data/videos
+  frames: data/frames
+  crops: data/crops
+  db: data/plates.db

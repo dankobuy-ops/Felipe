@@ -1,0 +1,2 @@
+# Drop your ride footage (.mp4 / .mov) here, then run:
+#   python run.py process data/videos

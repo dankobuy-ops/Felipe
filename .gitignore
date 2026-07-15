@@ -26,4 +26,8 @@ build/
 # EXCEPCIÓN: felipe/ es un proyecto de código — rastrear todo
 !felipe/**
 !felipe/.github/**
+
+# EXCEPCIÓN: webcam/ es un proyecto de código — rastrear todo
+# (los datos de captura, el venv y la BD los excluye webcam/.gitignore)
+!webcam/**
 .gstack/

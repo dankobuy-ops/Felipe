@@ -1,0 +1,6 @@
+# Bike ALPR pipeline — local, offline plate recognition
+fast-alpr>=0.2.0        # YOLO plate detector + OCR, runs locally via ONNX
+onnxruntime>=1.17       # inference backend for fast-alpr (CPU)
+opencv-python>=4.9      # video decoding + frame handling
+numpy>=1.26
+PyYAML>=6.0             # config.yaml
