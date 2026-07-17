@@ -1,4 +1,5 @@
 playwright
+psycopg2-binary
 requests
 google-auth
 google-auth-oauthlib
