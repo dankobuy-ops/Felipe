@@ -84,6 +84,13 @@ class Session:
             f"--remote-debugging-port={self.port}",
             f"--user-data-dir={self.profile}",
             "--no-first-run", "--no-default-browser-check",
+            # patentechile.com serves its ads as pop-ups / pop-unders. Chrome blocks
+            # those by default, and the site reads a *blocked* pop-up as an ad-blocker
+            # (i.e. a bot) and degrades to a bogus "no se encontraron resultados" page
+            # even for plates that DO have data. Allowing the pop-up to open — a real,
+            # ad-accepting browser does — is what keeps the site serving real results.
+            # We open Chrome, let the ad render, then close it (see let_ad_settle).
+            "--disable-popup-blocking",
             HOME,
         ])
         self._pw = sync_playwright().start()
@@ -111,6 +118,21 @@ class Session:
                 self._proc.terminate()
         except Exception:
             pass
+
+    def restart(self):
+        """Fully close Chrome and open a fresh window (same profile, so the solved
+        Cloudflare cookie carries over — no re-solve). Used to give each plate a
+        brand-new window with no leftover ad / vignette state. Waits for the debug
+        port to free before relaunching so the new Chrome can bind it cleanly."""
+        self.close()
+        deadline = time.time() + 15
+        while time.time() < deadline and self._http_pages():
+            time.sleep(0.5)
+        time.sleep(1.0)                       # let the profile lock release
+        self._proc = None
+        self._browser = None
+        self._page = None
+        return self.start()
 
     def __enter__(self):
         return self.start()
@@ -166,6 +188,19 @@ class Session:
             self._page.keyboard.press("Escape")   # dismisses many overlay ads
         except Exception:
             pass
+
+    def let_ad_settle(self, wait=2.5):
+        """Give the site's pop-up ad time to actually OPEN and load, then close it.
+
+        patentechile.com expects a real, ad-accepting browser to spawn its pop-under
+        when the homepage loads. Letting the pop-up render — instead of it being
+        silently blocked — is the signal that keeps the site from treating us as a
+        bot. We wait a beat so the ad's request fires, then dismiss it so the
+        workspace stays clean before we search."""
+        if self._browser is None:
+            self._attach()
+        time.sleep(wait)
+        self.dismiss_popups()
 
     # ── Cloudflare wall ──────────────────────────────────────────────────────
     def _http_pages(self):

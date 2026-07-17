@@ -65,23 +65,104 @@ def _fill(page, sel, value):
 
 
 def _click_search(page):
-    """Trigger the search. Normal click first; if an ad overlay intercepts it,
-    fire the button's own click() via JS so the search still runs."""
+    """Trigger the search by invoking the button's own click() in JS.
+
+    The site wires its search to #searchBtn via addEventListener('click', …).
+    Playwright's coordinate-based page.click() frequently lands on nothing (the
+    button sits under an ad or just off-viewport) yet returns WITHOUT error, so the
+    search silently never fires and the plate looks like "no aceptó". Calling the
+    element's own .click() invokes the handler directly and reliably — and, being a
+    scripted call, it isn't swallowed by the ad's click interceptor. A real click is
+    only a last resort."""
     try:
-        page.click("#searchBtn", timeout=5_000)
-    except Exception:
         page.eval_on_selector("#searchBtn", "el => el.click()")
+    except Exception:
+        try:
+            page.click("#searchBtn", timeout=4_000)
+        except Exception:
+            pass
+
+
+def _clear_vignette(page, timeout=10):
+    """Dismiss Google AdSense's full-page 'vignette' interstitial.
+
+    With ads allowed, AdSense drops a vignette on navigation: the URL gets a
+    '#google_vignette' hash and an aswift ad iframe covers the search button,
+    swallowing the click — so the site looks like it 'no aceptó la patente' even
+    though the plate was typed in fine. The vignette is a fake history state, so
+    history.back() closes it (exactly what a human does by dismissing the ad).
+    Returns once the search button is actually clickable (not under an ad), or
+    False after `timeout` seconds."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = page.evaluate("""() => {
+            const btn = document.querySelector('#searchBtn');
+            let covered = true;
+            if (btn) {
+                const b = btn.getBoundingClientRect();
+                if (b.width) {
+                    const el = document.elementFromPoint(b.left + b.width/2, b.top + b.height/2);
+                    covered = !el || (el !== btn && !btn.contains(el));
+                }
+            }
+            return {covered, vignette: location.hash.includes('google_vignette')};
+        }""")
+        if not state["covered"]:
+            return True
+        try:
+            if state["vignette"]:
+                page.evaluate("() => window.history.back()")   # pop the vignette state
+            else:
+                page.keyboard.press("Escape")
+        except Exception:
+            pass
+        page.wait_for_timeout(700)
+    return False
+
+
+def _submit_search(session, page, patente, tries=3):
+    """Fill + submit, defeating the vignette ad that eats the first click.
+
+    Order matters: the vignette *ablates* (removes) the search box from the DOM
+    while it's showing, so we must clear it BEFORE filling, or #inputTerm isn't
+    there yet. Clear → fill → click; if we haven't reached /resultados, clear and
+    retry (the search click itself can spawn a fresh vignette). Returns True once
+    the results page loads."""
+    for _ in range(tries):
+        _clear_vignette(page)                 # dismiss the ad first so the form re-appears
+        try:
+            page.wait_for_selector("#inputTerm", state="visible", timeout=8_000)
+        except Exception:
+            # form still missing — the ad likely navigated the page; reload home.
+            page = session.goto_home()
+            _clear_vignette(page)
+        _fill(page, "#inputTerm", patente)
+        session.dismiss_popups()
+        _clear_vignette(page)                 # a fresh vignette may have popped on fill
+        _click_search(page)
+        for _ in range(8):                    # ~4s grace for the navigation
+            page.wait_for_timeout(500)
+            if "/resultados" in (page.url or ""):
+                return True
+        _clear_vignette(page)                 # the click may have popped a new vignette
+    return "/resultados" in (page.url or "")
 
 
 def scrape_patente(session, patente: str, diag: bool = False) -> dict | None:
     """Search one plate on an already-past-Cloudflare session. Returns the parsed
     fields, None if the site has no data, or raises CFChallenge if the wall
     reappeared (so the caller retries after a re-solve)."""
+    # Fresh navigation to the homepage every time — never the results page's
+    # "Buscar otra" button. A full (re)load re-triggers the site's pop-up ad, which
+    # a real, ad-accepting browser is expected to open. Let it render and THEN close
+    # it; that's what stops patentechile.com from flagging us as a bot and serving a
+    # bogus "sin resultados" page for plates that actually have data.
     page = session.goto_home()
-    session.dismiss_popups()                 # clear any ad tab/overlay first
-    _fill(page, "#inputTerm", patente)
-    session.dismiss_popups()
-    _click_search(page)
+    session.let_ad_settle()                   # let the pop-up ad open + load, then close it
+    # Fill + submit, clearing Google's #google_vignette interstitial (an ad iframe
+    # that covers the search button and swallows the click). Retries until the
+    # results page loads, so the site stops looking like it "no aceptó la patente".
+    _submit_search(session, page, patente)
 
     start = time.monotonic()
     deadline = start + 45
@@ -141,9 +222,22 @@ def enrich_plates(store, session, plates, dry_run=False, _is_retry=False):
     delay = max(DELAY_MIN, min(DELAY_MAX, DELAY_START))
     for i, patente in enumerate(plates):
         if i:
-            wait = random.uniform(delay * 0.8, delay * 1.2)   # jitter — stay human
-            print(f"  (esperando {wait:.0f}s antes de la siguiente patente…)")
-            time.sleep(wait)
+            gap = random.uniform(delay * 0.8, delay * 1.2)    # target human gap between searches
+            # Fresh window per plate: close Chrome and reopen it so each plate starts
+            # from a clean page with no leftover ad/vignette state (the profile
+            # persists, so the solved Cloudflare cookie carries over — no re-solve).
+            # Opening/closing a window IS part of a human's gap between searches, so we
+            # time the restart and only sleep the leftover, instead of adding it on top.
+            t0 = time.monotonic()
+            try:
+                print("  (reabriendo ventana de Chrome para la siguiente patente…)")
+                session.restart()
+            except Exception as e:
+                print(f"  [aviso] no se pudo reabrir la ventana ({e}); sigo con la actual")
+            leftover = gap - (time.monotonic() - t0)
+            if leftover > 0:
+                print(f"  (pausa {leftover:.0f}s para parecer humano…)")
+                time.sleep(leftover)
         if not session.alive():
             print("[patentes] la ventana de Chrome se cerró — deteniendo")
             break
