@@ -38,4 +38,10 @@ felipe/**/*.pyc
 # (los datos de captura, el venv y la BD los excluye webcam/.gitignore)
 !webcam/**
 
+# EXCEPCIÓN: cias/ es un proyecto de código — rastrear todo
+# (usa el venv compartido de felipe/; sólo se excluyen caches locales)
+!cias/**
+cias/**/__pycache__/
+cias/**/*.pyc
+
 .gstack/
