@@ -26,13 +26,18 @@ if not defined PY (
   exit /b 1
 )
 
-REM --- 2. Entorno aislado (solo la primera vez) ---------------------
-if exist ".venv\Scripts\python.exe" goto haveenv
+REM --- 2. Entorno aislado (per-PC, FUERA de la carpeta sincronizada) -
+REM  Un venv NO se puede compartir entre PCs: tiene rutas absolutas del
+REM  usuario/Python de la maquina que lo creo. Por eso lo creamos en una ruta
+REM  LOCAL de este PC (%LOCALAPPDATA%), no en la carpeta del repo (que se
+REM  sincroniza con Drive). Asi cada PC tiene el suyo y nunca chocan.
+set "VENV=%LOCALAPPDATA%\jpl_patentes_venv"
+if exist "%VENV%\Scripts\python.exe" goto haveenv
 echo  [preparando] Instalando dependencias. Solo la 1a vez; puede tardar
 echo               unos minutos. Dejalo trabajar...
-%PY% -m venv .venv
+%PY% -m venv "%VENV%"
 if errorlevel 1 goto fail
-call ".venv\Scripts\activate.bat"
+call "%VENV%\Scripts\activate.bat"
 python -m pip install --upgrade pip >nul
 pip install -r requirements.txt
 if errorlevel 1 goto fail
@@ -40,7 +45,7 @@ REM No browser download needed: we drive your real Google Chrome (the only thing
 REM that gets past patentechile's Cloudflare check).
 goto envready
 :haveenv
-call ".venv\Scripts\activate.bat"
+call "%VENV%\Scripts\activate.bat"
 :envready
 
 REM --- 3. Credenciales de Google -----------------------------------

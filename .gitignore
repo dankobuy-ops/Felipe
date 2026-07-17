@@ -27,7 +27,15 @@ build/
 !felipe/**
 !felipe/.github/**
 
+# ...pero NUNCA los entornos virtuales ni caches: son locales de cada PC
+# (rutas absolutas del usuario/Python) y no se pueden compartir entre máquinas.
+felipe/**/.venv/
+felipe/**/venv/
+felipe/**/__pycache__/
+felipe/**/*.pyc
+
 # EXCEPCIÓN: webcam/ es un proyecto de código — rastrear todo
 # (los datos de captura, el venv y la BD los excluye webcam/.gitignore)
 !webcam/**
+
 .gstack/
