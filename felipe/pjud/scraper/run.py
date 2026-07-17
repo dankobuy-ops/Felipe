@@ -1897,6 +1897,84 @@ def ensure_form_ready(page, cv, cname):
     return {o["v"]: o["t"] for o in opts if o["v"] not in ("", "0")}
 
 
+def _collab_sweep(page, api, targets, cortemap, args):
+    """Run the corte→tribunal→month→causa fill sweep on an established form. Raises on
+    browser-death so the caller can relaunch; transient errors are handled inline."""
+    filled, stop = 0, False
+    for cv, tribmap in targets.items():
+        if stop:
+            break
+        # Corte setup is transient-error-prone (a stray navigation destroys the execution
+        # context). Retry up to 3×; skip the corte if it still fails (its causas stay
+        # not-done → picked up on a re-run) — never crash over one blip.
+        trib_names = None
+        for setup_try in (1, 2, 3):
+            try:
+                trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                break
+            except Exception as e:
+                if _browser_dead(e):
+                    raise
+                log(f"[COLLAB][ERR] corte {cv} setup try {setup_try}/3: {e}")
+                page.wait_for_timeout(3000)
+        if trib_names is None:
+            log(f"[COLLAB] corte {cv} skipped after 3 setup failures.")
+            continue
+        for tv, permonth in tribmap.items():
+            if stop:
+                break
+            tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
+                        "tribunal": trib_names.get(tv, tv)}
+            for (yy, mm), rols in permonth.items():
+                if stop:
+                    break
+                # Search; a tribunal we KNOW has targets that returns 0 (cascade hiccup)
+                # → re-select the corte and retry (up to 2×).
+                want, tries = {}, 0
+                while True:
+                    try:
+                        if not date_form_alive(page):
+                            trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                            tribunal["tribunal"] = trib_names.get(tv, tv)
+                        rows = search_month_paginated(page, tv, yy, mm)
+                    except Exception as e:
+                        if _browser_dead(e):
+                            raise
+                        log(f"[COLLAB][ERR] search {tv} {yy}-{mm:02d}: {e}")
+                        rows = []
+                    want = {r["rol"]: r for r in rows if r["rol"] in rols and r["jwt"]}
+                    if want or tries >= 2:
+                        break
+                    tries += 1
+                    log(f"[COLLAB] trib {tv} {yy}-{mm:02d}: 0/{len(rols)} matched — "
+                        f"retry {tries} (re-select corte)")
+                    trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
+                    tribunal["tribunal"] = trib_names.get(tv, tv)
+                log(f"[COLLAB] corte {cv}/trib {tv} {yy}-{mm:02d}: "
+                    f"matched {len(want)}/{len(rols)}"
+                    + ("  (!! still 0 after retries)" if rols and not want else ""))
+                for rol, r in want.items():
+                    _pace(*FILL_OPEN_PACE)
+                    try:
+                        scrape_causa(page, api, r, tribunal, enforce_gates=False)
+                        STORE.mark_filled(f"{tv}-{rol}", "done")
+                        filled += 1
+                    except Exception as e:
+                        if _browser_dead(e):
+                            raise
+                        log(f"[COLLAB][ERR] fill {tv}-{rol}: {e}")
+                        STORE.mark_filled(f"{tv}-{rol}", "error")
+                        _close_detail(page)
+                    if args.limit and filled >= args.limit:
+                        log(f"[COLLAB] --limit {args.limit} reached — stopping.")
+                        stop = True
+                        break
+                flush_buffer()
+                if stop:
+                    break
+                _pace(*FILL_SEARCH_PACE)
+
+
 def scrape_collab(args):
     """Collaborative full scrape/fill over a REAL Chrome the operator drives past the
     entry/CAPTCHA. Targets causas that still need their far data (all not-'done', or only
@@ -1911,126 +1989,71 @@ def scrape_collab(args):
     name2corte = {n: v for (v, n) in CORTES}
     trib_corte = {r["id"]: r.get("corte", "") for r in STORE.read_tab("Tribunales")}
 
-    # Group targets by corte → tribunal → (year, month) from each causa's f_ingreso, so we
-    # only re-search the months that actually contain causas (no wasted searches).
+    # Targets grouped by corte → tribunal → (year, month) from each causa's f_ingreso, so
+    # we only re-search months that contain causas. Re-built on each (re)launch, so a
+    # relaunch after a window-close naturally skips whatever already got filled.
     want_cortes = {c.strip() for c in (args.corte or "").split(",") if c.strip()}
-    targets, unmapped = {}, 0
-    for causa_id, tv, rol, fing in STORE.fill_targets(only_selected=args.selected):
-        iso = parse_fecha(fing)
-        cv = name2corte.get(trib_corte.get(tv, ""), "")
-        if not iso or not cv:
-            unmapped += 1
-            continue
-        if want_cortes and cv not in want_cortes:
-            continue
-        yy, mm = int(iso[:4]), int(iso[5:7])
-        if (args.year and yy != args.year) or (args.month and mm != args.month):
-            continue
-        targets.setdefault(cv, {}).setdefault(tv, {}).setdefault((yy, mm), set()).add(rol)
-    n_causas = sum(len(rs) for tm in targets.values()
-                   for pm in tm.values() for rs in pm.values())
-    n_tribs = sum(len(tm) for tm in targets.values())
-    log(f"[COLLAB] fill{'(selected)' if args.selected else ''}: {n_causas} causas · "
-        f"{n_tribs} tribunals · {len(targets)} cortes"
-        + (f" · {unmapped} unmapped(skipped)" if unmapped else ""))
-    if not n_causas:
-        log("[COLLAB] nothing to fill.")
-        return
+
+    def build_targets():
+        tg, unmapped = {}, 0
+        for causa_id, tv, rol, fing in STORE.fill_targets(only_selected=args.selected):
+            iso = parse_fecha(fing)
+            cv = name2corte.get(trib_corte.get(tv, ""), "")
+            if not iso or not cv:
+                unmapped += 1
+                continue
+            if want_cortes and cv not in want_cortes:
+                continue
+            yy, mm = int(iso[:4]), int(iso[5:7])
+            if (args.year and yy != args.year) or (args.month and mm != args.month):
+                continue
+            tg.setdefault(cv, {}).setdefault(tv, {}).setdefault((yy, mm), set()).add(rol)
+        return tg, unmapped
 
     with sync_playwright() as pw:
-        proc, port = _launch_cdp_chrome(args.worker_id)
-        b = pw.chromium.connect_over_cdp(f"http://localhost:{port}")
-        ctx = b.contexts[0]
-        page = next((p for p in ctx.pages if "pjud" in (p.url or "")),
-                    ctx.pages[0] if ctx.pages else ctx.new_page())
-        api = ctx.request
-        try:
-            wait_for_consulta_form(page)
-            open_date_tab(page)
-            filled, stop = 0, False
-            for cv, tribmap in targets.items():
-                if stop:
-                    break
-                # Corte setup is transient-error-prone (a stray navigation destroys the
-                # execution context). Retry once after a pause; skip the corte if it still
-                # fails (its causas stay not-done → picked up on a re-run) — never crash
-                # the whole session over one blip.
-                trib_names = None
-                for setup_try in (1, 2, 3):
-                    try:
-                        trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
-                        break
-                    except Exception as e:
-                        if _browser_dead(e):
-                            raise
-                        log(f"[COLLAB][ERR] corte {cv} setup try {setup_try}/3: {e}")
-                        page.wait_for_timeout(3000)
-                if trib_names is None:
-                    log(f"[COLLAB] corte {cv} skipped after 3 setup failures.")
-                    continue
-                for tv, permonth in tribmap.items():
-                    if stop:
-                        break
-                    tribunal = {"id": tv, "corte": cortemap.get(cv, cv),
-                                "tribunal": trib_names.get(tv, tv)}
-                    for (yy, mm), rols in permonth.items():
-                        if stop:
-                            break
-                        # Search; if a tribunal we KNOW has targets returns 0 matches
-                        # (cascade hiccup), re-select the corte and retry (up to 2×).
-                        want, tries = {}, 0
-                        while True:
-                            try:
-                                if not date_form_alive(page):
-                                    trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
-                                    tribunal["tribunal"] = trib_names.get(tv, tv)
-                                rows = search_month_paginated(page, tv, yy, mm)
-                            except Exception as e:
-                                if _browser_dead(e):
-                                    raise
-                                log(f"[COLLAB][ERR] search {tv} {yy}-{mm:02d}: {e}")
-                                rows = []
-                            want = {r["rol"]: r for r in rows if r["rol"] in rols and r["jwt"]}
-                            if want or tries >= 2:
-                                break
-                            tries += 1
-                            log(f"[COLLAB] trib {tv} {yy}-{mm:02d}: 0/{len(rols)} matched — "
-                                f"retry {tries} (re-select corte)")
-                            trib_names = ensure_form_ready(page, cv, cortemap.get(cv, cv))
-                            tribunal["tribunal"] = trib_names.get(tv, tv)
-                        log(f"[COLLAB] corte {cv}/trib {tv} {yy}-{mm:02d}: "
-                            f"matched {len(want)}/{len(rols)}"
-                            + ("  (!! still 0 after retries)" if rols and not want else ""))
-                        for rol, r in want.items():
-                            _pace(*FILL_OPEN_PACE)
-                            try:
-                                scrape_causa(page, api, r, tribunal, enforce_gates=False)
-                                STORE.mark_filled(f"{tv}-{rol}", "done")
-                                filled += 1
-                            except Exception as e:
-                                if _browser_dead(e):
-                                    raise
-                                log(f"[COLLAB][ERR] fill {tv}-{rol}: {e}")
-                                STORE.mark_filled(f"{tv}-{rol}", "error")
-                                _close_detail(page)
-                            if args.limit and filled >= args.limit:
-                                log(f"[COLLAB] --limit {args.limit} reached — stopping.")
-                                stop = True
-                                break
-                        flush_buffer()
-                        if stop:
-                            break
-                        _pace(*FILL_SEARCH_PACE)
-        finally:
+        deaths = 0
+        while True:
+            targets, unmapped = build_targets()
+            n_causas = sum(len(rs) for tm in targets.values()
+                           for pm in tm.values() for rs in pm.values())
+            n_tribs = sum(len(tm) for tm in targets.values())
+            log(f"[COLLAB] fill{'(selected)' if args.selected else ''}: {n_causas} causas · "
+                f"{n_tribs} tribunals · {len(targets)} cortes"
+                + (f" · {unmapped} unmapped(skipped)" if unmapped else ""))
+            if not n_causas:
+                log("[COLLAB] nothing to fill.")
+                break
+
+            proc, port = _launch_cdp_chrome(args.worker_id)
+            b = pw.chromium.connect_over_cdp(f"http://localhost:{port}")
+            ctx = b.contexts[0]
+            page = next((p for p in ctx.pages if "pjud" in (p.url or "")),
+                        ctx.pages[0] if ctx.pages else ctx.new_page())
+            api = ctx.request
             try:
-                b.close()
-            except Exception:
-                pass
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-    log("[COLLAB] fill complete.")
+                wait_for_consulta_form(page)
+                open_date_tab(page)
+                _collab_sweep(page, api, targets, cortemap, args)
+                log("[COLLAB] fill complete.")
+                break
+            except Exception as e:
+                if not _browser_dead(e):
+                    raise
+                deaths += 1
+                log(f"[COLLAB] window closed/crashed (death {deaths}) — relaunching; "
+                    f"RE-NAVIGATE the new window to Consulta Causas.")
+                if deaths > 8:
+                    log("[COLLAB] too many window deaths — giving up.")
+                    raise
+            finally:
+                try:
+                    b.close()
+                except Exception:
+                    pass
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
 
 
 def _run_fill_pool(args):
