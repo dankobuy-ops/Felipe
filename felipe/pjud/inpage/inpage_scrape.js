@@ -2,19 +2,20 @@
   if (window.__PJUD_RUNNING__){ alert('Ya hay un scraping en curso.'); return; }
   window.__PJUD_RUNNING__ = true;
 
-  /* ── config (demo scope) ── */
-  var CORTE = '90';                       /* C.A. de Santiago */
-  var MONTHS = [[2026,7],[2026,6]];       /* try July, then June */
-  var MAX_TRIBS = 12;
+  /* ── config ── The OPERATOR sets the search by hand: pestaña "Busqueda por Fecha",
+     Competencia = Civil, Corte, y las Fechas. This script NEVER touches those — it only
+     iterates the Tribunales of the chosen corte. */
+  var VERSION = 'v10 · solo clicks + ritmo humano';  /* shown in the toast to confirm a fresh build */
+  var MAX_TRIBS = 12;                     /* cap tribunals per run (test) */
   var DEEP = 8;                           /* max causas to deep-open this run */
-  var PACE = 400;
-  var BANK = ['SANTANDER','ESTADO DE CHILE','BANCOESTADO','BANCO DEL ESTADO','ITAU',
+  var BANK =['SANTANDER','ESTADO DE CHILE','BANCOESTADO','BANCO DEL ESTADO','ITAU',
     'SCOTIABANK','BANCO INTERNACIONAL','CREDITO E INVERSIONES','BCI','BANCO DE CHILE',
     'FALABELLA','COOPEUCH','BICE','CONSORCIO','RIPLEY','BTG'];
 
   var $ = function(s){ return document.querySelector(s); };
   var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
   var sleep = function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
+  var hpace = function(lo,hi){ return sleep(lo + Math.floor(Math.random()*(hi-lo+1))); };  // human, randomized pause
   var norm = function(s){ s=(s||'').normalize('NFD'); var out='';
     for(var i=0;i<s.length;i++){ var c=s.charCodeAt(i); if(c<768||c>879) out+=s[i]; }
     return out.toUpperCase().replace(/\s+/g,' ').trim(); };
@@ -31,19 +32,65 @@
     var w=0; var t=setInterval(function(){ var ok=false; try{ ok=pred(); }catch(e){}
       if(ok){ clearInterval(t); res(true); } else { w+=step; if(w>=ms){ clearInterval(t); res(false); } }
     }, step); }); }
-  function setSelect(sel, val){ var e=$(sel); if(!e) return false; e.value=val;
-    e.dispatchEvent(new Event('change',{bubbles:true})); return e.value===val; }
+  function setSelect(sel, val){ var e=$(sel); if(!e) return false;
+    var idx=-1; Array.prototype.forEach.call(e.options||[], function(o,k){ if(o.value===val) idx=k; });
+    if(idx>=0) e.selectedIndex=idx;      // move the real selection, not just .value
+    e.value=val;
+    // ALWAYS fire a NATIVE input+change — exactly what Playwright select_option does in
+    // run.py. THE FIX: a jQuery-only .trigger('change') does NOT invoke handlers bound with
+    // addEventListener, so OJV's corte->tribunal cascade silently didn't run and #fecTribunal
+    // kept the previous corte's (Arica) list. Native dispatch fires ALL handler kinds
+    // (inline onchange / addEventListener / jQuery-bound).
+    e.dispatchEvent(new Event('input',{bubbles:true}));
+    e.dispatchEvent(new Event('change',{bubbles:true}));
+    // best-effort: repaint a styled-select plugin so the VISIBLE control matches the value
+    if(window.jQuery){ try{ var $e=window.jQuery(e);
+      if($e.selectpicker){ try{ $e.selectpicker('refresh'); }catch(_){} }
+      try{ $e.trigger('chosen:updated'); }catch(_){}
+    }catch(err){} }
+    return e.value===val; }
   function opts(sel){ return $$(sel+' option').filter(function(o){ return o.value && o.value!=='0'; }); }
+  function selText(sel){ var e=$(sel); if(!e || e.selectedIndex<0) return '';
+    var o=e.options[e.selectedIndex]; return o?(o.textContent||'').trim():''; }  // LIVE selected label
   function lastDay(y,m){ return new Date(y,m,0).getDate(); }
   function pad(n){ return (''+n).length<2 ? '0'+n : ''+n; }
   function firstJwt(){ var a=$("#dtaTableDetalleFecha tbody tr a[onclick*='detalleCausaCivil']");
     return a ? a.getAttribute('onclick') : ''; }
+  // Advance the results paginator via 'Siguiente' (#sigId). Mirrors run.py
+  // _next_fecha_page: returns true only once the table actually changes; false at the
+  // last page OR when a click fails to advance (so a stuck paginator breaks, not spins).
+  async function nextFechaPage(){
+    var sig=$('#sigId'); var li=sig?sig.closest('li'):null;
+    if(!sig || (li && li.classList.contains('disabled'))) return false;
+    var before=firstJwt();
+    await humanClick(sig);                              // CLICK "Siguiente" like a human
+    for(var k=0;k<20;k++){                              // poll up to ~10s for the AJAX swap
+      await sleep(500);
+      var j=firstJwt();
+      if(j && j!==before) return true;
+    }
+    return false;                                       // no change -> treat as last page
+  }
 
   /* ── modal detail parsers (mirror run.py) ── */
   function modalText(){ return txt($('#modalDetalleCivil')); }
-  async function openDetail(jwt, rol){
+  // Find the magnifier link (opens the causa detail) for a ROL in the CURRENT results page.
+  function causaAnchor(rol){
+    var trs=$$('#dtaTableDetalleFecha tbody tr');
+    for(var k=0;k<trs.length;k++){ var td=trs[k].querySelectorAll('td');
+      if(td[1] && txt(td[1])===rol) return trs[k].querySelector("a[onclick*='detalleCausaCivil']"); }
+    return null;
+  }
+  async function openDetail(rol){
+    // HUMAN ORDER: never open a modal while another is open. Close whatever's left and wait
+    // until the screen is clear before opening this causa.
+    if(modalOpen('#modalReceptorCivil')) await closeOverlay('#modalReceptorCivil');
+    if(modalOpen('#modalDetalleCivil')) await closeOverlay('#modalDetalleCivil');
+    await waitFor(function(){ return !modalOpen('#modalReceptorCivil') && !modalOpen('#modalDetalleCivil'); }, 6000);
+    var a=causaAnchor(rol);
+    if(!a) throw new Error('no anchor for '+rol);
     var before=modalText();
-    window.detalleCausaCivil(jwt);
+    await humanClick(a);                                 // OPEN by CLICKING the magnifier — no JWT command
     await waitFor(function(){ var t=modalText(); return t && t!==before && t.indexOf('ROL')>=0 && t.indexOf(rol)>=0; }, 15000);
     await sleep(700);
   }
@@ -77,34 +124,63 @@
     var td=Array.prototype.slice.call(tr.querySelectorAll('td'));
     return {fecha_ingreso:txt(td[2]), tipo_escrito:txt(td[3]), solicitante:txt(td[4])};
   }).filter(function(r){ return r.tipo_escrito||r.solicitante; }); }
-  function receptorJwt(){ var a=$("#modalDetalleCivil a[onclick*='receptorCivil']"); if(!a) return '';
-    var m=(a.getAttribute('onclick')||'').match(/receptorCivil\(['"]([^'"]+)['"]\)/); return m?m[1]:''; }
-  async function parseReceptor(jwt){ if(!jwt) return []; try{
-    window.receptorCivil(jwt);
-    await waitFor(function(){ var m=$('#modalReceptorCivil'); return m && (m.querySelector('table tbody tr')|| /Receptor/i.test(m.innerText)); }, 10000);
-    await sleep(400);
-    var rows=$$('#modalReceptorCivil table tbody tr').map(function(tr){
-      var td=Array.prototype.slice.call(tr.querySelectorAll('td'));
-      return {cuaderno:txt(td[0]), nombre:txt(td[1]), fecha:txt(td[2]), estado:txt(td[3])};
-    }).filter(function(r){ return r.nombre||r.cuaderno; });
-    if(window.jQuery){ try{ window.jQuery('#modalReceptorCivil').modal('hide'); }catch(e){} }
-    await sleep(300); return rows;
-  }catch(e){ return []; } }
-  async function verifyPdf(historia){
-    for(var i=0;i<historia.length;i++){ var d=historia[i].doc;
-      if(d && d.action && d.val){ try{
-        var url=location.origin+'/'+d.action.replace(/^\//,''); var p=(d.name||'dtaDoc');
-        var resp=await fetch(url+'?'+p+'='+encodeURIComponent(d.val), {credentials:'include'});
-        var buf=await resp.arrayBuffer(); var u=new Uint8Array(buf.slice(0,4));
-        var isPdf=(u[0]===0x25&&u[1]===0x50&&u[2]===0x44&&u[3]===0x46);
-        return {url:url, ok:isPdf, bytes:buf.byteLength, contentType:resp.headers.get('content-type')||''};
-      }catch(e){ return {ok:false, error:String(e)}; } } }
-    return null; }
-  async function closeDetail(){ if(window.jQuery){ try{ window.jQuery('#modalDetalleCivil').modal('hide'); }catch(e){} }
-    else { var b=$('#modalDetalleCivil button.close'); if(b) b.click(); } await sleep(600); }
+  // Click an element the way a human does: real mouse event sequence over its center.
+  async function humanClick(el){
+    if(!el) return false;
+    try{ el.scrollIntoView({block:'center'}); }catch(e){}
+    await sleep(120);
+    var cx=10, cy=10; try{ var r=el.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2; }catch(e){}
+    var o={bubbles:true, cancelable:true, view:window, clientX:cx, clientY:cy, button:0};
+    try{ el.dispatchEvent(new MouseEvent('mouseover', o)); el.dispatchEvent(new MouseEvent('mousedown', o));
+         el.dispatchEvent(new MouseEvent('mouseup', o)); el.dispatchEvent(new MouseEvent('click', o)); return true; }
+    catch(e){ try{ el.click(); return true; }catch(e2){ return false; } }
+  }
+  // True if a modal is currently visible.
+  function modalOpen(sel){ try{ var e=$(sel); return !!e && (e.classList.contains('show')||e.classList.contains('in')||getComputedStyle(e).display!=='none'); }catch(err){ return false; } }
+  // Close a modal the HUMAN way: click its own close control (the X, a data-dismiss button,
+  // or a footer "Cerrar/Salir" button) and, failing that, click the backdrop (outside the
+  // dialog) as a person would. Verify it faded out; retry. NO .modal('hide'), synthetic keys
+  // or backdrop/force-hide surgery — those are non-human tells that trip the WAF and corrupt
+  // stacked modals.
+  async function closeOverlay(sel){
+    function footerClose(){ var bs=$$(sel+' .modal-footer button, '+sel+' .modal-footer .btn, '+sel+' .modal-footer a');
+      for(var i=0;i<bs.length;i++){ var t=((bs[i].innerText||bs[i].value||'')+'').toLowerCase();
+        if(/cerrar|salir|cancelar|volver|aceptar|\bok\b/.test(t)) return bs[i]; } return null; }
+    for(var attempt=0; attempt<6 && modalOpen(sel); attempt++){
+      var b = $(sel+' .modal-header .close') || $(sel+' button.close') || $(sel+" [data-dismiss='modal']") || footerClose();
+      if(b){ await humanClick(b); await sleep(700); if(!modalOpen(sel)) return true; }
+      else { var bd=$('.modal-backdrop'); if(bd){ await humanClick(bd); await sleep(700); if(!modalOpen(sel)) return true; } else break; }
+      await sleep(400);                  // let the fade finish, then try again
+    }
+    return !modalOpen(sel);
+  }
+  async function parseReceptor(){
+    var a=$("#modalDetalleCivil a[onclick*='receptorCivil']");
+    if(!a) return [];                                        // this causa has no receptor link
+    try{
+      await humanClick(a);                                   // OPEN like a human: click the link
+      await waitFor(function(){ var m=$('#modalReceptorCivil'); return m && (m.querySelector('table tbody tr')|| /Receptor/i.test(m.innerText)); }, 10000);
+      await sleep(400);
+      var rows=$$('#modalReceptorCivil table tbody tr').map(function(tr){
+        var td=Array.prototype.slice.call(tr.querySelectorAll('td'));
+        return {cuaderno:txt(td[0]), nombre:txt(td[1]), fecha:txt(td[2]), estado:txt(td[3])};
+      }).filter(function(r){ return r.nombre||r.cuaderno; });
+      await closeOverlay('#modalReceptorCivil');             // CLOSE it (human) before anything else
+      await waitFor(function(){ return !modalOpen('#modalReceptorCivil'); }, 6000); // don't proceed until it's gone
+      return rows;
+    }catch(e){ try{ await closeOverlay('#modalReceptorCivil'); }catch(e2){} return []; }
+  }
+  // (No background PDF fetch — a fetch() is a non-human network command. The doc form info
+  //  (action + dtaDoc) is captured in the historia rows for later download by run.py.)
+  async function closeDetail(){
+    if(modalOpen('#modalReceptorCivil')) await closeOverlay('#modalReceptorCivil');  // sub-modal first
+    await closeOverlay('#modalDetalleCivil');
+    await waitFor(function(){ return !modalOpen('#modalDetalleCivil'); }, 5000);
+    await sleep(300);
+  }
 
-  async function scrapeCausa(h){
-    await openDetail(h.jwt, h.rol);
+  async function scrapeCausa(meta){
+    await openDetail(meta.rol);                          // opens by CLICKING the magnifier
     var header=parseHeader();
     var lits=parseLitigantes();
     var cuads=cuadOpts(); if(cuads.length===0) cuads=[{txt:'1 - Principal', val:''}];
@@ -112,83 +188,105 @@
     for(var ci=0; ci<cuads.length; ci++){ if(ci>0) await selectCuaderno(ci);
       cuadernos.push({cuaderno:cuads[ci].txt, historia:parseHistoria()}); }
     var escritos=parseEscritos();
-    var receptor=await parseReceptor(receptorJwt());
+    var receptor=await parseReceptor();
     var allHist=cuadernos.reduce(function(a,c){ return a.concat(c.historia); },[]);
-    var pdf=await verifyPdf(allHist);
     await closeDetail();
-    return {rol:h.rol, caratulado:h.caratulado, fecha:h.fecha, tribunal:h.tribunal, month:h.month,
-      header:header, litigantes:lits, cuadernos:cuadernos, escritos:escritos, receptor:receptor,
-      n_historia:allHist.length, pdf_check:pdf};
+    return {rol:meta.rol, caratulado:meta.caratulado, fecha:meta.fecha, tribunal:meta.tribunal,
+      corte:meta.corte, tribunalSel:meta.tribunalSel, rango:meta.rango, header:header,
+      litigantes:lits, cuadernos:cuadernos, escritos:escritos, receptor:receptor,
+      n_historia:allHist.length};
   }
 
-  /* ── 1) date tab + Civil competencia ── */
-  say('Preparando formulario...');
-  var tab=$("a[href='#BusFecha']"); if(tab) tab.click(); await sleep(700);
-  setSelect('#fecCompetencia','3');
-  var okCorte=await waitFor(function(){ return opts('#corteFec').length>0; }, 9000);
-  if(!okCorte){ say('No se pudieron cargar las cortes (competencia no aplicada).'); window.__PJUD_RUNNING__=false; return; }
+  /* ── 1) VALIDATE the operator's setup — we do NOT touch competencia / corte / dates ──
+     The operator has already: opened "Busqueda por Fecha", set Competencia = Civil, chosen
+     the Corte, and typed the Fechas. We only READ that and iterate the Tribunales. */
+  say(VERSION+'\nLeyendo tu configuracion...');
+  await sleep(300);
+  if((($('#fecCompetencia')||{}).value)!=='3'){
+    say('La Competencia debe ser CIVIL (y estar aplicada).\nAjustala y reintenta.');
+    window.__PJUD_RUNNING__=false; return; }
+  var tribAll=opts('#fecTribunal');
+  if(tribAll.length===0){
+    say('No veo Tribunales.\nElige Competencia (Civil) y Corte para que cargue\nla lista de Tribunales, y reintenta.');
+    window.__PJUD_RUNNING__=false; return; }
+  var desde=(($('#fecDesde')||{}).value||''), hasta=(($('#fecHasta')||{}).value||'');
+  if(!desde || !hasta){
+    say('Faltan las FECHAS (Desde / Hasta).\nIngresalas y reintenta.');
+    window.__PJUD_RUNNING__=false; return; }
+  var tribs=tribAll.map(function(o){ return {v:o.value, t:(o.textContent||'').trim()}; }).slice(0, MAX_TRIBS);
+  say(VERSION+'\nCorte: '+selText('#corteFec')+'\nFechas: '+desde+' a '+hasta+'\nTribunales a recorrer: '+tribs.length);
+  await sleep(1500);
 
-  /* ── 2) corte -> tribunals ── */
-  setSelect('#corteFec', CORTE); await sleep(300);
-  await waitFor(function(){ return opts('#fecTribunal').length>0; }, 12000);
-  var tribs=opts('#fecTribunal').map(function(o){ return {v:o.value, t:(o.textContent||'').trim()}; }).slice(0, MAX_TRIBS);
-
-  async function searchTrib(tv,y,m){
+  // Select ONE tribunal from the operator's current list (native change) and verify.
+  // We NEVER touch the corte — if the value isn't present we just skip that tribunal.
+  async function selectTribunal(tv){
     setSelect('#fecTribunal', tv);
-    if(($('#fecTribunal')||{}).value!==tv) return [];
-    var dd=lastDay(y,m);
-    var setDate=function(id,v){ var e=$(id); if(e){ e.removeAttribute('readonly'); e.value=v; e.dispatchEvent(new Event('change',{bubbles:true})); } };
-    setDate('#fecDesde','01/'+pad(m)+'/'+y); setDate('#fecHasta',pad(dd)+'/'+pad(m)+'/'+y);
-    var tb=$('#dtaTableDetalleFecha tbody'); if(tb) tb.innerHTML='';
-    var btn=$('#btnConConsultaFec'); if(btn) btn.click();
-    var got=await waitFor(function(){ return $$('#dtaTableDetalleFecha tbody tr').length>0; }, 8000);
-    if(!got) return [];
-    await sleep(500);
-    var rows=[]; var seen={}; var pages=0;
-    while(pages<20){
-      $$('#dtaTableDetalleFecha tbody tr').forEach(function(tr){
-        var td=Array.prototype.slice.call(tr.querySelectorAll('td'));
-        var a=tr.querySelector("a[onclick*='detalleCausaCivil']");
-        var oc=a?a.getAttribute('onclick'):''; var mm=oc.match(/detalleCausaCivil\(['"]([^'"]+)['"]\)/);
-        var rol=txt(td[1]);
-        if(rol && !seen[rol]){ seen[rol]=1;
-          rows.push({rol:rol, fecha:txt(td[2]), caratulado:txt(td[3]), tribunal:txt(td[4]), jwt:mm?mm[1]:''}); }
-      });
-      pages++;
-      var sig=$('#sigId'); var li=sig?sig.closest('li'):null;
-      if(!sig || (li && li.classList.contains('disabled'))) break;
-      var before=firstJwt(); sig.click();
-      await waitFor(function(){ var j=firstJwt(); return j && j!==before; }, 6000);
-    }
-    return rows;
+    return await waitFor(function(){ return (($('#fecTribunal')||{}).value)===tv; }, 5000);
   }
 
-  /* ── 3) sweep: per tribunal, list bank causas, then deep-scrape each right away ── */
-  var details=[]; var total=tribs.length*MONTHS.length; var done=0;
-  for(var mi=0; mi<MONTHS.length && details.length<DEEP; mi++){
-    var y=MONTHS[mi][0], m=MONTHS[mi][1], monthHits=0;
-    for(var i=0; i<tribs.length && details.length<DEEP; i++){
-      done++;
-      say('Buscando '+y+'-'+pad(m)+'\n'+tribs[i].t.slice(0,42)+'\n('+done+'/'+total+')  detalladas: '+details.length);
-      var rows=[]; try{ rows=await searchTrib(tribs[i].v,y,m); }catch(e){}
-      var keep=rows.filter(function(r){ return r.rol.toUpperCase().indexOf('C')===0 && r.jwt && isBank(r.caratulado); });
-      for(var j=0; j<keep.length && details.length<DEEP; j++){
-        var h=keep[j]; h.corte=CORTE; h.month=y+'-'+pad(m);
-        say('Detallando '+(details.length+1)+'/'+DEEP+'\n'+h.rol+'  '+h.caratulado.slice(0,38));
-        try{ details.push(await scrapeCausa(h)); }
-        catch(e){ details.push({rol:h.rol, caratulado:h.caratulado, error:String(e)}); try{ await closeDetail(); }catch(e2){} }
-        monthHits++; await sleep(PACE);
+  // Fire the search for the currently-selected tribunal (operator's competencia/corte/dates)
+  // by CLICKING "Buscar", then WAIT for real result rows. Returns true if any rendered.
+  async function fireSearch(){
+    var realRows=function(){ return $$('#dtaTableDetalleFecha tbody tr')
+      .filter(function(tr){ return tr.querySelector("a[onclick*='detalleCausaCivil']"); }); };
+    var emptyMsg=function(){ var t=(($('#dtaTableDetalleFecha')||{}).innerText)||'';
+      return /no se (han )?encontrad|sin resultados|no matching|no data/i.test(t); };
+    for(var attempt=0; attempt<3; attempt++){
+      var tb=$('#dtaTableDetalleFecha tbody'); if(tb) tb.innerHTML='';   // clear our view to detect fresh results
+      var btn=$('#btnConConsultaFec'); if(btn) await humanClick(btn);    // CLICK Buscar
+      await waitFor(function(){ return realRows().length>0 || emptyMsg(); }, 20000);
+      if(realRows().length>0){ await sleep(700); return true; }
+      if(emptyMsg() && attempt>0) return false;            // confirmed: no causas here
+      await sleep(1500);                                   // quirk / still loading -> re-fire
+    }
+    return realRows().length>0;
+  }
+  // Bank C-causas visible on the CURRENT results page (metadata only; we open by clicking).
+  function pageBankCausas(){
+    return $$('#dtaTableDetalleFecha tbody tr').map(function(tr){
+      var td=Array.prototype.slice.call(tr.querySelectorAll('td'));
+      var a=tr.querySelector("a[onclick*='detalleCausaCivil']");
+      return {rol:txt(td[1]), fecha:txt(td[2]), caratulado:txt(td[3]), tribunal:txt(td[4]), has:!!a};
+    }).filter(function(r){ return r.has && r.rol.toUpperCase().indexOf('C')===0 && isBank(r.caratulado); });
+  }
+
+  /* ── 3) sweep: iterate the operator's tribunales. Per tribunal: CLICK Buscar, then walk the
+     result pages CLICKING each bank causa's magnifier to open it, scrape, close, move on —
+     exactly what a person does. Human, randomized pacing throughout. ── */
+  var details=[]; var total=tribs.length; var done=0;
+  var corteTxt=selText('#corteFec'), rango=desde+' a '+hasta;
+  for(var i=0; i<tribs.length && details.length<DEEP; i++){
+    done++;
+    var tv=tribs[i].v, tribLbl=tribs[i].t;
+    var okT=await selectTribunal(tv);
+    say(VERSION+'  ('+done+'/'+total+')\n'+corteTxt+'\n'+selText('#fecTribunal').slice(0,40)+(okT?'':'  [SEL FALLO]')+'\ndet: '+details.length);
+    if(!okT) continue;
+    var got=false; try{ got=await fireSearch(); }catch(e){}
+    if(!got){ await hpace(1500,3500); continue; }          // no causas for this tribunal
+    var seen={}, pages=0;
+    while(pages<60 && details.length<DEEP){
+      var causas=pageBankCausas();
+      for(var j=0; j<causas.length && details.length<DEEP; j++){
+        var c=causas[j]; if(seen[c.rol]) continue; seen[c.rol]=1;
+        await hpace(2000,5000);                            // human pause before opening a causa
+        say('Detallando '+(details.length+1)+' · '+c.rol+'\n'+c.caratulado.slice(0,40));
+        try{ details.push(await scrapeCausa({rol:c.rol, caratulado:c.caratulado, fecha:c.fecha,
+              tribunal:c.tribunal, corte:corteTxt, tribunalSel:tribLbl, rango:rango})); }
+        catch(e){ details.push({rol:c.rol, caratulado:c.caratulado, error:String(e)}); try{ await closeDetail(); }catch(e2){} }
       }
+      pages++;
+      if(details.length>=DEEP) break;
+      if(!await nextFechaPage()) break;                     // CLICK "Siguiente"
+      await hpace(1500,3500);                               // human pause between result pages
     }
-    if(monthHits>0) break;
+    await hpace(2500,6000);                                 // human pause between tribunales
   }
 
-  var okPdf=details.filter(function(d){ return d.pdf_check && d.pdf_check.ok; }).length;
   say('Descargando '+details.length+' causas detalladas (JSON)...');
   var blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
   var url=URL.createObjectURL(blob); var a=document.createElement('a');
   a.href=url; a.download='pjud_detalle_'+Date.now()+'.json'; document.documentElement.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
-  say('Listo: '+details.length+' causas detalladas.\nPDFs verificados OK: '+okPdf+'\n(pjud_detalle_*.json en Descargas)');
+  say('Listo: '+details.length+' causas detalladas.\n(pjud_detalle_*.json en Descargas)');
   window.__PJUD_RUNNING__=false;
 })();

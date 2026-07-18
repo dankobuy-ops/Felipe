@@ -2,17 +2,15 @@
 setlocal
 title PJUD - Abrir Chrome (SIN puerto de depuracion)
 
-REM Opens Chrome normally (NO --remote-debugging-port) with the PJUD profile, which
-REM carries the "Iniciar scraping" button. The button does the whole scrape IN-PAGE
-REM (JavaScript in your own session) and downloads the results as a JSON file.
-REM No debug port, no Python driving the browser.
+REM Abre UNA ventana de Chrome (en www.google.cl) con el perfil PJUD, que
+REM lleva el boton "Iniciar scraping". NO navega a PJUD: tu abres el sitio
+REM y pasas la entrada/CAPTCHA. El scraping ocurre IN-PAGE y descarga un JSON.
+REM Sin puerto de depuracion, sin Python.
 
 set "PROFILE=%LOCALAPPDATA%\pjud_chrome"
 set "SEED=%~dp0inpage"
-set "URL=https://oficinajudicialvirtual.pjud.cl/home/index.php"
 
 REM --- Instala/actualiza el boton "Iniciar scraping" en el perfil PJUD ---
-REM (el boton vive en el perfil local, no en el repo; aqui se copia desde inpage\)
 if not exist "%PROFILE%\Default" mkdir "%PROFILE%\Default"
 if exist "%SEED%\Bookmarks" copy /Y "%SEED%\Bookmarks" "%PROFILE%\Default\Bookmarks" >nul
 if not exist "%PROFILE%\Default\Preferences" if exist "%SEED%\Preferences" copy /Y "%SEED%\Preferences" "%PROFILE%\Default\Preferences" >nul
@@ -32,16 +30,20 @@ echo  =====================================================
 echo    PJUD  -  Abrir Chrome  (SIN puerto de depuracion)
 echo  =====================================================
 echo.
-echo  PASOS:
-echo    1) Entra a "Consulta Unificada" y pasa la entrada hasta el formulario.
+echo  Mes configurado actualmente: ENERO 2026.
+echo.
+echo  PASOS (TU configuras la busqueda; el scraper solo recorre los Tribunales):
+echo    1) Entra a "Consulta Unificada" y pasa la entrada / CAPTCHA. Lo haces tu.
 echo    2) Abre la pestana "Busqueda por Fecha".
-echo    3) Pulsa el boton  "Iniciar scraping"  en la barra de marcadores.
-echo       (El scraping ocurre dentro de la pagina y descarga un archivo JSON.)
+echo    3) Elige Competencia = CIVIL, la CORTE, y escribe las FECHAS (Desde / Hasta).
+echo       Espera a que aparezca la lista de Tribunales.
+echo    4) Pulsa el boton  "Iniciar scraping"  en la barra de marcadores.
+echo       (Recorre los Tribunales de esa corte y descarga un archivo JSON.)
 echo.
 echo  (Si no ves la barra de marcadores, pulsa Ctrl+Shift+B.)
 echo.
 
-start "" "%CHROME%" --user-data-dir="%PROFILE%" --no-first-run --no-default-browser-check --restore-last-session=false "%URL%"
+start "" "%CHROME%" --user-data-dir="%PROFILE%" --no-first-run --no-default-browser-check --restore-last-session=false "https://www.google.cl"
 
 echo  Chrome abierto. Puedes cerrar esta ventana.
 exit /b 0
