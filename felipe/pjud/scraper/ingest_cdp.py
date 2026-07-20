@@ -23,7 +23,7 @@ import run          # helpers: norm_rut, split_persona, _cuaderno_num, _first_da
 import dbstore
 
 ORDER = ["Tribunales", "Ruts", "Causas", "Litigantes", "Cuadernos",
-         "Escritos", "Notificaciones Receptor"]
+         "Escritos", "Notificaciones Receptor", "Documentos", "Anexos"]
 
 
 def resolve_tid(causa, name_map):
@@ -98,6 +98,29 @@ def build(causa, name_map):
                               "foja": hh.get("foja", ""), "georref": hh.get("georref", "")})
     add("Cuadernos", cuad_rows)
 
+    # Documentos + Anexos — only historia rows where a Drive url was captured (--docs).
+    doc_rows, anex_rows = [], []
+    for cu in causa.get("cuadernos", []):
+        cnum = run._cuaderno_num(cu.get("cuaderno", ""), 1)
+        seen = {}
+        for hh in cu.get("historia", []):
+            folio = hh.get("folio", "")
+            n = seen.get(folio, 0) + 1
+            seen[folio] = n
+            cid = f"{causa_id}-c{cnum}-{folio}-{n}"
+            if hh.get("doc_url"):
+                doc_rows.append({"id": f"{cid}-doc", "cuaderno_id": cid,
+                                 "origen": (hh.get("doc") or {}).get("action", ""),
+                                 "folio": folio, "descripcion": hh.get("desc", ""),
+                                 "url": hh["doc_url"]})
+            if hh.get("anexo_url"):
+                anex_rows.append({"id": f"{cid}-anexo", "cuaderno_id": cid,
+                                  "origen": (hh.get("anexo") or {}).get("action", ""),
+                                  "folio": folio, "fecha": hh.get("fecha", ""),
+                                  "referencia": hh.get("desc", ""), "url": hh["anexo_url"]})
+    add("Documentos", doc_rows)
+    add("Anexos", anex_rows)
+
     esc_rows = []
     for ei, e in enumerate(causa.get("escritos", []), 1):
         esc_rows.append({"id": f"{causa_id}-e{ei}", "causa_id": causa_id, "cuaderno": "",
@@ -150,6 +173,13 @@ def main():
         if rows:
             n = store.upsert(tab, rows)
             print(f"  upserted {tab:26} {n}")
+    # mark these causas fully-scraped so cdp_scrape --resume skips them next time
+    causa_ids = [r["causa_id"] for r in merged.get("Causas", [])]
+    if causa_ids:
+        with store.conn.cursor() as cur:
+            cur.execute("UPDATE causas SET fill_status='scraped' WHERE causa_id = ANY(%s)",
+                        (causa_ids,))
+        print(f"  marked {len(causa_ids)} causas fill_status='scraped'")
     print("DONE")
 
 

@@ -25,6 +25,12 @@ from playwright.sync_api import TimeoutError as PWTimeout
 from playwright.sync_api import sync_playwright
 
 DOWNLOADS = Path(os.environ.get("USERPROFILE", ".")) / "Downloads"
+OJV = "https://oficinajudicialvirtual.pjud.cl"
+
+DOCS = False    # --docs: download historia doc/anexo PDFs and upload to Drive
+GPS = False     # --gps: resolve georreferencia sub-modals to lat/lng
+RESUME = False  # --resume: skip causas already scraped (fill_status='scraped') in Neon
+_STORE = None   # dbstore.Store (Drive uploads + Neon), lazy-initialised
 
 BANK = ['SANTANDER', 'ESTADO DE CHILE', 'BANCOESTADO', 'BANCO DEL ESTADO', 'ITAU',
         'SCOTIABANK', 'BANCO INTERNACIONAL', 'CREDITO E INVERSIONES', 'BCI',
@@ -117,9 +123,12 @@ def parse_historia(page):
                   return { action: f.getAttribute('action')||'', val: inp?inp.value:'' }; };
               const docForm  = td[1] ? td[1].querySelector('form') : null;
               const anexForm = td[2] ? td[2].querySelector('form') : null;
+              const geoA = td[8] ? td[8].querySelector("a[onclick*='geoReferencia']") : null;
+              const gm = geoA ? (geoA.getAttribute('onclick')||'')
+                                  .match(/geoReferencia\(['"]([^'"]+)['"]\)/) : null;
               return { folio: cell(0), doc: formInfo(docForm), anexo: formInfo(anexForm),
                   etapa: cell(3), tramite: cell(4), desc: cell(5), fecha: cell(6),
-                  foja: cell(7), georref: cell(8) }; })""")
+                  foja: cell(7), georref: cell(8), geo: gm ? gm[1] : '' }; })""")
 
 
 # ── modals (open/close with REAL clicks) ─────────────────────────────────────
@@ -174,51 +183,177 @@ def parse_receptor(page):
         return []
 
 
-def scrape_causa(page, meta):
-    """Modal is opened by the caller (a real click on the magnifier). Parse everything, close."""
+def _cuaderno_num(txt):
+    m = re.match(r"\s*(\d+)\s*-", txt or "")
+    return m.group(1) if m else "1"
+
+
+def get_store():
+    """Lazy dbstore.Store() for Drive uploads (built only when --docs). Reuses the
+    proven Drive upload_pdf path (documentos folder + flattened names)."""
+    global _STORE
+    if _STORE is None:
+        import dbstore
+        _STORE = dbstore.Store()
+    return _STORE
+
+
+def resolve_geo(page, jwt):
+    """Open the georreferencia sub-modal for `jwt`, read lat/lng, close. Returns a
+    =HYPERLINK(...) cell or ''. Uses the site's own geoReferencia() (in-session)."""
+    try:
+        page.evaluate("j => geoReferencia(j)", jwt)
+        page.wait_for_function(
+            "()=>{const m=document.querySelector('#modalGeoReferenciaCivil');"
+            " const i=m&&m.querySelector(\"input[name='latitud']\"); return i&&i.value;}",
+            timeout=8000)
+        page.wait_for_timeout(200)
+        vals = page.eval_on_selector_all(
+            "#modalGeoReferenciaCivil input[name='latitud'],"
+            " #modalGeoReferenciaCivil input[name='longitud']",
+            "els=>els.map(e=>({n:e.getAttribute('name'), v:e.value||''}))")
+        d = {x["n"]: x["v"] for x in vals}
+        lat, lng = d.get("latitud", ""), d.get("longitud", "")
+        close_modal(page, "#modalGeoReferenciaCivil")
+        if lat and lng:
+            return (f'=HYPERLINK("https://maps.google.com/maps?ll={lat},{lng}&z=16",'
+                    f'"{lat[:10]}, {lng[:10]}")')
+    except Exception:
+        try:
+            close_modal(page, "#modalGeoReferenciaCivil")
+        except Exception:
+            pass
+    return ""
+
+
+def download_doc(api, action, val):
+    """GET OJV/<action>?dtaDoc=<val> in-session (shares cookies) -> PDF bytes or None."""
+    if not action or not val:
+        return None
+    try:
+        resp = api.get(f"{OJV}/{action.lstrip('/')}", params={"dtaDoc": val}, timeout=60000)
+        body = resp.body()
+        ct = (resp.headers or {}).get("content-type", "")
+        if "pdf" not in ct.lower() and body[:4] != b"%PDF":
+            return None
+        return body
+    except Exception:
+        return None
+
+
+def scrape_causa(page, api, meta):
+    """Modal opened by the caller. Parse header/litigantes/cuadernos(historia)/escritos/
+    receptor. With GPS: resolve each geo row's lat/lng. With DOCS: download each doc/anexo
+    -> Drive and stash the link on the historia row. Close the modal when done."""
     header = parse_header(page)
     litigantes = parse_litigantes(page)
+    causa_id = f"{meta.get('tribunalId','')}-{meta['rol']}"
     cuads = cuaderno_options(page) or [{"txt": "1 - Principal", "val": ""}]
     cuadernos = []
     for ci, opt in enumerate(cuads):
         if ci > 0:
             select_cuaderno(page, ci)
             pace(P_STEP)
-        cuadernos.append({"cuaderno": opt["txt"], "historia": parse_historia(page)})
+        cuaderno = opt["txt"]
+        cnum = _cuaderno_num(cuaderno)
+        rows = parse_historia(page)
+        seen = {}
+        for hh in rows:
+            folio = hh.get("folio", "")
+            n = seen.get(folio, 0) + 1
+            seen[folio] = n
+            if GPS and hh.get("geo"):
+                g = resolve_geo(page, hh["geo"])
+                if g:
+                    hh["georref"] = g
+                pace(P_STEP)
+            if DOCS:
+                for kind in ("doc", "anexo"):
+                    form = hh.get(kind)
+                    if not (form and form.get("action") and form.get("val")):
+                        continue
+                    body = download_doc(api, form["action"], form["val"])
+                    if body and len(body) >= 1024:
+                        obj = f"{causa_id}/c{cnum}/{folio}-{n}-{kind}.pdf".replace(" ", "_")
+                        try:
+                            hh[f"{kind}_url"] = get_store().upload_pdf(obj, body)
+                        except Exception as e:
+                            print(f"      [warn] upload {kind} {folio}: {str(e)[:50]}")
+        cuadernos.append({"cuaderno": cuaderno, "historia": rows})
     escritos = parse_escritos(page)
     pace(P_STEP)
     receptor = parse_receptor(page)
     close_modal(page, "#modalDetalleCivil")
     n_hist = sum(len(c["historia"]) for c in cuadernos)
+    ndoc = sum(1 for c in cuadernos for r in c["historia"] if r.get("doc_url") or r.get("anexo_url"))
+    ngeo = sum(1 for c in cuadernos for r in c["historia"] if str(r.get("georref", "")).startswith("="))
     return {**meta, "header": header, "litigantes": litigantes, "cuadernos": cuadernos,
-            "escritos": escritos, "receptor": receptor, "n_historia": n_hist}
+            "escritos": escritos, "receptor": receptor, "n_historia": n_hist,
+            "n_docs": ndoc, "n_geo": ngeo}
 
 
 # ── search / pagination ──────────────────────────────────────────────────────
 
 def fire_search(page):
-    """Click Buscar (TRUSTED) and wait for real result rows; True if any rendered."""
-    for attempt in range(3):
-        try:
-            page.click("#btnConConsultaFec", timeout=5000)   # TRUSTED
-        except Exception as e:
-            print(f"    [warn] buscar: {e}")
-            return False
-        try:
-            page.wait_for_selector(
-                "#dtaTableDetalleFecha tbody tr a[onclick*='detalleCausaCivil']", timeout=15000)
+    """Click Buscar ONCE (TRUSTED) and poll up to ~45s for rows — the results AJAX is slow.
+    Returns True if rows rendered, False on a genuine 'sin resultados'."""
+    try:
+        page.click("#btnConConsultaFec", timeout=5000)   # TRUSTED
+    except Exception as e:
+        print(f"    [warn] buscar: {e}")
+        return False
+    waited = 0
+    while waited < 45000:
+        n = page.eval_on_selector_all(
+            "#dtaTableDetalleFecha tbody tr a[onclick*='detalleCausaCivil']", "e=>e.length")
+        if n:
             page.wait_for_timeout(700)
             return True
-        except PWTimeout:
+        try:
+            txt = page.inner_text("#dtaTableDetalleFecha")
+        except Exception:
             txt = ""
-            try:
-                txt = page.inner_text("#dtaTableDetalleFecha")
-            except Exception:
-                pass
-            if re.search(r"no se (han )?encontrad|sin resultados", txt or "", re.I) and attempt > 0:
-                return False
-            page.wait_for_timeout(1200)
+        if re.search(r"no se (han )?encontrad|sin resultados", txt or "", re.I):
+            return False
+        page.wait_for_timeout(1000)
+        waited += 1000
     return False
+
+
+def select_tribunal_kbd(page, value):
+    """Change #fecTribunal to `value` via TRUSTED keyboard (focus + arrow keys) — NOT
+    select_option (whose synthetic change event trips the F5 WAF). Returns True on success."""
+    try:
+        opts = page.eval_on_selector_all(
+            "#fecTribunal option", "els=>els.map((o,i)=>({i:i,v:o.value,sel:o.selected}))")
+        cur = next((o["i"] for o in opts if o["sel"]), 0)
+        tgt = next((o["i"] for o in opts if o["v"] == value), None)
+        if tgt is None:
+            return False
+        page.locator("#fecTribunal").focus()
+        delta = tgt - cur
+        key = "ArrowDown" if delta > 0 else "ArrowUp"
+        for _ in range(abs(delta)):
+            page.keyboard.press(key)
+            page.wait_for_timeout(70)
+        return page.eval_on_selector("#fecTribunal", "e=>e.value") == value
+    except Exception as e:
+        print(f"    [warn] kbd tribunal {value}: {str(e)[:50]}")
+        return False
+
+
+def scraped_rols(tribunal_id):
+    """Set of rols at this tribunal already fully scraped (fill_status='scraped') in Neon.
+    Used by --resume to skip them. Empty set if the store/DB isn't reachable."""
+    try:
+        store = get_store()
+        with store.conn.cursor() as cur:
+            cur.execute("SELECT rol FROM causas WHERE tribunal_id=%s AND fill_status='scraped'",
+                        (str(tribunal_id),))
+            return {r[0] for r in cur.fetchall()}
+    except Exception as e:
+        print(f"    [warn] resume lookup {tribunal_id}: {str(e)[:50]}")
+        return set()
 
 
 def page_bank_causas(page):
@@ -281,12 +416,22 @@ def main():
     ap.add_argument("--max-tribs", type=int, default=0, help="0 = all tribunales")
     ap.add_argument("--max-causas", type=int, default=0, help="0 = no limit")
     ap.add_argument("--proc", default="", help="only keep causas whose Proc. matches (e.g. 'Ejecutivo Obligación de Dar')")
+    ap.add_argument("--docs", action="store_true", help="download historia doc/anexo PDFs -> Drive")
+    ap.add_argument("--gps", action="store_true", help="resolve georreferencia sub-modals -> lat/lng")
+    ap.add_argument("--no-search", action="store_true",
+                    help="WAF-safe: do NOT select_option/search; harvest the CURRENT results "
+                         "table (operator already searched). Only the displayed tribunal.")
+    ap.add_argument("--resume", action="store_true",
+                    help="skip causas already scraped (fill_status='scraped') in Neon")
     args = ap.parse_args()
+    global DOCS, GPS, RESUME
+    DOCS, GPS, RESUME = args.docs, args.gps, args.resume
 
     print(f"Conectando a Chrome (puerto CDP {args.port})...")
     with sync_playwright() as pw:
         browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{args.port}")
         ctx = browser.contexts[0]
+        api = ctx.request
         page = find_ojv_page(ctx)
         if not page:
             sys.exit("[ERROR] No encuentro ninguna pestana. Abre OJV en esa ventana.")
@@ -298,6 +443,14 @@ def main():
             "els=>els.filter(o=>o.value&&o.value!=='0').map(o=>({v:o.value,t:(o.textContent||'').trim()}))")
         if not tribs:
             sys.exit("[ALTO] No hay Tribunales cargados. Elige la Corte primero.")
+        if args.no_search:
+            # Harvest only the tribunal the operator already selected + searched (trusted).
+            tv = page.eval_on_selector("#fecTribunal", "e=>e.value") or ""
+            tn = page.eval_on_selector(
+                "#fecTribunal", "e=>e.options[e.selectedIndex]?e.options[e.selectedIndex].text.trim():''") or ""
+            if not tv:
+                sys.exit("[ALTO] --no-search: elige un Tribunal y haz la busqueda manual primero.")
+            tribs = [{"v": tv, "t": tn}]
         desde = page.eval_on_selector("#fecDesde", "e=>e.value")
         hasta = page.eval_on_selector("#fecHasta", "e=>e.value")
         if not desde or not hasta:
@@ -323,20 +476,29 @@ def main():
         for ti, tb in enumerate(tribs, 1):
             if args.max_causas and len(details) >= args.max_causas:
                 break
-            page.select_option("#fecTribunal", value=tb["v"])
-            pace(P_STEP)
-            print(f"[{ti}/{len(tribs)}] {tb['t'][:40]}")
-            if not fire_search(page):
+            if not args.no_search:
+                if not select_tribunal_kbd(page, tb["v"]):    # TRUSTED keyboard (not select_option)
+                    print(f"[{ti}/{len(tribs)}] {tb['t'][:40]}  [skip: could not select tribunal]")
+                    pace(P_STEP)
+                    continue
+                pace(P_STEP)
+            print(f"[{ti}/{len(tribs)}] {tb['t'][:40]}"
+                  + ("  (harvest current results)" if args.no_search else ""))
+            if not args.no_search and not fire_search(page):
                 print("      sin resultados")
                 pace(P_TRIB)
                 continue
             seen, pages, kept_trib = set(), 0, 0
+            done = scraped_rols(tb["v"]) if RESUME else set()
+            if done:
+                print(f"      (resume: {len(done)} already scraped here — skipping them)")
             while pages < 80:
                 if args.max_causas and len(details) >= args.max_causas:
                     break
                 causas = page_bank_causas(page)
                 for c in causas:
-                    if c["rol"] in seen:
+                    if c["rol"] in seen or c["rol"] in done:
+                        seen.add(c["rol"])
                         continue
                     if args.max_causas and len(details) >= args.max_causas:
                         break
@@ -348,9 +510,9 @@ def main():
                         page.wait_for_function(
                             "rol=>{var m=document.querySelector('#modalDetalleCivil');"
                             " return m && m.innerText.indexOf('ROL')>=0 && m.innerText.indexOf(rol)>=0;}",
-                            arg=c["rol"], timeout=15000)
+                            arg=c["rol"], timeout=30000)   # detail modal can be slow
                         page.wait_for_timeout(600)
-                        rec = scrape_causa(page, {
+                        rec = scrape_causa(page, api, {
                             "rol": c["rol"], "caratulado": c["car"], "fecha": c["fecha"],
                             "tribunal": c["trib"], "tribunalSel": tb["t"], "tribunalId": tb["v"],
                             "corte": corte, "rango": f"{desde} a {hasta}"})
@@ -361,7 +523,8 @@ def main():
                         flush()                          # incremental save (survives interrupts)
                         print(f"      OK {c['rol']:<13} lit={len(rec['litigantes'])} "
                               f"cuad={len(rec['cuadernos'])} hist={rec['n_historia']} "
-                              f"esc={len(rec['escritos'])} rec={len(rec['receptor'])}  (tot {len(details)})")
+                              f"esc={len(rec['escritos'])} rec={len(rec['receptor'])} "
+                              f"docs={rec['n_docs']} geo={rec['n_geo']}  (tot {len(details)})")
                     except Exception as e:
                         print(f"      ERR {c['rol']}: {str(e)[:70]}")
                         try:
