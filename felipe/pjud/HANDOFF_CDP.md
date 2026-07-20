@@ -1,182 +1,227 @@
-# PJUD scraper — Handoff (2026‑07‑18): the in‑page bookmarklet is a dead end; **CDP is the way**
+# PJUD scraper — CDP Handoff (updated 2026-07-20)
 
-**Project:** Poder Judicial Virtual (Oficina Judicial Virtual, OJV) — civil causas scraper.
-Goal: collect civil **Ejecutivo Obligación de Dar** causas where a **bank is the plaintiff**,
-nationwide, with full detail (header, litigantes, cuadernos/historia, escritos, receptor,
-doc links). See also the older design doc `HANDOFF.md` (Sheets/Neon daily‑sweep, `run.py`) and
-memory: [[pjud-cdp-beats-waf]], [[pjud-waf]], [[pjud-inpage-human-rules]], [[pjud-storage]].
+**Supersedes the 2026-07-18 version.** Project: **Poder Judicial Virtual** (Oficina
+Judicial Virtual, OJV — `oficinajudicialvirtual.pjud.cl`). Goal: collect civil
+**"Ejecutivo Obligación de Dar"** causas where a **bank is the plaintiff**, nationwide,
+with **full detail + PDF files + GPS**, into a **Neon Postgres** DB (+ PDFs to Google Drive).
 
----
-
-## TL;DR — what we learned this session
-1. **The in‑page bookmarklet approach is dead for this WAF.** OJV sits behind an F5 WAF that
-   blocks **synthetic events**. Any click made from page JS (`dispatchEvent`, `.click()`) is
-   `isTrusted=false`; a real mouse click is `isTrusted=true`. The WAF blocks the bookmarklet
-   **at the very first action**, no matter how human the clicks/pacing look. You cannot forge a
-   trusted event from page JS — this is a hard wall, not a tuning problem.
-2. **CDP works.** Real Chrome launched with `--remote-debugging-port` (NO automation flags),
-   driven by Playwright `connect_over_cdp`. `page.click()` then injects input at the browser
-   layer → `isTrusted=true`, indistinguishable from a human. **Live‑verified: opened 6 Santiago
-   "Ejecutivo Obligación de Dar" bank causas with real clicks, zero block, clean data.**
-3. **But CDP still gets rate‑throttled.** Doing ~6 causas fast + three back‑to‑back runs on one
-   session degraded it: detail modals hung on "Cargando", then searches returned "sin
-   resultados" everywhere. **CDP beats the `isTrusted` check; it does NOT exempt you from rate
-   limits.** Pace gently and run once per fresh session (the standing "scrape gently" rule).
-
-**Status:** CDP path proven; `cdp_scrape.py` (full‑fidelity, operator‑driven) built but the
-full‑data extraction (litigantes/cuadernos/escritos/receptor) is **NOT yet validated end‑to‑end**
-— the session died from over‑use before that run produced a causa. **Pick up at NEXT STEPS.**
+The scraper now WORKS end-to-end, is **WAF-safe**, does **files + GPS**, and is
+**resumable**. What remains is running the full **Santiago corte for January 2026** across a
+few fresh sessions. This doc is everything needed to do that on another PC.
 
 ---
 
-## The winning design: operator‑driven CDP
+## TL;DR — current state (2026-07-20)
 
-The operator does the human/risky parts by hand in a real Chrome; the script only reads and
-iterates. This sidesteps the CAPTCHA **and** the corte→tribunal cascade race that plagued the
-in‑page version.
+- **Approach:** drive a REAL Chrome over CDP (`--remote-debugging-port`), Playwright
+  `connect_over_cdp`. `page.click()` = `isTrusted=true` → beats the site's **F5 WAF**
+  (which blocks synthetic `isTrusted=false` events). The old in-page bookmarklet is **dead**
+  (can't forge trusted events); `felipe/pjud/inpage/*` + `Abrir_PJUD_sin_debug.cmd` are kept
+  only as a documented dead end.
+- **THE key WAF finding:** the block was **NOT the IP and NOT CDP** — it was the script's
+  **`select_option("#fecTribunal", …)`** (a synthetic change event). Proof: on a "burned" IP
+  where the script's causa-open hung, the operator could still open causas + download files
+  by hand, and a **pure trusted-click open (no select_option/search) loaded in 1.9s**. Two
+  fixes, both validated:
+  - **`--no-search`**: the operator selects the tribunal + clicks Buscar by hand (trusted);
+    the script only *harvests* the displayed results (pure trusted clicks).
+  - **`select_tribunal_kbd()`**: change `#fecTribunal` via **trusted keyboard** (focus + arrow
+    keys) instead of `select_option` → the script can iterate all 31 tribunals unattended.
+- **Files + GPS work** (`--docs`, `--gps`). **Storage wired** to Neon (`ingest_cdp.py`) +
+  Drive. **Resumable** (`--resume` + `causas.fill_status`).
+- **Still to do:** one clean end-to-end **unattended sweep** of the whole Santiago corte on a
+  **fresh session/IP**. Today's dev IP/session got cooked from heavy testing (detail modals
+  hang = the throttle symptom), so the last sweep test was a false negative.
 
-**Operator (by hand, in the CDP Chrome):**
-1. From **www.pjud.cl** → Oficina Judicial Virtual → **Consulta Causas**, pass entry/CAPTCHA.
-2. Open the **Búsqueda por Fecha** tab.
-3. Set **Competencia = Civil**, the **Corte**, and the **Fechas** (Desde/Hasta) until the
-   **Tribunales** list appears.
-4. Do **one manual search** to confirm results actually come back (proves the session is live).
+---
 
-**Script (`cdp_scrape.py`, trusted CDP clicks, gentle pacing):**
-- Connects to the running Chrome over CDP; **reads** competencia/corte/dates (never sets them).
-- For each `#fecTribunal` option: `select_option` → **click Buscar** → wait for real rows →
-  paginate with **click Siguiente** → for each **bank `C‑`causa** on the page, **click its
-  magnifier** to open, scrape full detail, **click the X** to close, move on.
-- Writes ONE JSON to `Downloads\pjud_cdp_<epoch>.json`, **incrementally** (survives interrupts).
+## Validated so far (live)
+
+- Fresh IP, `--max-causas 20` (metadata): 20 Santiago-1º causas in 5.1 min, no throttle →
+  ingested to Neon (causas 3124→3144, 0 dangling FKs).
+- Warm IP, `--no-search --docs --gps` (2 causas): clean → **26 PDFs to Drive** + **4 georref
+  resolved** → ingested (26 Documentos rows w/ Drive links).
+- Trusted keyboard tribunal-switch: 1º→2º, search returned the correct tribunal's 101 rows.
+- Neon now holds ~3,144 causas / 63k cuadernos / 14k litigantes / 17k receptor, etc.
+
+---
+
+## The WAF — rules that keep you unblocked
+
+1. **Never `select_option` the tribunal.** That single synthetic change event flags the F5
+   session; the next heavy op (detail modal) then hangs. Use `--no-search` (operator selects)
+   or the keyboard switch (`select_tribunal_kbd`, already wired into the sweep).
+2. **`select_option("#selCuaderno", …)` (cuaderno switch) is TOLERATED** (lighter AJAX) —
+   validated. Leave it as-is.
+3. **CDP `page.click()` is trusted** — magnifier, Buscar, Siguiente, modal-close, receptor:
+   all fine.
+4. **Doc downloads via `context.request.get(...dtaDoc=JWT)` are OK** (26 in a row worked, and
+   it's how the existing 1,605 Drive PDFs were made). The JWTs expire ~1h, so **download
+   during the scrape**, not later. At full-tribunal scale (~700 fetches) this is unproven —
+   watch for throttle.
+5. **GPS via `geoReferencia(jwt)`** (in-session JS call) is fine. Some geo refs legitimately
+   have no lat/lng → `geo_resolved < geo_links` is normal.
+6. **Rate/reputation is the real ceiling.** Even trusted CDP throttles after a while
+   (symptoms: detail modals stuck on "Cargando", searches return "sin resultados"). When you
+   see that: **STOP, start a FRESH session, and prefer a fresh IP.** Pace gently (defaults
+   already do). Don't stack runs on one session. `--resume` lets you spread the corte across
+   many sessions/days.
+7. **Mobile access (this run):** cellular IPs are usually clean (good). If one gets blocked,
+   **toggle airplane mode** to grab a new IP, reopen, re-establish. (Mobile IPs can be
+   CGNAT/shared, so a fresh session is still the rule.)
+
+---
+
+## Environment (the other PC)
+
+- **Python 3.12** on PATH. **venv** at `%LOCALAPPDATA%\pjud_venv` with **only `playwright`**
+  (no `playwright install` — we drive real Chrome, not a bundled browser). `Probar_CDP.cmd`
+  creates/repairs it. (Note: `pip install --upgrade pip` inside the venv trips a Windows file
+  lock — skip it; just `pip install playwright`.)
+- **Google Chrome** at `C:\Program Files\Google\Chrome\Application\chrome.exe`.
+- **CDP port 9333**, dedicated profile `%LOCALAPPDATA%\pjud_cdp` (fresh → CAPTCHA once,
+  cookies persist).
+
+### Credentials — MUST be copied (they are gitignored; NOT in the repo)
+Put these in `felipe\pjud\scraper\` (copy via a private channel — the repo is PUBLIC):
+- `pjud_config.json` — holds `pg_conn` (the **Neon** Postgres secret), Drive `folder_id` +
+  `documentos_folder_id`, and `start_date`. `dbstore` + `ingest_cdp` read the DB from here.
+- `client_secret.json` + `token.json` — Google OAuth (Drive, `drive.file` scope) for uploading
+  PDFs. Account **danko.buy@gmail.com**. (These live in the JPL folder `felipe\scraper\` too;
+  same account — copying them over works. `gauth.py` looks in `felipe\pjud\scraper\`.)
+
+Sanity check the DB + Drive before a big run:
+```
+cd felipe\pjud\scraper
+%LOCALAPPDATA%\pjud_venv\Scripts\python.exe -c "import gauth,gstore; c=gstore.load_config(); d=gauth.drive_client(gauth.credentials()); print('Drive OK', bool(d)); print('pg_conn?', bool(c.get('pg_conn')))"
+```
 
 ---
 
 ## How to run
 
-### Turnkey (recommended): `Probar_CDP.cmd`
-Double‑click it. It: ensures `pjud_venv` + Playwright, **launches Chrome on www.pjud.cl** with the
-debug port, prints the steps, and **pauses**. You do the operator steps above, press a key, and it
-runs `cdp_scrape.py` against that Chrome. JSON lands in Downloads.
+### Step 1 — open the CDP Chrome (operator opens it, never the script)
+Double-click **`felipe\pjud\Abrir_CDP.cmd`** (opens Chrome on the CDP port only), OR
+**`Probar_CDP.cmd`** (also builds the venv). Then, **by hand in that Chrome (all trusted):**
+1. Pass the CAPTCHA → **Consulta Causas** → **Búsqueda por Fecha** tab.
+2. **Competencia = Civil**, **Corte = C.A. de Santiago**, **Fechas** Desde `01/01/2026`
+   Hasta `31/01/2026`; wait for the **Tribunales** list.
+3. Do **one manual search** to confirm results actually come back (proves the session is live).
 
-### Manual split (what was used to validate)
-```
-REM 1) launch real Chrome with the debug port
-"C:\Program Files\Google\Chrome\Application\chrome.exe" ^
-  --remote-debugging-port=9333 --user-data-dir="%LOCALAPPDATA%\pjud_cdp" ^
-  --no-first-run --no-default-browser-check --start-maximized https://www.pjud.cl
+### Step 2 — run the scraper (from `felipe\pjud\scraper\`, using the venv python)
+Two modes:
 
-REM 2) do the operator setup in that Chrome, then:
-"%LOCALAPPDATA%\pjud_venv\Scripts\python.exe" cdp_scrape.py [--max-causas N] [--max-tribs N] [--proc "Ejecutivo Obligación de Dar"]
+**A) Unattended full-corte sweep (keyboard tribunal-switch):**
 ```
-`cdp_scrape.py` flags (all optional): `--port 9333`, `--max-tribs 0` (0=all), `--max-causas 0`
-(0=no limit), `--proc ""` (keep only causas whose Proc. matches, e.g. the ejecutivo filter).
-**First validation run: use `--max-causas 5` and watch it — don't unleash a full run until the
-full‑data extraction is confirmed and the pacing proves gentle enough.**
+%LOCALAPPDATA%\pjud_venv\Scripts\python.exe cdp_scrape.py --docs --gps --resume
+```
+The script keyboard-switches through every `#fecTribunal` option, searches, harvests each
+tribunal's bank C-causas with full detail + PDFs→Drive + GPS, and `--resume` skips causas
+already scraped. It **won't finish one corte in one session** (throttle) — when it degrades,
+stop, `ingest_cdp.py` what you got, then repeat on a fresh session; `--resume` continues.
+Recommended first run: add caps to validate — `--max-tribs 3 --max-causas 12`.
+
+**B) Careful single-tribunal harvest (most WAF-safe, operator drives tribunal selection):**
+Operator selects ONE tribunal + Buscar by hand, then:
+```
+%LOCALAPPDATA%\pjud_venv\Scripts\python.exe cdp_scrape.py --no-search --docs --gps --resume
+```
+Harvests only the displayed tribunal. Repeat per tribunal (operator changes it each time).
+
+**Flags:** `--port 9333` · `--max-tribs N` (0=all) · `--max-causas N` (0=no limit) ·
+`--proc "Ejecutivo Obligación de Dar"` (drop causas whose Proc. ≠ this, after opening) ·
+`--docs` · `--gps` · `--no-search` · `--resume`. Output: `Downloads\pjud_cdp_<epoch>.json`
+(incremental — survives interrupts).
+
+### Step 3 — ingest the JSON into Neon (+ Drive links)
+```
+%LOCALAPPDATA%\pjud_venv\Scripts\python.exe ingest_cdp.py "%USERPROFILE%\Downloads\pjud_cdp_<epoch>.json"
+```
+Idempotent UPSERTs into the `pjud_` tables; creates Documentos/Anexos rows from captured Drive
+links; marks each causa `fill_status='scraped'` so `--resume` skips it next time.
+(`--dry` previews; `--tribunal-map "Name=value"` only needed for old JSONs lacking `tribunalId`
+— new scrapes self-contain it.)
 
 ---
 
-## Files (all under `felipe/pjud/`)
+## Storage — Neon + Drive
 
-**CDP path (current/active):**
-- `scraper/cdp_scrape.py` — the scraper. **Connect‑only** (attaches to a running CDP port), full
-  per‑causa extraction, pagination, incremental JSON, gentle randomized pacing, startup
-  modal‑cleanup (recovers from a killed run). Parsers ported from `run.py`. **This is the file to
-  build on.**
-- `Probar_CDP.cmd` — turnkey launcher (Chrome on www.pjud.cl + venv + runs `cdp_scrape.py`).
+- **Neon** `neondb` (PG 18), connection = `pjud_config.json` → `pg_conn` (host/port/user/
+  password/dbname, sslmode+channel_binding=require). Tables are **UNPREFIXED** and built by
+  `dbstore._ddl()` from `gstore.TABS`: `bancos, tribunales, ruts, causas, litigantes,
+  cuadernos, escritos, documentos, anexos, notificaciones_receptor` (+ `sweep_progress`, and
+  the `coord.py` worker tables). Child FK column is **`causa_id`** (NOT `causa`). Every table
+  also has a `uid` (short base62) + causas has `fill`/`fill_status`.
+- **Drive**: PDFs go to the "Documentos" folder (`documentos_folder_id`), names flattened
+  `<causa_id>__c<n>__<folio>-<k>-doc.pdf`. `documentos.url` / `anexos.url` store the webViewLink.
 
-**In‑page bookmarklet (DEAD END — kept for the record, do NOT invest further):**
-- `inpage/inpage_scrape.js` (v10), `inpage/Bookmarks`, `inpage/bookmarklet_inpage.txt`,
-  `inpage/Preferences`, `Abrir_PJUD_sin_debug.cmd`. It evolved through v1→v10 (operator‑driven,
-  click‑only, human pacing, human modal‑close) and **still blocked immediately** because of the
-  `isTrusted` wall. A generator script (session scratchpad) URL‑encoded `inpage_scrape.js` into
-  the `Bookmarks` file (verified byte‑exact via Chrome's `encodeURIComponent`).
-
-**Older design (separate, still valid for its scope):** `scraper/run.py` (Playwright, has its own
-CDP `--discover`/`--fill` collab modes + Neon/Drive storage), `scraper/dbstore.py`,
-`scraper/gstore.py`, `scraper/coord.py`, `schema.sql`, `HANDOFF.md`.
+### Deterministic IDs (mirror run.py — do NOT regress)
+Rols are **per-tribunal** (same rol under many tribunal_ids = distinct cases).
+- `tribunal_id` = the OJV `#fecTribunal` option **value** (e.g. 1º Juzgado Civil de Santiago =
+  **259**, 2º=260, 3º=261…). `cdp_scrape` records it as `tribunalId`.
+- `causa_id` = `<tribunal_id>-<rol>` (e.g. `259-C-1565-2026`)
+- litigante `id` = `<causa_id>-<rut>` · cuaderno `id` = `<causa_id>-c<n>-<folio>-<k>` ·
+  escrito `id` = `<causa_id>-e<i>` · receptor `id` = `<causa_id>-r<i>` ·
+  documento `id` = `<cuaderno.id>-doc` · anexo `id` = `<cuaderno.id>-anexo`.
 
 ---
 
-## Environment / setup
-- **Python** 3.12 (system, on PATH). **venv** at `%LOCALAPPDATA%\pjud_venv` with the **`playwright`
-  package only** (1.61.0) — **no `playwright install`** (we drive real Chrome, not a bundled one).
-  (Note: `pip install --upgrade pip` in the venv trips a Windows file lock — skip it; just
-  `pip install playwright`.)
-- **Chrome** at `C:\Program Files\Google\Chrome\Application\chrome.exe` (Chrome 150).
-- **CDP port** 9333, dedicated **profile** `%LOCALAPPDATA%\pjud_cdp` (fresh → CAPTCHA once; cookies
-  persist after). No automation/debug fingerprint beyond the debug port itself.
-- **Output** `%USERPROFILE%\Downloads\pjud_cdp_<epoch>.json`.
-- **Repo is PUBLIC** — never commit `scraper/pjud_config.json`, `client_secret.json`, `token.json`
-  (gitignored) or `.claude/settings.local.json` (has a leaked PAT — see old HANDOFF).
+## Scope / filter
 
-## Output JSON shape (per causa)
-```
-rol, caratulado, fecha, tribunal, tribunalSel, corte, rango,
-header:{f_ingreso, estado_adm, procedimiento, ubicacion, estado_proc, etapa},
-litigantes:[{participante, rut, persona, nombre}],
-cuadernos:[{cuaderno, historia:[{folio, doc:{action,val}|null, anexo:{action,val}|null,
-                                 etapa, tramite, desc, fecha, foja, georref}]}],
-escritos:[{fecha_ingreso, tipo_escrito, solicitante}],
-receptor:[{cuaderno, nombre, fecha, estado}],
-n_historia
-```
-Bank filter = Rol starts `C` AND caratulado contains a bank token (SANTANDER, BANCOESTADO, ITAU,
-SCOTIABANK, BCI, BANCO DE CHILE, FALABELLA, COOPEUCH, BICE, CONSORCIO, RIPLEY, BTG, BANCO
-INTERNACIONAL). Verified sample (Santiago, Jan 2026): C‑1565/1525/1510/1543/1513/1518‑2026 — all
-"Ejecutivo Obligación de Dar", plaintiffs BancoEstado / CMR Falabella / Scotiabank.
+- **Bank plaintiff**: `caratulado` contains a bank token (SANTANDER, BANCOESTADO/BANCO DEL
+  ESTADO, ITAU, SCOTIABANK, BCI/CREDITO E INVERSIONES, BANCO DE CHILE, FALABELLA, COOPEUCH,
+  BICE, CONSORCIO, RIPLEY, BTG, BANCO INTERNACIONAL). List in `cdp_scrape.BANK`.
+- **Rol starts with `C`** — kept. `E-` rols are **Exhorto** (inter-court letters), OUT of
+  scope; do NOT include them.
+- **Procedure**: the true target is "Ejecutivo Obligación de Dar". Pass `--proc "Ejecutivo
+  Obligación de Dar"` to drop non-matching causas after opening (header-checked). Verified 1º
+  bank C-causas are all this proc.
 
-## Site / DOM reference (Búsqueda por Fecha) — trusted‑click targets
-- `#fecCompetencia`=`3` (Civil), `#corteFec`, `#fecTribunal`, `#fecDesde`, `#fecHasta`,
-  `#btnConConsultaFec` (Buscar).
-- Results table `#dtaTableDetalleFecha` (cols 🔍|Rol|Fecha|Caratulado|Tribunal). Row magnifier =
-  `a[onclick*='detalleCausaCivil']`. Pagination = `#sigId` ("Siguiente"; its `<li>` gets
-  `.disabled` on the last page; confirm advance by the first row's onclick changing).
-- Detail modal `#modalDetalleCivil`; header text carries ROL/F.Ing/Est.Adm/Proc/Ubicación/Estado
-  Proc/Etapa. Cuaderno `<select> #selCuaderno` — **switch by INDEX** (option values are JWTs that
-  regenerate). Panes `#historiaCiv`, `#litigantesCiv`, `#escritosCiv`.
-- Receptor sub‑modal: header `a[onclick*='receptorCivil']` → `#modalReceptorCivil` (causa‑level).
-- Docs: each historia Doc/Anexo cell holds `<form action="…docuN.php"><input name="dtaDoc"
-  value="<JWT>">` — captured as `{action,val}` for later download; **not downloaded in‑script**
-  (a background fetch is a non‑human network command and risks the WAF).
-- Close modals with a **real click** on `.modal-header .close` / `[data-dismiss='modal']` (never
-  `jQuery.modal('hide')`, synthetic Escape, or backdrop removal — those are automation tells).
+---
 
 ## Known issues / caveats
-- **Rate/session is the live risk.** Symptoms of a hot session/IP: detail modals stuck on
-  "Cargando", or searches returning "sin resultados" for tribunales you know have causas. When you
-  see that: STOP, let it cool, start a **fresh** session (reload → re‑navigate → re‑set form →
-  manual search). Don't stack runs.
-- **Guest session expiry.** OJV guest sessions are short‑lived; a long run may outlive one. For big
-  runs, plan session refreshes or split across sessions/days.
-- **CAPTCHA** is manual (operator), once per fresh profile session.
-- Georref is captured as **text only** (historia `td[8]`); resolving lat/lng needs opening a geo
-  sub‑modal per row — skipped for gentleness.
+
+- **Throttle ceiling** is the main constraint. Metadata-only sustained 20 on a fresh IP;
+  docs+GPS make each causa much heavier (~13 PDF fetches), so the per-session ceiling is lower.
+  Plan multiple fresh sessions + `--resume`.
+- **Slowness**: the results AJAX and detail modals can be slow — `fire_search` polls 45s, the
+  modal wait is 30s. On a *cooked* session they hang past that (that's your cue to refresh).
+- **GPS**: `geo_resolved < geo_links` is normal (some refs have no coords).
+- **Docs**: some historia "doc" forms return non-PDF/empty → skipped (e.g. 14/19 downloaded).
+- **1º Juzgado already partially in Neon** (259-C-1565/1525 fully w/ docs; ~20 more metadata-
+  only from the earlier run, `fill_status=''` → a docs sweep will re-scrape them to add files).
 
 ---
 
-## NEXT STEPS (in order)
-1. **Validate full‑data extraction on a FRESH session** (cooled IP): launch Chrome (Probar_CDP.cmd
-   or manual), operator sets Santiago + Jan 2026 + does a manual search, then
-   `cdp_scrape.py --max-causas 5`. Confirm the JSON has non‑empty `litigantes`, `cuadernos`
-   (multiple, with `historia`), `escritos`, `receptor`. Watch for "Cargando"/throttle.
-2. **Tune pacing** if needed (constants `P_CAUSA/P_PAGE/P_TRIB/P_STEP` at the top of
-   `cdp_scrape.py`; currently 5–10s / 4–8s / 6–12s / 0.6–1.6s). Find the fastest that stays under
-   the throttle; err slow.
-3. **Scale gradually** — `--max-causas 20`, then a full tribunal, then the corte. If a session
-   degrades, that's the ceiling for one session; add a refresh strategy.
-4. **Wire output → Neon** (`dbstore.py`): map JSON records to the `pjud_` tables
-   (`causa_id = <tribunal_id>-<rol>`, deterministic ids per the old HANDOFF). JSON‑only today.
-5. **PDFs → Drive** (deferred): historia rows already carry the doc/anexo `{action, dtaDoc}`.
-   Download by clicking the doc form (trusted) or an in‑session request, then upload via `gstore`.
-6. **Multi‑corte / nationwide**: repeat the operator flow per corte, or extend the operator step to
-   change cortes between passes (the script already reads whatever corte is set).
+## NEXT STEPS (in order, on the other PC / mobile IP)
 
-## Session history (why in‑page failed — so nobody re‑walks it)
-Built 7 per‑month launchers, then collapsed to one; made the launcher open Chrome only (no
-auto‑nav), on www.google.cl then plain. Fixed real bugs in the bookmarklet: results wait
-(wait for rows carrying a `detalleCausaCivil` link, not a loading placeholder), corte→tribunal
-cascade race (native `change` event, not jQuery‑only), pagination aligned to `run.py`, human
-modal‑close (click the X, no DOM surgery), strict close‑before‑open modal ordering, operator‑set
-competencia/corte/dates (script iterates tribunales only), and finally **pure clicks + human
-pacing**. It **still blocked at the first action** → confirmed the `isTrusted` wall → pivoted to
-CDP, which passed. Lesson recorded in [[pjud-cdp-beats-waf]].
+1. Copy the 3 cred files into `felipe\pjud\scraper\`; run the Drive+DB sanity check above.
+2. Fresh session (mobile IP): `Abrir_CDP.cmd` → operator setup (Santiago, Jan 2026, manual
+   search) → **bounded** validation: `cdp_scrape.py --docs --gps --resume --max-tribs 3
+   --max-causas 12`. Confirm: multiple tribunals via keyboard-switch, PDFs in Drive, GPS
+   resolved, no block. Then `ingest_cdp.py` the JSON; check Neon.
+3. If clean, drop the caps and let the **full corte sweep** run: `cdp_scrape.py --docs --gps
+   --resume`. When it throttles, ingest, refresh the session/IP, run again (resume continues)
+   until the whole Santiago corte for January is covered.
+4. Then other cortes / other months (repeat the operator setup with different Corte/Fechas).
+5. (Optional) revoke the leaked GitHub PAT embedded in the `origin` remote URL (repo is public).
+
+---
+
+## File map (all under `felipe/pjud/`)
+
+**CDP path (current/active):**
+- `scraper/cdp_scrape.py` — the scraper. Connect-only; `--no-search` harvest;
+  `select_tribunal_kbd` keyboard sweep; `--docs` (→Drive via `dbstore`), `--gps`, `--resume`;
+  incremental JSON; gentle randomized pacing (`P_CAUSA 5-10s / P_PAGE 4-8s / P_TRIB 6-12s /
+  P_STEP 0.6-1.6s`).
+- `scraper/ingest_cdp.py` — JSON → Neon `pjud_` tables (idempotent upserts, deterministic ids,
+  Documentos/Anexos w/ Drive links, marks `fill_status='scraped'`).
+- `Abrir_CDP.cmd` — open the CDP Chrome only. `Probar_CDP.cmd` — venv + Chrome + runs scraper.
+- `scraper/dbstore.py` (Neon + Drive), `scraper/gauth.py` (Drive OAuth), `scraper/gstore.py`
+  (Drive helpers + `TABS` schema), `scraper/pjud_config.json` (gitignored secrets).
+
+**Dead ends / legacy (do NOT invest):**
+- `inpage/*` + `Abrir_PJUD_sin_debug.cmd` — in-page bookmarklet (isTrusted wall).
+- `scraper/run.py` + `HANDOFF.md` + `schema.sql` + `coord.py` — the older Sheets/daily-sweep
+  design; `run.py --fill` CDP-collab is dead for the same isTrusted reason.
