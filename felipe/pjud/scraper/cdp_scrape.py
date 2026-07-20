@@ -352,8 +352,8 @@ def main():
                         page.wait_for_timeout(600)
                         rec = scrape_causa(page, {
                             "rol": c["rol"], "caratulado": c["car"], "fecha": c["fecha"],
-                            "tribunal": c["trib"], "tribunalSel": tb["t"], "corte": corte,
-                            "rango": f"{desde} a {hasta}"})
+                            "tribunal": c["trib"], "tribunalSel": tb["t"], "tribunalId": tb["v"],
+                            "corte": corte, "rango": f"{desde} a {hasta}"})
                         if args.proc and norm(rec["header"].get("procedimiento", "")) != norm(args.proc):
                             continue     # scraped but doesn't match the proc filter -> drop
                         details.append(rec)
