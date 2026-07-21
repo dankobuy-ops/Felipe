@@ -66,9 +66,25 @@ few fresh sessions. This doc is everything needed to do that on another PC.
    see that: **STOP, start a FRESH session, and prefer a fresh IP.** Pace gently (defaults
    already do). Don't stack runs on one session. `--resume` lets you spread the corte across
    many sessions/days.
-7. **Mobile access (this run):** cellular IPs are usually clean (good). If one gets blocked,
+7. **Mobile access:** cellular IPs are usually clean (good). If one gets blocked,
    **toggle airplane mode** to grab a new IP, reopen, re-establish. (Mobile IPs can be
    CGNAT/shared, so a fresh session is still the rule.)
+8. **⚠️ RESET THE PROFILE, NOT JUST THE IP — the flag follows the device, not the network.**
+   Validated 2026-07-20. On a fresh mobile IP but the *reused* `%LOCALAPPDATA%\pjud_cdp`
+   profile, the first causa open was **hard-rejected** by F5 (not the "Cargando" hang — an
+   actual block page rendered into the detail-modal iframes):
+   `The requested URL was rejected. Please consult with your administrator (2). Your support
+   ID is: <8068285243157809776>`. The parent page stayed healthy the whole time (tribunal
+   selected, 101 result rows) — **only `detalleCausaCivil` was rejected**, which is the tell.
+   The profile's cookie jar carried F5 Shape's **`TSPD_101_DID`** (a *device* id, 224 bytes,
+   set on both `oficinajudicialvirtual.pjud.cl` and `www.pjud.cl`) plus a full `TS*` set,
+   all persisted from earlier cooked sessions. Renaming the profile aside
+   (`pjud_cdp` → `pjud_cdp.burned-<date>`) and re-passing the CAPTCHA on the **same** mobile
+   IP fixed it immediately: 3/3 causas, 44 PDFs, 5 GPS, zero warnings. **The only variable
+   changed was the profile.** So: a "fresh session" means a **fresh profile dir**, not just
+   new cookies or a new IP. Keep the burned dir around as evidence; it's ~150 MB.
+   *Corollary:* every past "fresh IP" test that still degraded was probably re-using the same
+   burned device id — don't trust those as evidence about IPs.
 
 ---
 
