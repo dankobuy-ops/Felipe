@@ -17,5 +17,9 @@ screenshots/
 Logs/
 logs/
 
+# PJUD network-probe dumps — local experiment artifacts (may hold request internals)
+netprobe_*.jsonl
+pjud_cdp_*.json
+
 # Local Claude Code config
 .claude/

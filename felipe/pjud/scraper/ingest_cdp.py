@@ -11,12 +11,21 @@ Docs/anexos (PDFs) are deferred (the doc JWTs are session-ephemeral).
 Each causa needs `tribunalId` (the OJV #fecTribunal value). New cdp_scrape runs write
 it; older JSONs can be patched, or pass --tribunal-map '<name>=<value>,...'.
 
-Usage: python ingest_cdp.py <pjud_cdp_*.json> [--dry] [--tribunal-map "1º Juzgado Civil de Santiago=259"]
+`--list-only` ingests a `cdp_scrape.py --count-only` JSON (list-level rows: rol/fecha/
+tribunal, NO detail). It INSERTs causa SHELLS with `ON CONFLICT DO NOTHING` and never
+touches fill_status, so the rols are registered as pending work and a later detail
+scrape (`--resume`) still picks them up. Do NOT feed a count-only JSON to the normal
+path: that would blank the header columns and mark the causas 'scraped'.
+
+Usage: python ingest_cdp.py <pjud_cdp_*.json> [--dry] [--list-only]
+                            [--tribunal-map "1º Juzgado Civil de Santiago=259"]
 """
 
 import argparse
 import json
 import sys
+
+import psycopg2.extras
 
 sys.path.insert(0, r"C:\Claude\felipe\pjud\scraper")
 import run          # helpers: norm_rut, split_persona, _cuaderno_num, _first_date, _paren_date, _now
@@ -141,10 +150,53 @@ def build(causa, name_map):
     return out
 
 
+def ingest_list(data, name_map, dry):
+    """--list-only: register list-level rols as causa SHELLS. INSERT ... ON CONFLICT DO
+    NOTHING — existing causas (any fill_status) are left completely untouched, and new
+    ones land at fill_status='' so a later detail scrape still collects them.
+    NB `caratulado` has no column in `causas`; the parties arrive with the litigantes."""
+    tribs, shells = {}, {}
+    for c in data:
+        tid = resolve_tid(c, name_map)
+        if not tid:
+            raise ValueError(f"{c.get('rol')}: no tribunalId (tribunal={c.get('tribunalSel')!r})")
+        tribs[tid] = (c.get("corte", ""), c.get("tribunalSel") or c.get("tribunal", ""))
+        shells[f"{tid}-{c['rol']}"] = (
+            f"{tid}-{c['rol']}", c["rol"], run._first_date(c.get("fecha", "")),
+            tid, "Civil", run._now())
+
+    print(f"[LIST] {len(data)} list rows -> {len(shells)} causa shells, "
+          f"{len(tribs)} tribunal(es)")
+    for tid, (corte, name) in tribs.items():
+        print(f"  {tid:>5}  {name[:44]:44} {corte}")
+    if dry:
+        print("[DRY] no writes.")
+        return
+
+    store = dbstore.Store()
+    with store.conn.cursor() as cur:
+        cur.execute("SELECT causa_id FROM causas WHERE causa_id = ANY(%s)",
+                    (list(shells),))
+        already = {r[0] for r in cur.fetchall()}
+        psycopg2.extras.execute_values(
+            cur, 'INSERT INTO "tribunales" ("id","corte","tribunal") VALUES %s '
+                 'ON CONFLICT ("id") DO NOTHING',
+            [(tid, corte, name) for tid, (corte, name) in tribs.items()])
+        psycopg2.extras.execute_values(
+            cur, 'INSERT INTO "causas" ("causa_id","rol","f_ingreso","tribunal_id",'
+                 '"competencia","updated_at") VALUES %s ON CONFLICT ("causa_id") DO NOTHING',
+            list(shells.values()))
+    print(f"  inserted {len(shells) - len(already)} new causa shells "
+          f"({len(already)} already known, untouched)")
+    print("DONE")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("json")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--list-only", action="store_true",
+                    help="ingest a --count-only JSON: causa shells only, fill_status untouched")
     ap.add_argument("--tribunal-map", default="",
                     help='fallback name=value pairs, e.g. "1º Juzgado Civil de Santiago=259"')
     args = ap.parse_args()
@@ -156,6 +208,13 @@ def main():
             name_map[k.strip()] = v.strip()
 
     data = json.load(open(args.json, encoding="utf-8"))
+    if args.list_only:
+        return ingest_list(data, name_map, args.dry)
+    # Guard: a --count-only JSON has no `header`. Ingesting it here would blank the
+    # header columns and mark the causas 'scraped', so --resume would skip them forever.
+    if any("header" not in c for c in data):
+        sys.exit(f"[ALTO] {sum(1 for c in data if 'header' not in c)}/{len(data)} rows have "
+                 f"no detail (header) — this looks like a --count-only list. Use --list-only.")
     merged = {}
     levels = {}   # causa_id -> 'full' | 'scraped' (the depth this scrape reached)
     for c in data:

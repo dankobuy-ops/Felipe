@@ -1,4 +1,4 @@
-# PJUD scraper — CDP Handoff (updated 2026-07-21)
+# PJUD scraper — CDP Handoff (updated 2026-07-21, evening)
 
 **Supersedes the 2026-07-20 version.** Project: **Poder Judicial Virtual** (Oficina
 Judicial Virtual, OJV — `oficinajudicialvirtual.pjud.cl`). Goal: collect civil
@@ -6,10 +6,79 @@ Judicial Virtual, OJV — `oficinajudicialvirtual.pjud.cl`). Goal: collect civil
 with **full detail + PDF files + GPS**, into a **Neon Postgres** DB (+ PDFs to Google Drive).
 
 The scraper **works end-to-end** — detail, files, GPS, Neon ingest, resume — and that is no
-longer in doubt. What blocks the project now is **not correctness, it is reputation
-economics**: a browser profile survives only ~6 causas / ~150 PDF fetches before the F5 WAF
-starts rejecting detail opens, and each recovery costs a manual CAPTCHA. **Read
-"The burn budget" and "THE OPEN QUESTION" before writing any code.**
+longer in doubt. What blocks the project is **not correctness, it is the F5 WAF**. As of the
+2026-07-21 evening session the model of *what* trips the WAF changed materially — **read the
+next section first; it supersedes the older "burn budget = elapsed time" story below.**
+
+---
+
+## ★★★ NEWEST FINDING (2026-07-21 evening) — START HERE ★★★
+
+### The block is the SECOND search of a session, not the burn budget and not our code
+
+Three independent runs today all show the identical shape:
+
+| Run | Search #1 | Search #2 |
+|-----|-----------|-----------|
+| 16:16 (yesterday's code, **operator**-established form) | trib 259 → **53 rows** ✅ | trib 2 → blocked ❌ |
+| Run 1 (script, dates set via JS `.value`+dispatchEvent) | trib 259 → **53 rows** ✅ | trib 2 → **F5 REJECTED** ❌ |
+| Run 2 (script, dates **typed**, fresh profile) | *operator's manual search* ✅ | script's 1st search → **F5 REJECTED** ❌ |
+
+Read run 2 carefully: on the **fresh** profile the operator did one manual search by hand
+(worked), *then* the script searched — and that script search was the **session's 2nd search**
+and was rejected. So the reject lands at the **same ordinal position (search #2)** regardless
+of who issues it or how the form was built. Conclusions, in order of confidence:
+
+1. **It is NOT `establish_form_kbd` / the `--corte` keyboard code.** The 16:16 run used the
+   operator's hand-built form and hit the wall at exactly the same place. The keyboard-establish
+   itself is **VALIDATED** — twice today it built the form and returned a correct **53** for
+   trib 259. (This means the `--count-only --corte 90` "sweep never left trib 259" mystery from
+   this morning is *solved*: it wasn't the code, it was search #2 getting rejected every time.)
+2. **It is NOT the JS-`.value`+`dispatchEvent` on the dates** (my first guess). Run 2 typed the
+   dates with trusted keystrokes and still got rejected at search #2. *(That fix was still worth
+   keeping — see `type_date_kbd` below — but it is not the cause.)*
+3. **It is NOT elapsed time or PDF volume** (the old "burn budget" model). Search #2 is rejected
+   seconds into a fresh session with zero detail opens and zero PDF fetches. The earlier
+   "survives ~6 causas" number was a *different* regime (detail opens on an already-warm profile);
+   the **search-sweep regime dies at the 2nd search**, full stop.
+4. **The instant tell:** after a reject, **`#btnConConsultaFec` (Buscar) stays `disabled`
+   forever.** From the site's own JS: the button is disabled in `beforeSend` and only
+   re-enabled in the AJAX **`success`** handler — which also calls `recaptchacallbackfechav3()`
+   to mint a fresh token. A rejected response skips `success`, so the button never re-enables
+   and no fresh token is minted. **Stuck-disabled Buscar == WAF block. Detect this, don't wait
+   45 s for rows.**
+
+### The prime suspect: reCAPTCHA v3 token, single-use per session-search
+
+The site refreshes the enterprise reCAPTCHA v3 token in two places only: a `setInterval(…,
+60000)` (`llamarCaptchaTodos`) and each search's `success` handler. **Hypothesis:** search #1
+consumes the token; search #2 fires before the async refresh has landed a *new* token, reusing
+a spent one → F5 rejects. A human doing two manual searches is slow enough that the 60 s
+interval (or the success-handler refresh from search #1) has already replaced the token; the
+script is fast enough to reuse it. **This is the single most important thing to test next.**
+
+### Built to settle it: `scraper/net_probe.py` (read-only network recorder)
+
+Attaches over CDP, **injects nothing**, logs every page request with full POST params — the
+`g-recaptcha-response-fecha` token is **fingerprinted** (`<len=1337 03AF…kQ2f>`) so token
+**reuse between two searches is visible at a glance** — plus response status + F5-reject flag,
+to `scraper/netprobe_<label>_<epoch>.jsonl`. Usage in its docstring.
+
+### The experiment to run next (one fresh profile, ~2 min)
+
+1. Fresh profile + CAPTCHA, reach Consulta Causas. **Do NOT search yet.**
+2. `python net_probe.py --label manual` (start it BEFORE any search).
+3. Operator does **TWO manual searches by hand** (trib 1 → results → switch trib → Buscar).
+   **The key question: does the 2nd MANUAL search return rows, or also get rejected?**
+   - If the 2nd manual search **works** → the fault is script-specific (speed/token reuse);
+     diff the script's request against `manual` #2 in the JSONL — the differing param is it.
+   - If the 2nd manual search is **also rejected** → the session genuinely allows ~1 search;
+     the whole "sweep 31 tribunals in one session" plan is dead and we pivot to **1 search per
+     profile**, or find how the site itself refreshes the token before allowing search #2.
+4. Likely fix if it's token reuse: before each search after the first, **wait for a NEW token**
+   — poll `#g-recaptcha-response-fecha` until its value CHANGES from the last one used (or call
+   `recaptchacallbackfechav3()` and wait), then click Buscar. Pacing 60 s+ between searches (to
+   let `llamarCaptchaTodos` fire) is the crude version.
 
 ---
 
@@ -23,11 +92,15 @@ starts rejecting detail opens, and each recovery costs a manual CAPTCHA. **Read
 - **Everything in the pipeline is validated live:** trusted-click detail opens, `--docs`
   (PDFs → Drive), `--gps` (lat/lng), `--resume`, keyboard tribunal switch, and
   `ingest_cdp.py` → Neon with 0 dangling FKs.
-- **⚠️ The blocker is the burn rate.** See below. A fresh profile got ~6 causas / 152 PDF
-  fetches before hard rejection. At that rate the Santiago corte is not reachable by
-  grinding — the next session must first work out *what* burns it.
+- **⚠️ The blocker (updated 2026-07-21 evening):** for the **search-sweep** regime it is the
+  **2nd search of a session** getting F5-rejected — NOT elapsed time, NOT PDF volume, NOT our
+  form code. See the "★★★ NEWEST FINDING" section at the very top; it supersedes the "burn
+  budget = time" narrative in "The burn budget" section below (kept for the *detail-open*
+  regime evidence, which is a separate, warmer-profile phenomenon). Prime suspect: reCAPTCHA
+  v3 token reuse. **Do the `net_probe.py` experiment before writing any more scraper code.**
 - **The flag follows the PROFILE, not the IP** (validated — rule 8). Resetting the network
-  without resetting `%LOCALAPPDATA%\pjud_cdp` does nothing.
+  without resetting `%LOCALAPPDATA%\pjud_cdp` does nothing. **A fresh profile = a fresh profile
+  DIR** (`%LOCALAPPDATA%\pjud_cdp`), not a new IP and not new cookies.
 
 ---
 
@@ -81,7 +154,14 @@ its 101 rows. Only `detalleCausaCivil` is rejected. That asymmetry is the signat
 
 ---
 
-## ⚠️ THE OPEN QUESTION — start the next session here
+## ~~⚠️ THE OPEN QUESTION~~ — RESOLVED 2026-07-21: it is TIME, not volume
+
+> **Verdict (07-21 field results, this PC):** the reduced doc set cut fetches ~47 → ~9 per
+> causa and the profile **still** burned after ~3 causas in a long session; a search-only
+> list sweep burns too. Cause = **elapsed session time / cumulative activity**. Fix =
+> **short rotating sessions** (~3-6 causas each, fresh profile dir per session). The doc-set
+> reduction is kept — it's cheaper and faster — but it is not the cure.
+> The reasoning below is preserved because the *evidence* still matters; the question isn't.
 
 **We do not yet know what burns the profile.** The probe and the sweep differ in *two* ways
 at once, and the experiment can't separate them:
@@ -254,8 +334,17 @@ always ingest what you got before resetting anything.**
 ### Step 3 — ingest into Neon (+ Drive links)
 ```
 python ingest_cdp.py "%USERPROFILE%\Downloads\pjud_cdp_<epoch>.json"        # --dry to preview
+python ingest_cdp.py "...\pjud_cdp_<epoch>.json" --list-only                # a --count-only JSON
 ```
 Idempotent UPSERTs; marks each causa `fill_status='scraped'` so `--resume` skips it.
+
+**`--list-only`** (2026-07-21) ingests a `--count-only` list JSON: causa **shells** only
+(`causa_id, rol, f_ingreso, tribunal_id, competencia`) via `INSERT ... ON CONFLICT DO
+NOTHING`, so existing causas are untouched and new ones land at `fill_status=''` — i.e. the
+rols are registered as *pending work* and a later detail scrape still collects them. The
+normal path now **refuses** a headerless JSON (it would have blanked the header columns and
+marked them `'scraped'`, so `--resume` would skip them forever). `caratulado` is dropped —
+`causas` has no such column; the parties arrive with the litigantes.
 
 ---
 
@@ -323,10 +412,10 @@ Rols are **per-tribunal** (same rol under many tribunal_ids = distinct cases).
 
 ---
 
-## Database state as of 2026-07-21
+## Database state as of 2026-07-21 (end of day, after the list ingest)
 
 ```
-causas                   3144      fill_status:  ''        2132
+causas                   3177      fill_status:  ''        2165
 cuadernos               63323                    skipped    845
 litigantes              13866                    done       124
 documentos               1757                    error       37
@@ -335,28 +424,43 @@ notificaciones_receptor 17173
 tribunales                168
 ```
 
-The **6 `scraped`** are this session's, all at tribunal 259 (1º Juzgado Civil de Santiago):
-`259-C-1510-2026, -C-1513-2026, -C-1518-2026, -C-1525-2026, -C-1543-2026, -C-1565-2026`.
-0 dangling FKs. Note `--resume` skips **only** `fill_status='scraped'`, so the 2,132 rows at
-`''` (metadata-only, from the old `run.py`) will be re-scraped to attach files — that is
-intended, not a bug.
+The **6 `scraped`** are the 07-21 session's, all at tribunal 259 (1º Juzgado Civil de
+Santiago): `259-C-1510-2026, -C-1513-2026, -C-1518-2026, -C-1525-2026, -C-1543-2026,
+-C-1565-2026`. 0 dangling FKs.
+
+`causas` grew 3144 → **3177** because the 53-causa January list for tribunal 259
+(`--count-only`) was ingested with the new **`--list-only`** path: **33 rols that existed
+nowhere in the DB** are now registered as shells at `fill_status=''`; the other 20 were
+already known and were left untouched. So tribunal 259 / January is now **completely
+enumerated** in the DB (53/53) and only the *detail* is missing (47 at `''`, 6 `scraped`).
+
+Note `--resume` skips **only** `fill_status='scraped'`, so the rows at `''` (both the new
+shells and the ~2.1k metadata-only rows from the old `run.py`) will be scraped for detail —
+that is intended, not a bug.
 
 ---
 
 ## NEXT STEPS (in order)
 
-1. **Run the burn experiment above** (metadata-only on a fresh profile). Do not build
-   anything until you know whether PDFs or elapsed time is the cause — the two answers call
-   for opposite work.
-2. **Ask Felipe which documents actually matter.** If the answer is "the demanda and the
-   liquidación", not "all 47 historia rows", the fetch budget problem likely dissolves and
-   this becomes the highest-leverage change in the project.
-3. **Count the job** on a burned profile (`--count-only`): bank C-causas per tribunal for
-   January. The corte's size is still unknown and it gates every strategy decision.
-4. Only then resume bulk collection, with `--resume` across rotating profiles.
+1. **Settle the "search #2" question — this gates everything.** Run the `net_probe.py`
+   experiment in the "★★★ NEWEST FINDING" section: fresh profile → probe → **two manual
+   searches** → does search #2 survive? This tells you whether the sweep is salvageable at all
+   and, if so, exactly which request param (almost certainly the reCAPTCHA token) is stale.
+2. **If it's token reuse (expected):** in `cdp_scrape.py`, before every search after the first,
+   wait for `#g-recaptcha-response-fecha` to CHANGE from the last used value (poll it, or call
+   `recaptchacallbackfechav3()` and wait for a new token) before clicking Buscar. Then the
+   `--count-only --corte 90` full-31-tribunal sweep should complete in one session.
+3. **Count the job**: that sweep, ingesting each tribunal's list with `ingest_cdp.py
+   --list-only`, enumerates the whole corte cheaply and makes the DB — not a JSON in Downloads
+   — the work queue. (Only trib 259 = 53 is measured; Santiago-Jan ≈ ~1,500 extrapolated.)
+4. Then bulk **detail** collection with `--resume --docs` across rotating profiles. NB the
+   detail-open regime is a *separate* WAF phenomenon (warmer profile, ~6 causas) — re-measure
+   its budget once the search block is understood; don't assume the old "~6 causas" holds.
 5. (Optional) migrate `georref` from the `=HYPERLINK` formula to real lat/lng columns.
 6. **Revoke the leaked GitHub PAT** — it was stripped from `settings.local.json` before ever
    being pushed, but the token itself is still live on GitHub.
+7. **Housekeeping:** 4 burned profile dirs `%LOCALAPPDATA%\pjud_cdp.burned-*` accumulated on
+   2026-07-21; safe to delete once a run is green.
 
 ---
 
@@ -364,12 +468,23 @@ intended, not a bug.
 
 **CDP path (current/active):**
 - `scraper/cdp_scrape.py` — the scraper. Connect-only; `--no-search` harvest;
-  `select_tribunal_kbd` keyboard sweep; `--docs` (→Drive via `dbstore`), `--gps`, `--resume`;
+  `select_tribunal_kbd` keyboard sweep; **`--corte/--desde/--hasta` → `establish_form_kbd`**
+  (builds the whole Búsqueda-por-Fecha form with TRUSTED keyboard, no manual search; VALIDATED
+  — returns 53 for trib 259) + `form_ok()` auto-recovery for the session-expiry form reset;
+  **`type_date_kbd`** (dates set by real keystrokes, never JS `.value`+dispatchEvent — the old
+  synthetic-event pattern is gone); `--docs` (→Drive via `dbstore`), `--gps`, `--resume`;
   incremental JSON; gentle randomized pacing (`P_CAUSA 5-10s / P_PAGE 4-8s / P_TRIB 6-12s /
-  P_STEP 0.6-1.6s`).
+  P_STEP 0.6-1.6s`). **KNOWN LIMIT: search #2 of a session is F5-rejected (see top section).**
 - `scraper/ingest_cdp.py` — JSON → Neon (idempotent upserts, deterministic ids, Drive links,
-  marks `fill_status='scraped'`).
+  marks `fill_status='scraped'`). **`--list-only`** ingests a `--count-only` list as causa
+  SHELLS (`ON CONFLICT DO NOTHING`, `fill_status` untouched → stays pending work); the normal
+  path now REFUSES a headerless JSON (would blank headers + mark 'scraped').
+- `scraper/net_probe.py` — **read-only network recorder (NEW 2026-07-21 eve). Injects nothing.**
+  Logs every request's POST params (reCAPTCHA token fingerprinted) + F5-reject flag to
+  `netprobe_<label>_<epoch>.jsonl`, so a manual search and a script search can be diffed. This
+  is the tool for the "search #2" experiment.
 - `scraper/waf_check.py` — **read-only WAF/session health check. Run before and after.**
+  (TODO: teach it the stuck-disabled-Buscar signature = instant block tell.)
 - `Abrir_CDP.cmd` — open the CDP Chrome only. `Probar_CDP.cmd` — venv + Chrome + scraper.
 - `scraper/dbstore.py` (Neon + Drive), `scraper/gauth.py` (Drive OAuth), `scraper/gstore.py`
   (Drive helpers + `TABS` schema), `scraper/pjud_config.json` (gitignored secrets).

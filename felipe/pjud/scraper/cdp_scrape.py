@@ -283,6 +283,98 @@ def causa_state(tribunal_id):
         return {}
 
 
+def select_by_kbd(page, sel, value):
+    """Change a <select> to `value` via TRUSTED keyboard (focus + arrows). True on success."""
+    try:
+        opts = page.eval_on_selector_all(
+            f"{sel} option", "els=>els.map((o,i)=>({i:i,v:o.value,sel:o.selected}))")
+        cur = next((o["i"] for o in opts if o["sel"]), 0)
+        tgt = next((o["i"] for o in opts if o["v"] == value), None)
+        if tgt is None:
+            return False
+        page.locator(sel).focus()
+        key = "ArrowDown" if tgt > cur else "ArrowUp"
+        for _ in range(abs(tgt - cur)):
+            page.keyboard.press(key)
+            page.wait_for_timeout(70)
+        return page.eval_on_selector(sel, "e=>e.value") == value
+    except Exception:
+        return False
+
+
+def _wait_opts(page, sel, secs):
+    """Poll for a <select>'s options to populate (AJAX cascade). True when >0 real options."""
+    for _ in range(secs * 2):
+        page.wait_for_timeout(500)
+        try:
+            if page.eval_on_selector_all(f"{sel} option",
+                                         "e=>e.filter(o=>o.value&&o.value!=='0').length"):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def type_date_kbd(page, sel, value):
+    """Set a readonly datepicker input with TRUSTED keystrokes. `readOnly` is cleared as a DOM
+    PROPERTY — a mutation, not an event, so nothing untrusted is ever dispatched — and then the
+    value is TYPED for real, so the browser itself emits genuine isTrusted=true input/change
+    events. Do NOT go back to `e.value=...` + `dispatchEvent(new Event('change'))`: that fires
+    isTrusted=false and F5 flags the session (the search still succeeds once, then the NEXT
+    request comes back as the rejection page — it burned a profile on 2026-07-21)."""
+    for attempt, closer in enumerate(("Escape", "Tab")):
+        try:
+            page.eval_on_selector(sel, "e=>{e.readOnly=false;e.removeAttribute('readonly');}")
+            page.locator(sel).click()                 # TRUSTED — also opens the datepicker
+            page.keyboard.press("Control+a")
+            page.keyboard.type(value, delay=60)       # TRUSTED keystrokes
+            page.keyboard.press(closer)               # close the datepicker / blur to fire change
+            page.wait_for_timeout(400)
+            if page.eval_on_selector(sel, "e=>e.value") == value:
+                return True
+        except Exception as e:
+            print(f"      [date {sel}] {str(e)[:50]}")
+    return False
+
+
+def establish_form_kbd(page, corte_val, desde, hasta):
+    """Establish the Busqueda por Fecha form BASE with TRUSTED keyboard only — no manual search
+    needed, and this is also the session-expiry recovery. Sets: Fecha tab, Civil competencia,
+    corte, dates. Tribunals are iterated by the caller. Returns True on success."""
+    try:
+        if page.query_selector("a[href='#BusFecha']"):
+            page.locator("a[href='#BusFecha']").focus()
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(1000)
+        if not select_by_kbd(page, "#fecCompetencia", "3"):     # Civil
+            print("      [establish] competencia select failed")
+            return False
+        _wait_opts(page, "#corteFec", 6)
+        if not select_by_kbd(page, "#corteFec", corte_val):
+            print(f"      [establish] corte {corte_val} select failed")
+            return False
+        page.wait_for_timeout(5000)                             # 5s settle (operator's tip)
+        _wait_opts(page, "#fecTribunal", 10)
+        for sel, val in (("#fecDesde", desde), ("#fecHasta", hasta)):
+            if not type_date_kbd(page, sel, val):               # TRUSTED typing, never JS .value
+                print(f"      [establish] date {sel} = {val} failed")
+                return False
+        return True
+    except Exception as e:
+        print(f"      [establish] {str(e)[:60]}")
+        return False
+
+
+def form_ok(page):
+    """True if the date form is still established (competencia=Civil, tribunal select enabled).
+    False after a session-expiry popup resets it (corte/tribunal go disabled)."""
+    try:
+        return (page.eval_on_selector("#fecCompetencia", "e=>e.value") == "3"
+                and not page.eval_on_selector("#fecTribunal", "e=>e.disabled"))
+    except Exception:
+        return False
+
+
 def scrape_causa(page, api, meta, full=False):
     """Modal opened by the caller. Parse header/litigantes/cuadernos(historia)/escritos/
     receptor. With GPS: resolve each geo row's lat/lng. With DOCS: download the causa-level
@@ -504,6 +596,12 @@ def main():
     ap.add_argument("--count-only", action="store_true",
                     help="count bank C-causas per tribunal from the results table; NO detail "
                          "opens/docs (safe on a burned profile — sizes the job)")
+    ap.add_argument("--corte", default="",
+                    help="establish the form via keyboard for this corte VALUE (90=Santiago) -> "
+                         "NO manual search needed; the script sets competencia/corte/dates itself "
+                         "and re-establishes if the session-expiry popup resets the form")
+    ap.add_argument("--desde", default="01/01/2026", help="date Desde DD/MM/YYYY (with --corte)")
+    ap.add_argument("--hasta", default="31/01/2026", help="date Hasta DD/MM/YYYY (with --corte)")
     args = ap.parse_args()
     global DOCS, GPS, RESUME, COUNT_ONLY
     DOCS, GPS, RESUME, COUNT_ONLY = args.docs, args.gps, args.resume, args.count_only
@@ -530,6 +628,14 @@ def main():
         for _p in ctx.pages:
             _p.on("dialog", _accept_dialog)
         ctx.on("page", lambda p: p.on("dialog", _accept_dialog))
+
+        # --corte: the script establishes the whole form via keyboard (no manual search).
+        if args.corte:
+            print(f"[KBD] establishing form: corte {args.corte}, {args.desde}..{args.hasta} "
+                  f"(trusted keyboard — no manual search needed)")
+            if not establish_form_kbd(page, args.corte, args.desde, args.hasta):
+                sys.exit("[ALTO] keyboard establish failed — reach the 'Busqueda por Fecha' tab first.")
+
         if (not page.query_selector("#fecCompetencia")
                 or page.eval_on_selector("#fecCompetencia", "e=>e.value") != "3"):
             sys.exit("[ALTO] La Competencia no es CIVIL (o no veo 'Busqueda por Fecha').")
@@ -572,6 +678,9 @@ def main():
             if args.max_causas and len(details) >= args.max_causas:
                 break
             if not args.no_search:
+                if args.corte and not form_ok(page):          # session-expiry popup reset the form
+                    print(f"[{ti}/{len(tribs)}] {tb['t'][:40]}  [recover: form reset -> re-establish]")
+                    establish_form_kbd(page, args.corte, args.desde, args.hasta)
                 if not select_tribunal_kbd(page, tb["v"]):    # TRUSTED keyboard (not select_option)
                     print(f"[{ti}/{len(tribs)}] {tb['t'][:40]}  [skip: could not select tribunal]")
                     pace(P_STEP)
