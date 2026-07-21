@@ -1,0 +1,15 @@
+# Data & local state — NEVER commit (real legal docs w/ personal data, or ephemeral)
+# Re-ignores the repo-root's global "!*.pdf"/"!*.csv" for this subtree.
+samples/
+out/
+inbox/
+*.pdf
+*.csv
+drive_index.json
+buskin_checkpoint.json
+pdf_config.json
+__pycache__/
+*.pyc
+
+# Scratch / investigation scripts (kept local)
+_*.py
