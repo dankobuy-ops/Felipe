@@ -45,6 +45,3 @@ cias/**/__pycache__/
 cias/**/*.pyc
 
 .gstack/
-
-# Notas locales de sesión (IDs de --resume, scratch): son de cada PC
-session.txt

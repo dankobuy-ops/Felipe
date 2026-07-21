@@ -30,6 +30,7 @@ OJV = "https://oficinajudicialvirtual.pjud.cl"
 DOCS = False    # --docs: download historia doc/anexo PDFs and upload to Drive
 GPS = False     # --gps: resolve georreferencia sub-modals to lat/lng
 RESUME = False  # --resume: skip causas already scraped (fill_status='scraped') in Neon
+COUNT_ONLY = False  # --count-only: count bank C-causas per tribunal, no detail opens
 _STORE = None   # dbstore.Store (Drive uploads + Neon), lazy-initialised
 
 BANK = ['SANTANDER', 'ESTADO DE CHILE', 'BANCOESTADO', 'BANCO DEL ESTADO', 'ITAU',
@@ -423,9 +424,12 @@ def main():
                          "table (operator already searched). Only the displayed tribunal.")
     ap.add_argument("--resume", action="store_true",
                     help="skip causas already scraped (fill_status='scraped') in Neon")
+    ap.add_argument("--count-only", action="store_true",
+                    help="count bank C-causas per tribunal from the results table; NO detail "
+                         "opens/docs (safe on a burned profile — sizes the job)")
     args = ap.parse_args()
-    global DOCS, GPS, RESUME
-    DOCS, GPS, RESUME = args.docs, args.gps, args.resume
+    global DOCS, GPS, RESUME, COUNT_ONLY
+    DOCS, GPS, RESUME, COUNT_ONLY = args.docs, args.gps, args.resume, args.count_only
 
     print(f"Conectando a Chrome (puerto CDP {args.port})...")
     with sync_playwright() as pw:
@@ -469,7 +473,7 @@ def main():
 
         DOWNLOADS.mkdir(parents=True, exist_ok=True)
         out = DOWNLOADS / f"pjud_cdp_{int(time.time())}.json"
-        details, t0 = [], time.time()
+        details, t0, count_total = [], time.time(), 0
 
         def flush():
             out.write_text(json.dumps(details, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -486,6 +490,19 @@ def main():
                   + ("  (harvest current results)" if args.no_search else ""))
             if not args.no_search and not fire_search(page):
                 print("      sin resultados")
+                pace(P_TRIB)
+                continue
+            if COUNT_ONLY:
+                cnt, cpages = set(), 0
+                while cpages < 80:
+                    for c in page_bank_causas(page):
+                        cnt.add(c["rol"])
+                    cpages += 1
+                    if not next_page(page):
+                        break
+                    pace(P_PAGE)
+                count_total += len(cnt)
+                print(f"      -> {len(cnt)} bank C-causas  (running total {count_total})")
                 pace(P_TRIB)
                 continue
             seen, pages, kept_trib = set(), 0, 0
@@ -541,9 +558,13 @@ def main():
             print(f"      -> {kept_trib} causas de banco en este tribunal")
             pace(P_TRIB)
 
-        flush()
         mins = (time.time() - t0) / 60.0
-        print(f"\n[LISTO] {len(details)} causas en {mins:.1f} min -> {out}")
+        if COUNT_ONLY:
+            print(f"\n[COUNT] {count_total} bank C-causas across {len(tribs)} tribunal(s) "
+                  f"in {mins:.1f} min.")
+        else:
+            flush()
+            print(f"\n[LISTO] {len(details)} causas en {mins:.1f} min -> {out}")
 
 
 if __name__ == "__main__":
