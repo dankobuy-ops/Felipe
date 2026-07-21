@@ -148,7 +148,13 @@
       "Bash(git *)",
       "Bash(awk '/OK C-|ERR |sin resultados|-> [0-9]|\\\\[OK\\\\]/{print; fflush\\(\\)} /\\\\[LISTO\\\\]|\\\\[ALTO\\\\]|\\\\[ERROR\\\\]|Traceback/{print; fflush\\(\\); exit}')",
       "Bash(echo \"---exit:$?---\")",
-      "Bash(grep -oE '\"\\(lat|lng|latitud|longitud|coord\\)[^,]{0,60}' \"C:/Users/Usuario/Downloads/pjud_cdp_1784600703.json\")"
+      "Bash(grep -oE '\"\\(lat|lng|latitud|longitud|coord\\)[^,]{0,60}' \"C:/Users/Usuario/Downloads/pjud_cdp_1784600703.json\")",
+      "Bash(C:/Users/Usuario/AppData/Local/pjud_venv/Scripts/python.exe -c ' *)",
+      "Bash(\"C:/Users/Usuario/AppData/Local/pjud_venv/Scripts/python.exe\" ingest_cdp.py \"C:/Users/Usuario/Downloads/pjud_cdp_1784604835.json\")",
+      "Bash(\"C:/Users/Usuario/AppData/Local/pjud_venv/Scripts/python.exe\" \"C:/Users/Usuario/AppData/Local/Temp/claude/C--Claude-Felipe/fec8ce04-19b9-4875-bdcd-07b325201a7e/scratchpad/chk2.py\")",
+      "Bash(\"C:/Users/Usuario/AppData/Local/pjud_venv/Scripts/python.exe\" \"C:/Users/Usuario/AppData/Local/Temp/claude/C--Claude-Felipe/fec8ce04-19b9-4875-bdcd-07b325201a7e/scratchpad/chk.py\")",
+      "Bash(\"C:/Users/Usuario/AppData/Local/pjud_venv/Scripts/python.exe\" waf_check.py)",
+      "Bash(echo \"[exit=$?]\")"
     ]
   }
 }
