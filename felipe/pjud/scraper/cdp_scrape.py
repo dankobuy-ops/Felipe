@@ -360,12 +360,25 @@ def scrape_causa(page, api, meta, full=False):
 # ── search / pagination ──────────────────────────────────────────────────────
 
 def fire_search(page):
-    """Click Buscar ONCE (TRUSTED) and poll up to ~45s for rows — the results AJAX is slow.
-    Returns True if rows rendered, False on a genuine 'sin resultados'."""
+    """Wait for Buscar to be enabled (form settles after a tribunal change), CLEAR the stale
+    results (so old rows aren't mistaken for a fresh search), click Buscar ONCE (TRUSTED), and
+    poll up to ~45s for rows. Returns True if rows rendered, False on 'sin resultados'/disabled."""
+    for _ in range(24):   # up to ~12s for the button to enable
+        try:
+            if not page.eval_on_selector("#btnConConsultaFec", "e=>e.disabled"):
+                break
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+    try:   # clear stale results so a disabled/failed search can't look successful
+        page.evaluate("()=>{const t=document.querySelector('#dtaTableDetalleFecha tbody');"
+                      " if(t) t.innerHTML='';}")
+    except Exception:
+        pass
     try:
         page.click("#btnConConsultaFec", timeout=5000)   # TRUSTED
     except Exception as e:
-        print(f"    [warn] buscar: {e}")
+        print(f"    [warn] buscar not clickable: {e.__class__.__name__}")
         return False
     waited = 0
     while waited < 45000:
@@ -503,6 +516,20 @@ def main():
         page = find_ojv_page(ctx)
         if not page:
             sys.exit("[ERROR] No encuentro ninguna pestana. Abre OJV en esa ventana.")
+
+        # OJV pops a session keep-alive/expiry dialog every so often. A native dialog PAUSES
+        # all page JS while open, so detalleCausaCivil never resolves -> the causa-open hangs.
+        # Auto-ACCEPT it (Aceptar) the instant it appears so the scrape rides straight through,
+        # session intact, results intact — no reload (which would reset the whole form).
+        def _accept_dialog(d):
+            try:
+                print(f"    [dialog] auto-accept: {d.type} {d.message[:50]!r}")
+                d.accept()
+            except Exception:
+                pass
+        for _p in ctx.pages:
+            _p.on("dialog", _accept_dialog)
+        ctx.on("page", lambda p: p.on("dialog", _accept_dialog))
         if (not page.query_selector("#fecCompetencia")
                 or page.eval_on_selector("#fecCompetencia", "e=>e.value") != "3"):
             sys.exit("[ALTO] La Competencia no es CIVIL (o no veo 'Busqueda por Fecha').")
@@ -560,13 +587,20 @@ def main():
                 cnt, cpages = set(), 0
                 while cpages < 80:
                     for c in page_bank_causas(page):
+                        if c["rol"] in cnt:
+                            continue
                         cnt.add(c["rol"])
+                        details.append({"rol": c["rol"], "caratulado": c["car"],
+                                        "fecha": c["fecha"], "tribunal": c["trib"],
+                                        "tribunalSel": tb["t"], "tribunalId": tb["v"],
+                                        "corte": corte, "rango": f"{desde} a {hasta}"})
                     cpages += 1
                     if not next_page(page):
                         break
                     pace(P_PAGE)
                 count_total += len(cnt)
                 print(f"      -> {len(cnt)} bank C-causas  (running total {count_total})")
+                flush()                                  # save the list incrementally
                 pace(P_TRIB)
                 continue
             seen, pages, kept_trib = set(), 0, 0
@@ -632,8 +666,9 @@ def main():
 
         mins = (time.time() - t0) / 60.0
         if COUNT_ONLY:
+            flush()
             print(f"\n[COUNT] {count_total} bank C-causas across {len(tribs)} tribunal(s) "
-                  f"in {mins:.1f} min.")
+                  f"in {mins:.1f} min -> {out}")
         else:
             flush()
             print(f"\n[LISTO] {len(details)} causas en {mins:.1f} min -> {out}")
