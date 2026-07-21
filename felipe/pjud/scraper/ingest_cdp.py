@@ -56,7 +56,10 @@ def build(causa, name_map):
                     "estado_adm": h.get("estado_adm", ""), "procedimiento": h.get("procedimiento", ""),
                     "ubicacion": h.get("ubicacion", ""), "estado_proc": h.get("estado_proc", ""),
                     "etapa": h.get("etapa", ""), "tribunal_id": tid, "competencia": "Civil",
-                    "ebook": "", "updated_at": run._now()}])
+                    "ebook": causa.get("ebook", ""),
+                    "texto_demanda": causa.get("texto_demanda", ""),
+                    "certificado": causa.get("certificado", ""),
+                    "updated_at": run._now()}])
 
     rut_rows, lit_rows = [], []
     for L in causa.get("litigantes", []):
@@ -154,9 +157,14 @@ def main():
 
     data = json.load(open(args.json, encoding="utf-8"))
     merged = {}
+    levels = {}   # causa_id -> 'full' | 'scraped' (the depth this scrape reached)
     for c in data:
-        for tab, rows in build(c, name_map).items():
+        parts = build(c, name_map)
+        for tab, rows in parts.items():
             merged.setdefault(tab, []).extend(rows)
+        if parts.get("Causas"):
+            cid = parts["Causas"][0]["causa_id"]
+            levels[cid] = "full" if c.get("scrape_level") == "full" else "scraped"
 
     print(f"Ingest {len(data)} causa(s) from {args.json}")
     for tab in ORDER:
@@ -173,13 +181,13 @@ def main():
         if rows:
             n = store.upsert(tab, rows)
             print(f"  upserted {tab:26} {n}")
-    # mark these causas fully-scraped so cdp_scrape --resume skips them next time
-    causa_ids = [r["causa_id"] for r in merged.get("Causas", [])]
-    if causa_ids:
-        with store.conn.cursor() as cur:
-            cur.execute("UPDATE causas SET fill_status='scraped' WHERE causa_id = ANY(%s)",
-                        (causa_ids,))
-        print(f"  marked {len(causa_ids)} causas fill_status='scraped'")
+    # mark scrape depth so cdp_scrape --resume skips at the right level ('full' vs 'scraped')
+    for lvl in ("full", "scraped"):
+        ids = [cid for cid, l in levels.items() if l == lvl]
+        if ids:
+            with store.conn.cursor() as cur:
+                cur.execute("UPDATE causas SET fill_status=%s WHERE causa_id = ANY(%s)", (lvl, ids))
+            print(f"  marked {len(ids)} causas fill_status='{lvl}'")
     print("DONE")
 
 

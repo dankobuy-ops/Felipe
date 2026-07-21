@@ -227,12 +227,12 @@ def resolve_geo(page, jwt):
     return ""
 
 
-def download_doc(api, action, val):
-    """GET OJV/<action>?dtaDoc=<val> in-session (shares cookies) -> PDF bytes or None."""
+def download_doc(api, action, val, param="dtaDoc"):
+    """GET OJV/<action>?<param>=<val> in-session (shares cookies) -> PDF bytes or None."""
     if not action or not val:
         return None
     try:
-        resp = api.get(f"{OJV}/{action.lstrip('/')}", params={"dtaDoc": val}, timeout=60000)
+        resp = api.get(f"{OJV}/{action.lstrip('/')}", params={param: val}, timeout=60000)
         body = resp.body()
         ct = (resp.headers or {}).get("content-type", "")
         if "pdf" not in ct.lower() and body[:4] != b"%PDF":
@@ -242,13 +242,69 @@ def download_doc(api, action, val):
         return None
 
 
-def scrape_causa(page, api, meta):
+# Causa-level header docs (in the detalle modal header, not the historia table). Each:
+# (key, action-substring, hidden-input param). Always fetched when --docs (reduced set).
+HEADER_DOCS = [
+    ("texto_demanda", "docu.php", "valorEncTxtDmda"),
+    ("certificado", "docCertificadoDemanda", "dtaCert"),
+    ("ebook", "newebookcivil", "dtaEbook"),
+]
+
+
+def grab_header_docs(page):
+    """[{key, action, param, val}] for the Texto Demanda / Certificado / Ebook forms."""
+    return page.evaluate(
+        r"""(want)=>{
+          const m=document.querySelector('#modalDetalleCivil'); if(!m) return [];
+          const out=[];
+          m.querySelectorAll('form').forEach(f=>{
+            const a=f.getAttribute('action')||'';
+            const hit=want.find(w=>a.includes(w[1]));
+            if(!hit) return;
+            const inp=f.querySelector('input');
+            out.push({key:hit[0], action:a, param:inp?inp.getAttribute('name'):'',
+                      val:inp?inp.value:''});
+          });
+          return out;
+        }""", HEADER_DOCS)
+
+
+def causa_state(tribunal_id):
+    """{rol: (fill_status, detalles_bool)} for a tribunal — for --resume + the Detalles flag.
+    Empty if the DB isn't reachable."""
+    try:
+        store = get_store()
+        with store.conn.cursor() as cur:
+            cur.execute("SELECT rol, fill_status, detalles FROM causas WHERE tribunal_id=%s",
+                        (str(tribunal_id),))
+            return {r[0]: (r[1] or "", bool(r[2])) for r in cur.fetchall()}
+    except Exception as e:
+        print(f"    [warn] causa_state {tribunal_id}: {str(e)[:50]}")
+        return {}
+
+
+def scrape_causa(page, api, meta, full=False):
     """Modal opened by the caller. Parse header/litigantes/cuadernos(historia)/escritos/
-    receptor. With GPS: resolve each geo row's lat/lng. With DOCS: download each doc/anexo
-    -> Drive and stash the link on the historia row. Close the modal when done."""
+    receptor. With GPS: resolve each geo row's lat/lng. With DOCS: download the causa-level
+    header docs (Texto Demanda / Certificado / Ebook) + a FILTERED set of historia docs to
+    Drive. Reduced set (default): cuaderno 1 (Principal) only the 'Ingreso demanda' row, other
+    cuadernos all rows. `full=True` (Detalles flag): every historia doc. Close the modal."""
     header = parse_header(page)
     litigantes = parse_litigantes(page)
     causa_id = f"{meta.get('tribunalId','')}-{meta['rol']}"
+
+    # causa-level header docs — always downloaded (part of the reduced set)
+    header_urls = {}
+    if DOCS:
+        for hd in grab_header_docs(page):
+            body = download_doc(api, hd["action"], hd["val"], param=hd["param"])
+            if body and len(body) >= 1024:
+                obj = f"{causa_id}/{hd['key']}.pdf".replace(" ", "_")
+                try:
+                    header_urls[hd["key"]] = get_store().upload_pdf(obj, body)
+                except Exception as e:
+                    print(f"      [warn] upload {hd['key']}: {str(e)[:50]}")
+
     cuads = cuaderno_options(page) or [{"txt": "1 - Principal", "val": ""}]
     cuadernos = []
     for ci, opt in enumerate(cuads):
@@ -257,6 +313,7 @@ def scrape_causa(page, api, meta):
             pace(P_STEP)
         cuaderno = opt["txt"]
         cnum = _cuaderno_num(cuaderno)
+        is_principal = cnum == "1"
         rows = parse_historia(page)
         seen = {}
         for hh in rows:
@@ -268,7 +325,10 @@ def scrape_causa(page, api, meta):
                 if g:
                     hh["georref"] = g
                 pace(P_STEP)
-            if DOCS:
+            # reduced filter: cuaderno-1 keep only 'Ingreso demanda'; other cuadernos keep all
+            want_doc = full or (not is_principal) \
+                or ("ingreso demanda" in (hh.get("desc", "") or "").lower())
+            if DOCS and want_doc:
                 for kind in ("doc", "anexo"):
                     form = hh.get(kind)
                     if not (form and form.get("action") and form.get("val")):
@@ -286,11 +346,15 @@ def scrape_causa(page, api, meta):
     receptor = parse_receptor(page)
     close_modal(page, "#modalDetalleCivil")
     n_hist = sum(len(c["historia"]) for c in cuadernos)
-    ndoc = sum(1 for c in cuadernos for r in c["historia"] if r.get("doc_url") or r.get("anexo_url"))
+    ndoc = len(header_urls) + sum(
+        1 for c in cuadernos for r in c["historia"] if r.get("doc_url") or r.get("anexo_url"))
     ngeo = sum(1 for c in cuadernos for r in c["historia"] if str(r.get("georref", "")).startswith("="))
     return {**meta, "header": header, "litigantes": litigantes, "cuadernos": cuadernos,
             "escritos": escritos, "receptor": receptor, "n_historia": n_hist,
-            "n_docs": ndoc, "n_geo": ngeo}
+            "n_docs": ndoc, "n_geo": ngeo, "scrape_level": "full" if full else "scraped",
+            "texto_demanda": header_urls.get("texto_demanda", ""),
+            "certificado": header_urls.get("certificado", ""),
+            "ebook": header_urls.get("ebook", "")}
 
 
 # ── search / pagination ──────────────────────────────────────────────────────
@@ -506,20 +570,27 @@ def main():
                 pace(P_TRIB)
                 continue
             seen, pages, kept_trib = set(), 0, 0
-            done = scraped_rols(tb["v"]) if RESUME else set()
-            if done:
-                print(f"      (resume: {len(done)} already scraped here — skipping them)")
+            # DB state per tribunal: {rol: (fill_status, detalles)}. Needed for --resume AND to
+            # decide full vs reduced doc set per causa (Detalles flag).
+            state = causa_state(tb["v"]) if (RESUME or DOCS) else {}
+            if RESUME:
+                nskip = sum(1 for fs, det in state.values()
+                            if fs == "full" or (fs == "scraped" and not det))
+                if nskip:
+                    print(f"      (resume: {nskip} already done here — skipping)")
             while pages < 80:
                 if args.max_causas and len(details) >= args.max_causas:
                     break
                 causas = page_bank_causas(page)
                 for c in causas:
-                    if c["rol"] in seen or c["rol"] in done:
-                        seen.add(c["rol"])
+                    if c["rol"] in seen:
                         continue
+                    seen.add(c["rol"])
+                    fs, det = state.get(c["rol"], ("", False))
+                    if RESUME and (fs == "full" or (fs == "scraped" and not det)):
+                        continue                       # already done at the required level
                     if args.max_causas and len(details) >= args.max_causas:
                         break
-                    seen.add(c["rol"])
                     pace(P_CAUSA)
                     try:
                         page.locator("#dtaTableDetalleFecha tbody tr").nth(c["i"]).locator(
@@ -532,7 +603,7 @@ def main():
                         rec = scrape_causa(page, api, {
                             "rol": c["rol"], "caratulado": c["car"], "fecha": c["fecha"],
                             "tribunal": c["trib"], "tribunalSel": tb["t"], "tribunalId": tb["v"],
-                            "corte": corte, "rango": f"{desde} a {hasta}"})
+                            "corte": corte, "rango": f"{desde} a {hasta}"}, full=det)
                         if args.proc and norm(rec["header"].get("procedimiento", "")) != norm(args.proc):
                             continue     # scraped but doesn't match the proc filter -> drop
                         details.append(rec)
@@ -541,7 +612,8 @@ def main():
                         print(f"      OK {c['rol']:<13} lit={len(rec['litigantes'])} "
                               f"cuad={len(rec['cuadernos'])} hist={rec['n_historia']} "
                               f"esc={len(rec['escritos'])} rec={len(rec['receptor'])} "
-                              f"docs={rec['n_docs']} geo={rec['n_geo']}  (tot {len(details)})")
+                              f"docs={rec['n_docs']} geo={rec['n_geo']}"
+                              f"{' [FULL]' if det else ''}  (tot {len(details)})")
                     except Exception as e:
                         print(f"      ERR {c['rol']}: {str(e)[:70]}")
                         try:

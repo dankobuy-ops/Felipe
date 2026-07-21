@@ -45,7 +45,8 @@ log = gstore.log
 # AppSheet); `fill_status` is Pass-2's progress ('' | 'done' | 'error').
 EXTRA_COLS = {
     "Causas": [("fill", "BOOLEAN NOT NULL DEFAULT false"),
-               ("fill_status", "TEXT NOT NULL DEFAULT ''")],
+               ("fill_status", "TEXT NOT NULL DEFAULT ''"),
+               ("detalles", "BOOLEAN NOT NULL DEFAULT false")],
 }
 
 

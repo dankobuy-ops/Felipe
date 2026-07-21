@@ -36,7 +36,7 @@ TABS = {
     # causa_id = "<tribunal_id>-<rol>"  (rol alone isn't unique nationwide).
     "Causas": ["causa_id", "rol", "f_ingreso", "estado_adm", "procedimiento",
                "ubicacion", "estado_proc", "etapa", "tribunal_id", "competencia",
-               "ebook", "updated_at"],
+               "ebook", "texto_demanda", "certificado", "updated_at"],
     # Receptor + Escritos are cuaderno-level but no cuaderno entity exists, so they
     # FK to the causa (causa_id) and carry the cuaderno NAME as plain text.
     "Notificaciones Receptor": ["id", "Causa ID", "Cuaderno", "Nombre", "Fecha",
