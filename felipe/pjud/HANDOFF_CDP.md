@@ -1,110 +1,154 @@
-# PJUD scraper — CDP Handoff (updated 2026-07-21, evening)
+# PJUD scraper — CDP Handoff (updated 2026-07-22)
 
-**Supersedes the 2026-07-20 version.** Project: **Poder Judicial Virtual** (Oficina
+**Supersedes the 2026-07-21 version.** Project: **Poder Judicial Virtual** (Oficina
 Judicial Virtual, OJV — `oficinajudicialvirtual.pjud.cl`). Goal: collect civil
 **"Ejecutivo Obligación de Dar"** causas where a **bank is the plaintiff**, nationwide,
 with **full detail + PDF files + GPS**, into a **Neon Postgres** DB (+ PDFs to Google Drive).
 
-The scraper **works end-to-end** — detail, files, GPS, Neon ingest, resume — and that is no
-longer in doubt. What blocks the project is **not correctness, it is the F5 WAF**. As of the
-2026-07-21 evening session the model of *what* trips the WAF changed materially — **read the
-next section first; it supersedes the older "burn budget = elapsed time" story below.**
+The scraper **works end-to-end** — detail, files, GPS, Neon ingest, resume. On 2026-07-22 the
+WAF blocker was **found and fixed**: it was our own `page.click()`. Read the next section
+first; it **disproves** most of what the 07-20/07-21 versions of this doc concluded.
 
 ---
 
-## ★★★ NEWEST FINDING (2026-07-21 evening) — START HERE ★★★
+## ★★★ SOLVED 2026-07-22 — `page.click()` WAS THE BUG. START HERE ★★★
 
-### The block is the SECOND search of a session, not the burn budget and not our code
+### F5 Shape scores the pointer's MOTION, not the `isTrusted` bit
 
-Three independent runs today all show the identical shape:
+Playwright's `page.click()` / `locator.click()` produce `isTrusted=true` events — that part of
+the old model was right — but they **teleport the pointer** onto the element and fire
+down+up with **no approach path and no hover dwell**. F5 Shape's behavioural telemetry scores
+exactly that shape and F5 rejects the next request. A human's hand produces an arc.
 
-| Run | Search #1 | Search #2 |
-|-----|-----------|-----------|
-| 16:16 (yesterday's code, **operator**-established form) | trib 259 → **53 rows** ✅ | trib 2 → blocked ❌ |
-| Run 1 (script, dates set via JS `.value`+dispatchEvent) | trib 259 → **53 rows** ✅ | trib 2 → **F5 REJECTED** ❌ |
-| Run 2 (script, dates **typed**, fresh profile) | *operator's manual search* ✅ | script's 1st search → **F5 REJECTED** ❌ |
+Measured in ONE healthy session, same button, same POST params, minutes apart:
 
-Read run 2 carefully: on the **fresh** profile the operator did one manual search by hand
-(worked), *then* the script searched — and that script search was the **session's 2nd search**
-and was rejected. So the reject lands at the **same ordinal position (search #2)** regardless
-of who issues it or how the form was built. Conclusions, in order of confidence:
+| pointer | pre-click JS | response |
+|---|---|---|
+| `page.click()` (teleport) | yes | **250 B F5 rejection page in 0.1 s** |
+| human arc + dwell + real press duration | no | **109,234 B of real results** ✅ |
+| human arc + dwell + real press duration | **yes** | **109,234 B of real results** ✅ |
 
-1. **It is NOT `establish_form_kbd` / the `--corte` keyboard code.** The 16:16 run used the
-   operator's hand-built form and hit the wall at exactly the same place. The keyboard-establish
-   itself is **VALIDATED** — twice today it built the form and returned a correct **53** for
-   trib 259. (This means the `--count-only --corte 90` "sweep never left trib 259" mystery from
-   this morning is *solved*: it wasn't the code, it was search #2 getting rejected every time.)
-2. **It is NOT the JS-`.value`+`dispatchEvent` on the dates** (my first guess). Run 2 typed the
-   dates with trusted keystrokes and still got rejected at search #2. *(That fix was still worth
-   keeping — see `type_date_kbd` below — but it is not the cause.)*
-3. **It is NOT elapsed time or PDF volume** (the old "burn budget" model). Search #2 is rejected
-   seconds into a fresh session with zero detail opens and zero PDF fetches. The earlier
-   "survives ~6 causas" number was a *different* regime (detail opens on an already-warm profile);
-   the **search-sweep regime dies at the 2nd search**, full stop.
-4. **The instant tell:** after a reject, **`#btnConConsultaFec` (Buscar) stays `disabled`
-   forever.** From the site's own JS: the button is disabled in `beforeSend` and only
-   re-enabled in the AJAX **`success`** handler — which also calls `recaptchacallbackfechav3()`
-   to mint a fresh token. A rejected response skips `success`, so the button never re-enables
-   and no fresh token is minted. **Stuck-disabled Buscar == WAF block. Detect this, don't wait
-   45 s for rows.**
+Consequences, all validated the same session:
 
-### The prime suspect: reCAPTCHA v3 token, single-use per session-search
+1. **`Runtime.evaluate` over CDP is INNOCENT.** Reading the DOM (`eval_on_selector`, all the
+   `parse_*` helpers, `page.evaluate`) does not flag anything. Only the pointer matters. Do
+   not waste time rewriting the parsers to avoid JS.
+2. **The fix is `human_click()`** in `cdp_scrape.py`: arc with easing + jitter (18–28 steps) →
+   hover dwell 140–380 ms → `mouse.down` → 55–130 ms press → `mouse.up`. Every `page.click` in
+   the scraper now routes through it (Buscar, Siguiente, causa magnifier, receptor, modal
+   close, datepicker). **Never reintroduce a bare `.click()`.**
+3. **The 3-tribunal sweep that always died at search #2 now completes**: `--count-only
+   --max-tribs 3` → **189 bank C-causas in 1.7 min**, three scripted searches plus pagination,
+   zero rejections (54 / 91 / 44 for tribunales 259 / 260 / 261).
 
-The site refreshes the enterprise reCAPTCHA v3 token in two places only: a `setInterval(…,
-60000)` (`llamarCaptchaTodos`) and each search's `success` handler. **Hypothesis:** search #1
-consumes the token; search #2 fires before the async refresh has landed a *new* token, reusing
-a spent one → F5 rejects. A human doing two manual searches is slow enough that the 60 s
-interval (or the success-handler refresh from search #1) has already replaced the token; the
-script is fast enough to reuse it. **This is the single most important thing to test next.**
+### What this DISPROVES (do not rebuild these theories)
 
-### Built to settle it: `scraper/net_probe.py` (read-only network recorder)
+- **"The 2nd search of a session is F5-rejected."** FALSE. On 2026-07-22 the operator did
+  **3 manual searches, paginated 8 pages / 715 records, and opened 3 causas** in one session
+  with zero rejections. The old table of "search #2 blocked" runs was measuring *our teleport
+  clicks*, which happened to land at that ordinal position.
+- **"The reCAPTCHA v3 token is single-use."** FALSE, and provably so: search #2 **reused the
+  token from a pagination request 38 s earlier, byte for byte, and returned rows.** The
+  `netprobe_manual_1784735615.jsonl` recording has it. Do **not** build "wait for a new token"
+  logic — it was next-step #2 in the old doc and would have been wasted work.
+- **"Shape telemetry beacons must be fresh."** FALSE. A successful manual search fired
+  **113.8 s** after the last beacon.
+- **The old "burn budget"** (elapsed time / PDF volume) was almost certainly the same bug
+  wearing a different mask: every magnifier click in the detail regime was a teleport too.
+  Re-measure it before believing any number in the section below.
 
-Attaches over CDP, **injects nothing**, logs every page request with full POST params — the
-`g-recaptcha-response-fecha` token is **fingerprinted** (`<len=1337 03AF…kQ2f>`) so token
-**reuse between two searches is visible at a glance** — plus response status + F5-reject flag,
-to `scraper/netprobe_<label>_<epoch>.jsonl`. Usage in its docstring.
+### The instant tell (still true and still useful)
 
-### The experiment to run next (one fresh profile, ~2 min)
+After a reject, **`#btnConConsultaFec` (Buscar) stays `disabled` forever** — the site disables
+it in `beforeSend` and only re-enables it in the AJAX `success` handler, which a rejected
+response never reaches. Also: judge a search by the **response**, not by the results table —
+the table keeps the *previous* search's rows, so a rejected search can look like 100 happy
+rows (it did, and it produced a false "OK" verdict on 2026-07-22).
 
-1. Fresh profile + CAPTCHA, reach Consulta Causas. **Do NOT search yet.**
-2. `python net_probe.py --label manual` (start it BEFORE any search).
-3. Operator does **TWO manual searches by hand** (trib 1 → results → switch trib → Buscar).
-   **The key question: does the 2nd MANUAL search return rows, or also get rejected?**
-   - If the 2nd manual search **works** → the fault is script-specific (speed/token reuse);
-     diff the script's request against `manual` #2 in the JSONL — the differing param is it.
-   - If the 2nd manual search is **also rejected** → the session genuinely allows ~1 search;
-     the whole "sweep 31 tribunals in one session" plan is dead and we pivot to **1 search per
-     profile**, or find how the site itself refreshes the token before allowing search #2.
-4. Likely fix if it's token reuse: before each search after the first, **wait for a NEW token**
-   — poll `#g-recaptcha-response-fecha` until its value CHANGES from the last one used (or call
-   `recaptchacallbackfechav3()` and wait), then click Buscar. Pacing 60 s+ between searches (to
-   let `llamarCaptchaTodos` fire) is the crude version.
+### F5 Shape streams behavioural telemetry to `/TSPD/?type=N` — watch this number
+
+Shape's JS posts a continuous stream of XHRs to `oficinajudicialvirtual.pjud.cl/TSPD/?type=N`
+(`type=22` is the high-frequency behaviour channel; same cookie family as `TSPD_101_DID`).
+The rate is a direct read-out of "does the site believe a human is here":
+
+| session | duration | TSPD events | rate |
+|---|---|---|---|
+| 2026-07-22 #1 — 3 manual searches, then mostly idle | 11.7 min | 39 | **3/min** |
+| 2026-07-22 #2 — heavy manual work (8 searches, 21 causa opens, 38 doc clicks) | 8.7 min | 605 | **70/min** |
+| 2026-07-22 #3 — `cdp_scrape` driving with `human_click` | (live) | — | **~44/min** |
+
+Two things follow. **(a)** `human_click`'s pointer motion generates real telemetry — the script
+is no longer silent, which is very likely *why* the search fix works. **(b)** A useful
+diagnostic: if the TSPD rate collapses toward zero while the scraper runs, the session is
+about to look non-human. Measure it from any `netprobe` JSONL:
+`[r for r in recs if r["kind"]=="request" and "/TSPD/" in r["url"]]`.
+
+**⚠️ Bench discipline:** the operator's physical mouse passing over the CDP Chrome window fires
+real `mousemove` events into the page and inflates this number, which **contaminates any test
+of whether the script alone sustains proof-of-life**. Leave the window visible but park the
+cursor elsewhere (do not minimise — a minimised window gets throttled and coordinate clicks
+break).
+
+### Out-of-page requests are the remaining suspect
+
+`download_doc()` fetches PDFs through Playwright's `APIRequestContext`
+(`context.request.get()`). That shares cookies but is issued **outside the page**: no document
+origin/referer chain and **no Shape telemetry at all**. On 2026-07-22 a `--docs --gps` run died
+after 3 causas / 29 such fetches, while the operator manually pulled ~38 documents in the same
+period with zero rejections. **`--docs-inpage`** (new) fetches the identical URL with an
+in-page `fetch()` and returns the bytes base64 — same PDF, but issued by the page. A/B these
+two before concluding anything about document volume.
+
+### The tools that settled it
+
+- **`scraper/net_probe.py`** — read-only network recorder; injects nothing. Logs every request
+  with POST params (reCAPTCHA tokens fingerprinted `<len=1337 03AF…kQ2f>` so **reuse is visible
+  at a glance**) + response status/size + F5-reject flag → `netprobe_<label>_<epoch>.jsonl`.
+  Two bugs fixed 07-22: it now **follows every tab** (OJV opens Consulta Causas in a NEW tab
+  and discards the old one — pinning to one page made it die exactly when the interesting
+  traffic began), and it waits via Playwright rather than `time.sleep()` (**a bare `time.sleep`
+  blocks the sync greenlet and NO events are ever dispatched** — it silently captured 0 events).
+- **`scraper/search_probe.py`** (new) — fires **one** search per run through the real
+  `cdp_scrape` functions with a single variable changed, and judges by the response.
+  `--mode click|human|clear|kbd|kbd-slow`, `--bare` (zero `Runtime.evaluate` before the click;
+  the button's box comes from the CDP **DOM domain** instead). This is how the table above was
+  produced; use it to test any future WAF hypothesis for the price of one search.
 
 ---
 
-## TL;DR — current state (2026-07-21)
+## TL;DR — current state (2026-07-22)
 
 - **Approach:** drive a REAL Chrome over CDP (`--remote-debugging-port`), Playwright
-  `connect_over_cdp`. `page.click()` = `isTrusted=true` → beats the site's **F5 WAF**
-  (which blocks synthetic `isTrusted=false` events). The in-page bookmarklet is **dead**
-  (can't forge trusted events); `felipe/pjud/inpage/*` + `Abrir_PJUD_sin_debug.cmd` are kept
-  only as a documented dead end.
-- **Everything in the pipeline is validated live:** trusted-click detail opens, `--docs`
-  (PDFs → Drive), `--gps` (lat/lng), `--resume`, keyboard tribunal switch, and
-  `ingest_cdp.py` → Neon with 0 dangling FKs.
-- **⚠️ The blocker (updated 2026-07-21 evening):** for the **search-sweep** regime it is the
-  **2nd search of a session** getting F5-rejected — NOT elapsed time, NOT PDF volume, NOT our
-  form code. See the "★★★ NEWEST FINDING" section at the very top; it supersedes the "burn
-  budget = time" narrative in "The burn budget" section below (kept for the *detail-open*
-  regime evidence, which is a separate, warmer-profile phenomenon). Prime suspect: reCAPTCHA
-  v3 token reuse. **Do the `net_probe.py` experiment before writing any more scraper code.**
+  `connect_over_cdp`. Trusted events beat the site's **F5 WAF** — but `isTrusted=true` is
+  **necessary, not sufficient**: the pointer must also MOVE like a hand (see the top section).
+  The in-page bookmarklet is **dead** (can't forge trusted events at all);
+  `felipe/pjud/inpage/*` + `Abrir_PJUD_sin_debug.cmd` are kept as a documented dead end.
+- **Everything in the pipeline is validated live:** detail opens, `--docs` (PDFs → Drive),
+  `--gps` (lat/lng), `--resume`, keyboard tribunal switch, and `ingest_cdp.py` → Neon with
+  0 dangling FKs.
+- **✅ The blocker is FIXED (2026-07-22): it was our own `page.click()` teleporting the
+  pointer.** `human_click()` replaces it everywhere. A 3-tribunal `--count-only` sweep now
+  completes clean (189 causas, 1.7 min) where every previous attempt died at search #2.
+  The "search #2", "single-use token" and "beacon freshness" theories are all **disproven** —
+  see the top section before re-deriving any of them.
 - **The flag follows the PROFILE, not the IP** (validated — rule 8). Resetting the network
   without resetting `%LOCALAPPDATA%\pjud_cdp` does nothing. **A fresh profile = a fresh profile
   DIR** (`%LOCALAPPDATA%\pjud_cdp`), not a new IP and not new cookies.
+- **Counting is cheap, detail is precious:** a `BLOCKED-DETAIL` profile **still searches and
+  paginates**, so `--count-only` enumeration can be run on a burned profile. Spend clean
+  profiles on **detail opens**, never on counting.
 
 ---
 
-## The burn budget — the 2026-07-20/21 mobile session, in full
+## ⚠️ HISTORICAL — the "burn budget" (2026-07-20/21), now suspect
+
+**Read this as evidence, not as conclusions.** Every run below used teleport `page.click()`,
+which we now know is itself the trigger (top section). The "~6 causas then blocked" budget is
+therefore almost certainly an artefact of the bug, not a property of the site. **Re-measure
+before planning around any number here.** What still stands from this session is rule 8 (the
+flag follows the profile, not the IP) and the shape of the block page.
+
+### The 2026-07-20/21 mobile session, in full
 
 The whole session ran on **one mobile connection**, deliberately, so the IP was never a
 variable. Two profiles were used.
@@ -154,14 +198,14 @@ its 101 rows. Only `detalleCausaCivil` is rejected. That asymmetry is the signat
 
 ---
 
-## ~~⚠️ THE OPEN QUESTION~~ — RESOLVED 2026-07-21: it is TIME, not volume
+## ~~⚠️ THE OPEN QUESTION — volume vs time~~ — BOTH ANSWERS WERE WRONG (2026-07-22)
 
-> **Verdict (07-21 field results, this PC):** the reduced doc set cut fetches ~47 → ~9 per
-> causa and the profile **still** burned after ~3 causas in a long session; a search-only
-> list sweep burns too. Cause = **elapsed session time / cumulative activity**. Fix =
-> **short rotating sessions** (~3-6 causas each, fresh profile dir per session). The doc-set
-> reduction is kept — it's cheaper and faster — but it is not the cure.
-> The reasoning below is preserved because the *evidence* still matters; the question isn't.
+> **The real answer was neither.** It was `page.click()` teleporting the pointer (top section).
+> The 07-21 verdict below ("it is elapsed TIME") was drawn from runs that were all being
+> rejected for the pointer, so the correlation with session length was spurious — a longer
+> session simply meant more scripted clicks. **The reduced doc set is still worth keeping**
+> (cheaper and faster, and Felipe chose that scope), but it was never the cure either.
+> Preserved verbatim below only so the evidence trail stays auditable.
 
 **We do not yet know what burns the profile.** The probe and the sweep differ in *two* ways
 at once, and the experiment can't separate them:
@@ -213,12 +257,18 @@ different designs. Would need a small `--count-only` flag on `cdp_scrape.py`.
 1. **Never `select_option` the tribunal.** That single synthetic change event flags the F5
    session; the next heavy op (detail modal) then hangs. Use `--no-search` (operator selects)
    or the keyboard switch (`select_tribunal_kbd`, already wired into the sweep).
+   *(Untested since the 07-22 fix — it may well be innocent too, but there is no reason to
+   retest it: the keyboard switch works and costs nothing.)*
 2. **`select_option("#selCuaderno", …)` (cuaderno switch) is TOLERATED** (lighter AJAX) —
    validated. Leave it as-is.
-3. **CDP `page.click()` is trusted** — magnifier, Buscar, Siguiente, modal-close, receptor:
-   all fine.
-4. **Doc downloads via `context.request.get(...dtaDoc=JWT)`** are the prime suspect for the
-   burn (see above). The JWTs expire ~1h, so **download during the scrape**, not later.
+3. **⛔ NEVER `page.click()` / `locator.click()` — use `human_click()`.** This is rule #1 in
+   practice. Both are `isTrusted=true`, but they teleport the pointer with no approach path
+   and no hover dwell, and F5 Shape scores the motion: the request that follows comes back as
+   a 250 B rejection page. Validated 2026-07-22 (top section). Applies to **every** target —
+   magnifier, Buscar, Siguiente, modal-close, receptor, datepicker.
+4. **Doc downloads via `context.request.get(...dtaDoc=JWT)`** were long suspected of causing
+   the burn; that suspicion rests on runs that were being rejected for the pointer instead, so
+   treat it as unproven. The JWTs expire ~1h, so **download during the scrape**, not later.
 5. **GPS via `geoReferencia(jwt)`** (in-session JS call) is fine. Some geo refs legitimately
    have no lat/lng → `n_geo < ` the number of geo links is normal.
 6. **Two failure modes, different fixes — don't confuse them:**
@@ -241,8 +291,18 @@ different designs. Would need a small `--count-only` flag on `cdp_scrape.py`.
 
 ---
 
-## Environment (the other PC) — including the traps
+## Environment — including the traps
 
+### ⚠️ Which Python? It differs per machine — check before you run
+- **Danko PC (`C:\Users\Danko`, the 2026-07-22 session):** there is **no `pjud_venv`**. Use the
+  **system** interpreter `C:\Users\Danko\AppData\Local\Programs\Python\Python312\python.exe` —
+  it has playwright + psycopg2 + google-api. Do **not** use `felipe\scraper\.venv`: it has
+  playwright and google-api but **no psycopg2**, so it dies at the Neon step.
+- **The other PC:** venv at `%LOCALAPPDATA%\pjud_venv` (see below).
+- One-liner to pick correctly on any machine:
+  `python -c "import playwright,psycopg2,googleapiclient;print('ok')"`
+
+### The other PC
 - **Python 3.12** on PATH. **venv** at `%LOCALAPPDATA%\pjud_venv`.
 - **⚠️ The venv needs the FULL `scraper/requirements.txt`, not just playwright.** An earlier
   version of this doc said "only playwright" — that is wrong and it fails at runtime:
@@ -442,21 +502,17 @@ that is intended, not a bug.
 
 ## NEXT STEPS (in order)
 
-1. **Settle the "search #2" question — this gates everything.** Run the `net_probe.py`
-   experiment in the "★★★ NEWEST FINDING" section: fresh profile → probe → **two manual
-   searches** → does search #2 survive? This tells you whether the sweep is salvageable at all
-   and, if so, exactly which request param (almost certainly the reCAPTCHA token) is stale.
-2. **If it's token reuse (expected):** in `cdp_scrape.py`, before every search after the first,
-   wait for `#g-recaptcha-response-fecha` to CHANGE from the last used value (poll it, or call
-   `recaptchacallbackfechav3()` and wait for a new token) before clicking Buscar. Then the
-   `--count-only --corte 90` full-31-tribunal sweep should complete in one session.
-3. **Count the job**: that sweep, ingesting each tribunal's list with `ingest_cdp.py
-   --list-only`, enumerates the whole corte cheaply and makes the DB — not a JSON in Downloads
-   — the work queue. (Only trib 259 = 53 is measured; Santiago-Jan ≈ ~1,500 extrapolated.)
-4. Then bulk **detail** collection with `--resume --docs` across rotating profiles. NB the
-   detail-open regime is a *separate* WAF phenomenon (warmer profile, ~6 causas) — re-measure
-   its budget once the search block is understood; don't assume the old "~6 causas" holds.
-5. (Optional) migrate `georref` from the `=HYPERLINK` formula to real lat/lng columns.
+1. **Re-measure the detail-open budget with `human_click`.** The old "~6 causas then blocked"
+   number was measured with teleport clicks and is probably meaningless now. Run
+   `--max-tribs 1 --max-causas N --docs --gps --resume` on a fresh profile and push N up until
+   something breaks (or nothing does). **This is the number the whole plan depends on.**
+2. **Count the job**: `--count-only` across all 31 tribunales, ingesting each list with
+   `ingest_cdp.py --list-only`, enumerates the corte and makes the DB — not a JSON in
+   Downloads — the work queue. Measured so far: 259=54, 260=91, 261=44 for January
+   (**189 in 3 tribunales**, so Santiago-Jan ≈ ~1,500 is a reasonable extrapolation).
+   Cheap: **run it on a burned profile**, never on a clean one.
+3. Then bulk **detail** collection with `--resume --docs`, sized by whatever step 1 measures.
+4. (Optional) migrate `georref` from the `=HYPERLINK` formula to real lat/lng columns.
 6. **Revoke the leaked GitHub PAT** — it was stripped from `settings.local.json` before ever
    being pushed, but the token itself is still live on GitHub.
 7. **Housekeeping:** 4 burned profile dirs `%LOCALAPPDATA%\pjud_cdp.burned-*` accumulated on
@@ -467,22 +523,26 @@ that is intended, not a bug.
 ## File map (all under `felipe/pjud/`)
 
 **CDP path (current/active):**
-- `scraper/cdp_scrape.py` — the scraper. Connect-only; `--no-search` harvest;
-  `select_tribunal_kbd` keyboard sweep; **`--corte/--desde/--hasta` → `establish_form_kbd`**
-  (builds the whole Búsqueda-por-Fecha form with TRUSTED keyboard, no manual search; VALIDATED
-  — returns 53 for trib 259) + `form_ok()` auto-recovery for the session-expiry form reset;
-  **`type_date_kbd`** (dates set by real keystrokes, never JS `.value`+dispatchEvent — the old
-  synthetic-event pattern is gone); `--docs` (→Drive via `dbstore`), `--gps`, `--resume`;
-  incremental JSON; gentle randomized pacing (`P_CAUSA 5-10s / P_PAGE 4-8s / P_TRIB 6-12s /
-  P_STEP 0.6-1.6s`). **KNOWN LIMIT: search #2 of a session is F5-rejected (see top section).**
+- `scraper/cdp_scrape.py` — the scraper. Connect-only; **`human_click()` + `_human_pointer()`
+  — the WAF fix, used for EVERY click (see the top section; never reintroduce a bare
+  `.click()`)**; `--no-search` harvest; `select_tribunal_kbd` keyboard sweep;
+  **`--corte/--desde/--hasta` → `establish_form_kbd`** (builds the whole Búsqueda-por-Fecha
+  form with TRUSTED keyboard, no manual search; VALIDATED — returns 53 for trib 259) +
+  `form_ok()` auto-recovery for the session-expiry form reset; **`type_date_kbd`** (dates set
+  by real keystrokes, never JS `.value`+dispatchEvent); `--docs` (→Drive via `dbstore`),
+  `--gps`, `--resume`, `--count-only`; incremental JSON; gentle randomized pacing
+  (`P_CAUSA 5-10s / P_PAGE 4-8s / P_TRIB 6-12s / P_STEP 0.6-1.6s`).
 - `scraper/ingest_cdp.py` — JSON → Neon (idempotent upserts, deterministic ids, Drive links,
   marks `fill_status='scraped'`). **`--list-only`** ingests a `--count-only` list as causa
   SHELLS (`ON CONFLICT DO NOTHING`, `fill_status` untouched → stays pending work); the normal
   path now REFUSES a headerless JSON (would blank headers + mark 'scraped').
-- `scraper/net_probe.py` — **read-only network recorder (NEW 2026-07-21 eve). Injects nothing.**
-  Logs every request's POST params (reCAPTCHA token fingerprinted) + F5-reject flag to
-  `netprobe_<label>_<epoch>.jsonl`, so a manual search and a script search can be diffed. This
-  is the tool for the "search #2" experiment.
+- `scraper/net_probe.py` — **read-only network recorder. Injects nothing.** Logs every
+  request's POST params (reCAPTCHA token fingerprinted) + F5-reject flag to
+  `netprobe_<label>_<epoch>.jsonl`, so a manual search and a script search can be diffed.
+  Follows **all tabs**; waits via Playwright (never `time.sleep` — that captures 0 events).
+- `scraper/search_probe.py` — **one search per run, one variable changed, verdict from the
+  RESPONSE.** `--mode click|human|clear|kbd|kbd-slow`, `--bare`. The cheapest way to test any
+  future WAF hypothesis; it is what proved `page.click` was the blocker.
 - `scraper/waf_check.py` — **read-only WAF/session health check. Run before and after.**
   (TODO: teach it the stuck-disabled-Buscar signature = instant block tell.)
 - `Abrir_CDP.cmd` — open the CDP Chrome only. `Probar_CDP.cmd` — venv + Chrome + scraper.

@@ -80,10 +80,7 @@ def main():
     with sync_playwright() as pw:
         browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{args.port}")
         ctx = browser.contexts[0]
-        page = find_ojv_page(ctx)
-        if not page:
-            raise SystemExit("[ERROR] No encuentro la pestana OJV.")
-        print(f"[probe:{args.label}] listening on {page.url}\n  -> {outfile}")
+        print(f"[probe:{args.label}] -> {outfile}")
 
         def on_request(req):
             if "pjud.cl" not in req.url:
@@ -95,13 +92,17 @@ def main():
                 body = req.post_data
             except Exception:
                 pass
+            # ALL headers (cookie reduced to a length — this file is gitignored but a 4KB
+            # session cookie in a log is still a bad habit). We need the full set because the
+            # open question is how a browser-issued request differs from an out-of-page
+            # context.request.get(): referer, sec-fetch-*, accept, ua-* are exactly the tell.
+            hdrs = {}
+            for k, v in req.headers.items():
+                kl = k.lower()
+                hdrs[kl] = f"<len={len(v)}>" if kl in ("cookie", "authorization") else v[:300]
             rec = record("request", method=req.method, url=req.url,
                          rtype=req.resource_type, params=summarize_post(body),
-                         headers={k: v for k, v in req.headers.items()
-                                  if k.lower() in ("content-type", "x-requested-with",
-                                                   "referer", "origin", "sec-fetch-mode",
-                                                   "sec-fetch-site", "sec-fetch-dest",
-                                                   "accept")})
+                         headers=hdrs)
             if req.method == "POST":
                 print(f"  #{rec['i']} POST {req.url.split('/')[-1]}  "
                       f"{ {k: v for k, v in rec['params'].items() if k.startswith('fec') or k.startswith('corte')} }")
@@ -125,15 +126,46 @@ def main():
             elif resp.request.method == "POST":
                 print(f"  #{rec['i']} <- {resp.status} {size}B {resp.url.split('/')[-1]}")
 
-        page.on("request", on_request)
-        page.on("response", on_response)
+        # Attach to EVERY tab, present and future. OJV opens Consulta Causas in a new tab and
+        # discards the old one, so pinning to a single page makes the recorder die exactly when
+        # the interesting traffic starts (it did, 2026-07-22 — 0 events captured).
+        attached = set()
+
+        def attach(pg):
+            if pg in attached:
+                return
+            attached.add(pg)
+            pg.on("request", on_request)
+            pg.on("response", on_response)
+            try:
+                print(f"[probe:{args.label}] +tab {(pg.url or '')[:78]}")
+            except Exception:
+                pass
+
+        for pg in ctx.pages:
+            attach(pg)
+        ctx.on("page", attach)
 
         deadline = time.time() + args.seconds
         try:
             while time.time() < deadline:
-                page.wait_for_timeout(500)
+                for pg in ctx.pages:     # pick up tabs opened before the event landed
+                    attach(pg)
+                # The wait MUST go through Playwright: a bare time.sleep() blocks the sync
+                # greenlet and no request/response events are ever dispatched (0 events
+                # captured, 2026-07-22). Pump via any live tab so one closing tab is harmless.
+                for pg in list(ctx.pages):
+                    try:
+                        pg.wait_for_timeout(500)
+                        break
+                    except Exception:
+                        continue
+                else:
+                    time.sleep(0.5)      # no tabs at all right now
         except KeyboardInterrupt:
             pass
+        except Exception as e:
+            print(f"[probe:{args.label}] loop ended: {str(e)[:80]}")
         finally:
             fh.close()
             print(f"\n[probe:{args.label}] {n[0]} events -> {outfile}")

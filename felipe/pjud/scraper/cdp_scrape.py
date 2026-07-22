@@ -12,7 +12,9 @@ Run:  python cdp_scrape.py [--port 9333] [--max-tribs 0] [--max-causas 0] [--pro
 """
 
 import argparse
+import base64
 import json
+import math
 import os
 import random
 import re
@@ -28,6 +30,7 @@ DOWNLOADS = Path(os.environ.get("USERPROFILE", ".")) / "Downloads"
 OJV = "https://oficinajudicialvirtual.pjud.cl"
 
 DOCS = False    # --docs: download historia doc/anexo PDFs and upload to Drive
+DOCS_INPAGE = False  # --docs-inpage: fetch those PDFs from INSIDE the page (see fetch_doc)
 GPS = False     # --gps: resolve georreferencia sub-modals to lat/lng
 RESUME = False  # --resume: skip causas already scraped (fill_status='scraped') in Neon
 COUNT_ONLY = False  # --count-only: count bank C-causas per tribunal, no detail opens
@@ -47,6 +50,90 @@ P_STEP  = (0.6, 1.6)    # small pauses inside a causa (cuaderno switches, recept
 
 def pace(rng):
     time.sleep(random.uniform(*rng))
+
+
+def _human_pointer(page, x, y):
+    """Drive the pointer to (x,y) along an ARC with easing and jitter, dwell, then press."""
+    sx, sy = x - random.uniform(180, 320), y + random.uniform(90, 200)
+    page.mouse.move(sx, sy)
+    page.wait_for_timeout(random.randint(60, 140))
+    steps = random.randint(18, 28)
+    bow = random.uniform(-38, 38)                        # perpendicular bulge -> a curve
+    for i in range(1, steps + 1):
+        t = i / steps
+        ease = t * t * (3 - 2 * t)                       # slow start, fast middle, slow end
+        arc = math.sin(math.pi * t) * bow
+        page.mouse.move(sx + (x - sx) * ease + arc + random.uniform(-1.2, 1.2),
+                        sy + (y - sy) * ease + random.uniform(-1.2, 1.2))
+        page.wait_for_timeout(random.randint(8, 22))
+    page.mouse.move(x + random.uniform(-1.5, 1.5), y + random.uniform(-1.5, 1.5))
+    page.wait_for_timeout(random.randint(140, 380))      # hover dwell before committing
+    page.mouse.down()
+    page.wait_for_timeout(random.randint(55, 130))       # press duration
+    page.mouse.up()
+
+
+def human_click(page, target, timeout=8000):
+    """THE click. `target` is a selector, Locator or ElementHandle.
+
+    NEVER use page.click()/locator.click() on this site. Both are isTrusted=true, but they
+    TELEPORT the pointer onto the element and fire down+up with no approach path and no hover
+    dwell — and F5 Shape scores the motion, not the trust bit. Validated 2026-07-22 on one
+    healthy session, same button, same POST params, minutes apart:
+        page.click  -> 250 B rejection page in 0.1s
+        human arc   -> 109,234 B of real results
+    Reading the DOM over CDP (Runtime.evaluate) was tested in the same session and is INNOCENT,
+    so parse_*/eval_on_selector everywhere else are fine — it is only the pointer that matters.
+    Falls back to a plain click if the element has no measurable box (better than not clicking).
+    """
+    el = page.locator(target) if isinstance(target, str) else target
+    box = None
+    try:
+        el.scroll_into_view_if_needed(timeout=timeout)
+    except Exception:
+        pass
+    try:
+        box = el.bounding_box()
+    except Exception:
+        box = None
+    if not box or box.get("width", 0) < 1 or box.get("height", 0) < 1:
+        try:
+            el.click(timeout=timeout)                    # last resort — may be scored
+            return True
+        except Exception:
+            return False
+
+    # We drive raw mouse coordinates, so we lose Playwright's actionability check: if a
+    # backdrop or sticky header covers the point, the press lands on the overlay instead.
+    # Hit-test it ourselves (Runtime.evaluate is proven safe here) and re-measure if it misses.
+    x = y = None
+    for attempt in range(3):
+        x = box["x"] + box["width"] * random.uniform(0.3, 0.7)
+        y = box["y"] + box["height"] * random.uniform(0.3, 0.7)
+        try:
+            hit = el.evaluate(
+                "(e, pt) => {const top = document.elementFromPoint(pt[0], pt[1]);"
+                " return !!top && (top === e || e.contains(top) || top.contains(e));}", [x, y])
+        except Exception:
+            break                                        # can't hit-test (iframe etc.) — go
+        if hit:
+            break
+        if attempt < 2:                                  # covered: settle, re-measure, retry
+            page.wait_for_timeout(400)
+            try:
+                el.scroll_into_view_if_needed(timeout=timeout)
+                box = el.bounding_box() or box
+            except Exception:
+                pass
+    else:
+        print("    [warn] human_click: target still covered — clicking anyway")
+
+    try:
+        _human_pointer(page, x, y)
+        return True
+    except Exception as e:
+        print(f"    [warn] human_click: {str(e)[:60]}")
+        return False
 
 
 def norm(s):
@@ -148,7 +235,7 @@ def close_modal(page, sel):
               f"{sel} [data-dismiss='modal']"):
         try:
             if page.query_selector(s):
-                page.click(s, timeout=2000)            # TRUSTED click
+                human_click(page, s, timeout=2000)     # human arc — never page.click()
                 page.wait_for_timeout(500)
                 if not modal_open(page, sel):
                     return
@@ -162,7 +249,7 @@ def parse_receptor(page):
     if not a:
         return []
     try:
-        a.click(timeout=5000)                          # TRUSTED open
+        human_click(page, a, timeout=5000)             # human arc — never .click()
         page.wait_for_function(
             "()=>{const m=document.querySelector('#modalReceptorCivil');"
             " return m && (m.querySelector('table tbody tr')||/Receptor/i.test(m.innerText));}",
@@ -228,7 +315,12 @@ def resolve_geo(page, jwt):
 
 
 def download_doc(api, action, val, param="dtaDoc"):
-    """GET OJV/<action>?<param>=<val> in-session (shares cookies) -> PDF bytes or None."""
+    """GET OJV/<action>?<param>=<val> in-session (shares cookies) -> PDF bytes or None.
+
+    NB this goes out through Playwright's APIRequestContext — it shares cookies but is issued
+    OUTSIDE the page, so it carries none of the browser's request context and produces no F5
+    Shape telemetry. Suspected (not proven) of burning the profile in the detail regime; see
+    `download_doc_inpage` for the alternative and `--docs-inpage` to A/B them."""
     if not action or not val:
         return None
     try:
@@ -240,6 +332,44 @@ def download_doc(api, action, val, param="dtaDoc"):
         return body
     except Exception:
         return None
+
+
+# In-page fetch: same URL, but issued BY the page, so it inherits the document's origin,
+# referer and cookie handling and lands inside Shape's instrumented XHR path instead of
+# beside it. Bytes come back base64 (chunked so a big ebook doesn't blow the argument stack).
+_JS_FETCH_DOC = """
+async ([url, param, val]) => {
+  const u = url + '?' + param + '=' + encodeURIComponent(val);
+  const r = await fetch(u, {credentials: 'include'});
+  if (!r.ok) return null;
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  let s = '', CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH)
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(s);
+}
+"""
+
+
+def download_doc_inpage(page, action, val, param="dtaDoc"):
+    """Same fetch as download_doc but performed BY THE PAGE. -> PDF bytes or None."""
+    if not action or not val:
+        return None
+    try:
+        b64 = page.evaluate(_JS_FETCH_DOC, [f"{OJV}/{action.lstrip('/')}", param, val])
+        if not b64:
+            return None
+        body = base64.b64decode(b64)
+        return body if body[:4] == b"%PDF" else None
+    except Exception:
+        return None
+
+
+def fetch_doc(page, api, action, val, param="dtaDoc"):
+    """Dispatch to the in-page or the out-of-page downloader (`--docs-inpage`)."""
+    if DOCS_INPAGE:
+        return download_doc_inpage(page, action, val, param)
+    return download_doc(api, action, val, param)
 
 
 # Causa-level header docs (in the detalle modal header, not the historia table). Each:
@@ -325,7 +455,7 @@ def type_date_kbd(page, sel, value):
     for attempt, closer in enumerate(("Escape", "Tab")):
         try:
             page.eval_on_selector(sel, "e=>{e.readOnly=false;e.removeAttribute('readonly');}")
-            page.locator(sel).click()                 # TRUSTED — also opens the datepicker
+            human_click(page, sel)                    # human arc — also opens the datepicker
             page.keyboard.press("Control+a")
             page.keyboard.type(value, delay=60)       # TRUSTED keystrokes
             page.keyboard.press(closer)               # close the datepicker / blur to fire change
@@ -389,7 +519,7 @@ def scrape_causa(page, api, meta, full=False):
     header_urls = {}
     if DOCS:
         for hd in grab_header_docs(page):
-            body = download_doc(api, hd["action"], hd["val"], param=hd["param"])
+            body = fetch_doc(page, api, hd["action"], hd["val"], param=hd["param"])
             if body and len(body) >= 1024:
                 obj = f"{causa_id}/{hd['key']}.pdf".replace(" ", "_")
                 try:
@@ -425,7 +555,7 @@ def scrape_causa(page, api, meta, full=False):
                     form = hh.get(kind)
                     if not (form and form.get("action") and form.get("val")):
                         continue
-                    body = download_doc(api, form["action"], form["val"])
+                    body = fetch_doc(page, api, form["action"], form["val"])
                     if body and len(body) >= 1024:
                         obj = f"{causa_id}/c{cnum}/{folio}-{n}-{kind}.pdf".replace(" ", "_")
                         try:
@@ -467,10 +597,8 @@ def fire_search(page):
                       " if(t) t.innerHTML='';}")
     except Exception:
         pass
-    try:
-        page.click("#btnConConsultaFec", timeout=5000)   # TRUSTED
-    except Exception as e:
-        print(f"    [warn] buscar not clickable: {e.__class__.__name__}")
+    if not human_click(page, "#btnConConsultaFec", timeout=5000):
+        print("    [warn] buscar not clickable")
         return False
     waited = 0
     while waited < 45000:
@@ -554,9 +682,7 @@ def next_page(page):
     if disabled:
         return False
     before = first_sig(page)
-    try:
-        page.click("#sigId", timeout=4000)             # TRUSTED
-    except Exception:
+    if not human_click(page, "#sigId", timeout=4000):  # human arc — never page.click()
         return False
     for _ in range(20):
         page.wait_for_timeout(500)
@@ -587,6 +713,10 @@ def main():
     ap.add_argument("--max-causas", type=int, default=0, help="0 = no limit")
     ap.add_argument("--proc", default="", help="only keep causas whose Proc. matches (e.g. 'Ejecutivo Obligación de Dar')")
     ap.add_argument("--docs", action="store_true", help="download historia doc/anexo PDFs -> Drive")
+    ap.add_argument("--docs-inpage", action="store_true",
+                    help="fetch those PDFs from INSIDE the page (in-page fetch) instead of "
+                         "context.request.get() — carries the page's request context and shows "
+                         "up in Shape's telemetry. Use with --docs.")
     ap.add_argument("--gps", action="store_true", help="resolve georreferencia sub-modals -> lat/lng")
     ap.add_argument("--no-search", action="store_true",
                     help="WAF-safe: do NOT select_option/search; harvest the CURRENT results "
@@ -603,8 +733,9 @@ def main():
     ap.add_argument("--desde", default="01/01/2026", help="date Desde DD/MM/YYYY (with --corte)")
     ap.add_argument("--hasta", default="31/01/2026", help="date Hasta DD/MM/YYYY (with --corte)")
     args = ap.parse_args()
-    global DOCS, GPS, RESUME, COUNT_ONLY
+    global DOCS, GPS, RESUME, COUNT_ONLY, DOCS_INPAGE
     DOCS, GPS, RESUME, COUNT_ONLY = args.docs, args.gps, args.resume, args.count_only
+    DOCS_INPAGE = args.docs_inpage
 
     print(f"Conectando a Chrome (puerto CDP {args.port})...")
     with sync_playwright() as pw:
@@ -736,8 +867,9 @@ def main():
                         break
                     pace(P_CAUSA)
                     try:
-                        page.locator("#dtaTableDetalleFecha tbody tr").nth(c["i"]).locator(
-                            "a[onclick*='detalleCausaCivil']").first.click(timeout=8000)  # TRUSTED open
+                        human_click(page, page.locator("#dtaTableDetalleFecha tbody tr")
+                                    .nth(c["i"]).locator("a[onclick*='detalleCausaCivil']").first,
+                                    timeout=8000)      # human arc — never .click()
                         page.wait_for_function(
                             "rol=>{var m=document.querySelector('#modalDetalleCivil');"
                             " return m && m.innerText.indexOf('ROL')>=0 && m.innerText.indexOf(rol)>=0;}",

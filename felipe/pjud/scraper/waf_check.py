@@ -41,11 +41,28 @@ def main():
             print("  -> open felipe\\pjud\\Abrir_CDP.cmd first.")
             return 2
 
+        # Prefer the tab that actually holds the search form. A leftover document tab
+        # (docu.php / docCertificadoDemanda.php from a manual download) is also on the OJV
+        # domain, and picking it reports "no #fecTribunal / 0 rows" -> a bogus THROTTLED
+        # verdict while the real session is perfectly healthy (seen 2026-07-22).
         ojv = None
         for ctx in browser.contexts:
             for pg in ctx.pages:
-                if "oficinajudicialvirtual" in pg.url:
-                    ojv = pg
+                try:
+                    if pg.query_selector("#fecTribunal"):
+                        ojv = pg
+                        break
+                except Exception:
+                    pass
+            if ojv:
+                break
+        if ojv is None:
+            for ctx in browser.contexts:
+                for pg in ctx.pages:
+                    if "oficinajudicialvirtual" in pg.url:
+                        ojv = pg
+                        break
+                if ojv:
                     break
         if ojv is None:
             print("VERDICT: NO-SESSION  (Chrome is up but OJV is not open in any tab)")
