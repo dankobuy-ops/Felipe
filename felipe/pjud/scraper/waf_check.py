@@ -102,6 +102,18 @@ def main():
         print(f"tribunal        : {trib}")
         print(f"result rows     : {rows}")
 
+        # Is a modal currently open? Decides whether a rejection page is live or just trapped.
+        modal_open = False
+        for msel in ("#modalDetalleCivil", "#modalReceptorCivil"):
+            try:
+                if ojv.eval_on_selector(
+                        msel, "e=>e && (e.classList.contains('show')"
+                              "||e.classList.contains('in')||getComputedStyle(e).display!=='none')"):
+                    modal_open = True
+                    print(f"modal abierto   : {msel}")
+            except Exception:
+                pass
+
         # --- F5 cookies: TSPD_101_DID is the device id that survives IP changes ---
         did = []
         try:
@@ -118,6 +130,19 @@ def main():
         browser.close()
 
     if rejected:
+        # A rejection page inside an OPEN modal is usually STALE: one causa open went wrong,
+        # the modal never closed, and the dead page is just sitting there. That is not a burned
+        # profile — closing the modal fixes it. Reporting it as BLOCKED-DETAIL cost several
+        # perfectly good profiles on 2026-07-22, so say which case this is.
+        if modal_open:
+            print("\nVERDICT: STUCK-MODAL (probablemente NO bloqueado)")
+            print("  Hay una pagina de rechazo DENTRO de un modal abierto. Casi siempre es un")
+            print("  modal viejo que no se cerro, no un bloqueo vivo: mientras siga abierto, su")
+            print("  backdrop tapa Buscar y todo 'falla'.")
+            print("  FIX: cierra el modal (Escape) o recarga; cdp_scrape ya lo hace solo")
+            print("       (clear_stuck_modal). Reintenta ANTES de quemar el perfil.")
+            print("  Para confirmar que la sesion vive:  cdp_scrape.py --no-search --max-causas 1")
+            return 4
         print("\nVERDICT: BLOCKED-DETAIL")
         print("  The WAF is rejecting detail opens. Search may still work — that is the tell.")
         print("  FIX: close Chrome, rename %LOCALAPPDATA%\\pjud_cdp to pjud_cdp.burned-<date>,")

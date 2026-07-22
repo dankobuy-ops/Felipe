@@ -73,6 +73,31 @@ def _human_pointer(page, x, y):
     page.mouse.up()
 
 
+def page_busy(page):
+    """True while the site is mid-request. It injects a spinner into #loadPre* (empty when
+    idle) — the loading icon the operator watches on screen. Judging 'ready' by the results
+    table is useless: it keeps showing the PREVIOUS search's rows while the new one runs."""
+    try:
+        return bool(page.evaluate(
+            "()=>['loadPre','loadPreFecha','loadPreNombre','loadPreJuridica']"
+            " .some(id=>{const e=document.getElementById(id);"
+            "  return e && e.offsetParent!==null && e.innerHTML.trim().length>0;})"))
+    except Exception:
+        return False
+
+
+def wait_idle(page, secs=20):
+    """Block until the site stops loading. Acting while it is busy is what got workers 2 and 3
+    F5-blocked on 2026-07-22: under three-worker latency the script clicked before the page was
+    ready, the click landed on a backdrop or a stale row, and Shape scored the impossible
+    interaction. Cheap insurance — returns as soon as the spinner clears."""
+    for _ in range(secs * 4):
+        if not page_busy(page):
+            return True
+        page.wait_for_timeout(250)
+    return False
+
+
 def human_click(page, target, timeout=8000):
     """THE click. `target` is a selector, Locator or ElementHandle.
 
@@ -106,8 +131,15 @@ def human_click(page, target, timeout=8000):
     # We drive raw mouse coordinates, so we lose Playwright's actionability check: if a
     # backdrop or sticky header covers the point, the press lands on the overlay instead.
     # Hit-test it ourselves (Runtime.evaluate is proven safe here) and re-measure if it misses.
+    wait_idle(page)                                      # never act while the site is loading
+
+    # NEVER click a covered target. The old fallback ("click anyway") sent a real click to
+    # whatever sat underneath — a backdrop, a stale row — at coordinates where the intended
+    # element was not. On 2026-07-22 that correlated perfectly with getting F5-blocked:
+    # 0 covered clicks -> survived 50 causas; 1 -> blocked at 23; 2 -> blocked at 4.
     x = y = None
-    for attempt in range(3):
+    covered = False
+    for attempt in range(8):
         x = box["x"] + box["width"] * random.uniform(0.3, 0.7)
         y = box["y"] + box["height"] * random.uniform(0.3, 0.7)
         try:
@@ -117,16 +149,21 @@ def human_click(page, target, timeout=8000):
         except Exception:
             break                                        # can't hit-test (iframe etc.) — go
         if hit:
+            covered = False
             break
-        if attempt < 2:                                  # covered: settle, re-measure, retry
-            page.wait_for_timeout(400)
-            try:
-                el.scroll_into_view_if_needed(timeout=timeout)
-                box = el.bounding_box() or box
-            except Exception:
-                pass
-    else:
-        print("    [warn] human_click: target still covered — clicking anyway")
+        covered = True
+        page.wait_for_timeout(1000)                      # give slow renders time to settle
+        if attempt == 2:
+            clear_stuck_modal(page)                      # usually a left-open modal's backdrop
+        wait_idle(page)
+        try:
+            el.scroll_into_view_if_needed(timeout=timeout)
+            box = el.bounding_box() or box
+        except Exception:
+            pass
+    if covered:
+        print("    [warn] human_click: objetivo tapado tras 8s — NO hago clic (evita el bloqueo)")
+        return False
 
     try:
         _human_pointer(page, x, y)
@@ -242,6 +279,39 @@ def close_modal(page, sel):
         except Exception:
             pass
     page.wait_for_timeout(300)
+
+
+def clear_stuck_modal(page):
+    """Make sure no detail/receptor modal is left open. Returns True if the page is clean.
+
+    THE failure mode of 2026-07-22: one causa open goes wrong (slow response, or F5 renders a
+    rejection page INTO the modal iframe) and the modal never closes. Every later open then
+    times out at 30 s, because the script waits for a NEW modal to show the next ROL while the
+    dead one is still sitting there — so a single hiccup looked exactly like a burned profile
+    for the rest of the run, and waf_check read the trapped rejection page and said
+    BLOCKED-DETAIL. The operator proved it by hand: close the modal (or reload) and everything
+    works again. Escape first — it is a trusted keystroke and costs nothing."""
+    for sel in ("#modalReceptorCivil", "#modalDetalleCivil"):
+        if not modal_open(page, sel):
+            continue
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
+        except Exception:
+            pass
+        if modal_open(page, sel):
+            close_modal(page, sel)
+        if modal_open(page, sel):
+            try:                      # last resort: the site's own hide, then Escape again
+                page.evaluate("s=>{const m=document.querySelector(s);"
+                              " if(m&&window.jQuery) window.jQuery(m).modal('hide');}", sel)
+                page.wait_for_timeout(500)
+            except Exception:
+                pass
+        if modal_open(page, sel):
+            print(f"      [warn] {sel} sigue abierto — la pagina esta atascada")
+            return False
+    return True
 
 
 def parse_receptor(page):
@@ -401,16 +471,30 @@ def grab_header_docs(page):
 
 def causa_state(tribunal_id):
     """{rol: (fill_status, detalles_bool)} for a tribunal — for --resume + the Detalles flag.
-    Empty if the DB isn't reachable."""
-    try:
-        store = get_store()
-        with store.conn.cursor() as cur:
-            cur.execute("SELECT rol, fill_status, detalles FROM causas WHERE tribunal_id=%s",
-                        (str(tribunal_id),))
-            return {r[0]: (r[1] or "", bool(r[2])) for r in cur.fetchall()}
-    except Exception as e:
-        print(f"    [warn] causa_state {tribunal_id}: {str(e)[:50]}")
-        return {}
+
+    Retries once through dbstore._reconnect(). A multi-hour sweep outlives Neon's idle
+    timeout, and the connection dies somewhere around the second tribunal; returning {} on
+    that error SILENTLY DISABLES --resume, so the run happily re-scrapes causas it already
+    has (observed 2026-07-22: 'SSL connection has been closed unexpectedly' at tribunal 260,
+    then 'connection already closed' for every tribunal after it)."""
+    for attempt in (1, 2):
+        try:
+            store = get_store()
+            with store.conn.cursor() as cur:
+                cur.execute("SELECT rol, fill_status, detalles FROM causas WHERE tribunal_id=%s",
+                            (str(tribunal_id),))
+                return {r[0]: (r[1] or "", bool(r[2])) for r in cur.fetchall()}
+        except Exception as e:
+            if attempt == 1:
+                print(f"    [warn] causa_state {tribunal_id}: {str(e)[:50]} — reconectando")
+                try:
+                    get_store()._reconnect()
+                    continue
+                except Exception as e2:
+                    print(f"    [warn] reconexion fallida: {str(e2)[:50]}")
+            print(f"    [warn] causa_state {tribunal_id}: sin DB — "
+                  f"--resume NO puede saltar nada en este tribunal")
+            return {}
 
 
 def select_by_kbd(page, sel, value):
@@ -493,6 +577,23 @@ def establish_form_kbd(page, corte_val, desde, hasta):
     except Exception as e:
         print(f"      [establish] {str(e)[:60]}")
         return False
+
+
+class Blocked(Exception):
+    """The F5 WAF is rejecting detail opens — abort the run, the profile is spent."""
+
+
+def waf_blocked(page):
+    """True if any frame is showing the F5 rejection page. Same signal as waf_check.py, read
+    only when a causa fails, so it costs nothing on the happy path."""
+    for fr in page.frames:
+        try:
+            txt = fr.evaluate("document.body?document.body.innerText.slice(0,400):''") or ""
+        except Exception:
+            continue
+        if "requested URL was rejected" in txt or "Support ID" in txt:
+            return True
+    return False
 
 
 def form_ok(page):
@@ -642,16 +743,24 @@ def select_tribunal_kbd(page, value):
 
 def scraped_rols(tribunal_id):
     """Set of rols at this tribunal already fully scraped (fill_status='scraped') in Neon.
-    Used by --resume to skip them. Empty set if the store/DB isn't reachable."""
-    try:
-        store = get_store()
-        with store.conn.cursor() as cur:
-            cur.execute("SELECT rol FROM causas WHERE tribunal_id=%s AND fill_status='scraped'",
-                        (str(tribunal_id),))
-            return {r[0] for r in cur.fetchall()}
-    except Exception as e:
-        print(f"    [warn] resume lookup {tribunal_id}: {str(e)[:50]}")
-        return set()
+    Used by --resume to skip them. Retries once through _reconnect() — see causa_state()."""
+    for attempt in (1, 2):
+        try:
+            store = get_store()
+            with store.conn.cursor() as cur:
+                cur.execute("SELECT rol FROM causas WHERE tribunal_id=%s "
+                            "AND fill_status='scraped'", (str(tribunal_id),))
+                return {r[0] for r in cur.fetchall()}
+        except Exception as e:
+            if attempt == 1:
+                print(f"    [warn] resume lookup {tribunal_id}: {str(e)[:50]} — reconectando")
+                try:
+                    get_store()._reconnect()
+                    continue
+                except Exception:
+                    pass
+            print(f"    [warn] resume lookup {tribunal_id}: sin DB — no se salta nada")
+            return set()
 
 
 def page_bank_causas(page):
@@ -730,6 +839,14 @@ def main():
                     help="establish the form via keyboard for this corte VALUE (90=Santiago) -> "
                          "NO manual search needed; the script sets competencia/corte/dates itself "
                          "and re-establishes if the session-expiry popup resets the form")
+    ap.add_argument("--max-empty", type=int, default=4,
+                    help="consecutive 'sin resultados' tribunales before checking for the F5 "
+                         "rejection page; small rural tribunales really are empty, so only a "
+                         "STREAK is suspicious")
+    ap.add_argument("--max-fails", type=int, default=3,
+                    help="consecutive causa failures before checking for the F5 rejection page; "
+                         "if it is there the run STOPS (exit 3) instead of grinding out "
+                         "timeouts on a spent profile")
     ap.add_argument("--desde", default="01/01/2026", help="date Desde DD/MM/YYYY (with --corte)")
     ap.add_argument("--hasta", default="31/01/2026", help="date Hasta DD/MM/YYYY (with --corte)")
     args = ap.parse_args()
@@ -802,6 +919,8 @@ def main():
         DOWNLOADS.mkdir(parents=True, exist_ok=True)
         out = DOWNLOADS / f"pjud_cdp_{int(time.time())}.json"
         details, t0, count_total = [], time.time(), 0
+        fails = 0        # consecutive causa failures -> WAF watchdog (see --max-fails)
+        empties = 0      # consecutive empty searches -> soft-block watchdog (--max-empty)
 
         def flush():
             out.write_text(json.dumps(details, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -820,9 +939,25 @@ def main():
             print(f"[{ti}/{len(tribs)}] {tb['t'][:40]}"
                   + ("  (harvest current results)" if args.no_search else ""))
             if not args.no_search and not fire_search(page):
-                print("      sin resultados")
+                # "sin resultados" is ALSO how a burned profile fails: the searches come back
+                # empty instead of showing a rejection page. On 2026-07-22 worker 2 burned
+                # after tribunal 4 and then reported 20 consecutive empty tribunales — exit 0,
+                # as if the corte were genuinely empty. Small rural tribunales really are
+                # empty, so only a STREAK is suspicious; check the WAF before believing it.
+                empties += 1
+                print(f"      sin resultados{f'  [{empties} seguidos]' if empties > 1 else ''}")
+                if empties >= args.max_empty:
+                    if waf_blocked(page):
+                        flush()
+                        raise Blocked(
+                            f"{empties} busquedas vacias seguidas + pagina de rechazo F5 · "
+                            f"{len(details)} causas guardadas en {out}")
+                    print(f"      [warn] {empties} tribunales vacios seguidos, pero sin pagina "
+                          f"de rechazo — parecen vacios de verdad")
+                    empties = 0
                 pace(P_TRIB)
                 continue
+            empties = 0                                  # a real result set clears the streak
             if COUNT_ONLY:
                 cnt, cpages = set(), 0
                 while cpages < 80:
@@ -889,13 +1024,36 @@ def main():
                               f"esc={len(rec['escritos'])} rec={len(rec['receptor'])} "
                               f"docs={rec['n_docs']} geo={rec['n_geo']}"
                               f"{' [FULL]' if det else ''}  (tot {len(details)})")
+                        fails = 0                        # a success clears the streak
                     except Exception as e:
                         print(f"      ERR {c['rol']}: {str(e)[:70]}")
-                        try:
-                            close_modal(page, "#modalReceptorCivil")
-                            close_modal(page, "#modalDetalleCivil")
-                        except Exception:
-                            pass
+                        # Clear the modal properly before the next causa, and only count this
+                        # as a WAF failure if the page came back clean — a stuck modal makes
+                        # every following open fail for reasons that have nothing to do with
+                        # the WAF (see clear_stuck_modal).
+                        if not clear_stuck_modal(page):
+                            print("      [recover] recargando la pagina para desatascarla")
+                            try:
+                                page.reload(wait_until="domcontentloaded", timeout=30000)
+                                page.wait_for_timeout(2500)
+                                clear_stuck_modal(page)
+                            except Exception as e2:
+                                print(f"      [recover] recarga fallida: {str(e2)[:50]}")
+                            break        # results are gone after a reload -> next tribunal
+                        # Unattended runs must NOT grind out 30s timeouts for hours after the
+                        # profile is spent (that is exactly what happened on 2026-07-22 until
+                        # it was killed by hand). A streak of failures -> check for the F5
+                        # rejection page, and if it is there, stop while the JSON is intact.
+                        fails += 1
+                        if fails >= args.max_fails:
+                            if waf_blocked(page):
+                                flush()
+                                raise Blocked(
+                                    f"pagina de rechazo F5 tras {fails} fallos seguidos · "
+                                    f"{len(details)} causas guardadas en {out}")
+                            print(f"      [warn] {fails} fallos seguidos, pero sin pagina de "
+                                  f"rechazo — sigo")
+                            fails = 0
                 pages += 1
                 if args.max_causas and len(details) >= args.max_causas:
                     break
@@ -916,4 +1074,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Blocked as e:
+        # Exit code 3 = "profile spent", so an unattended wrapper can tell this apart from a
+        # crash and rotate the profile instead of retrying. The JSON was flushed before we got
+        # here; ingest it, then rename %LOCALAPPDATA%\pjud_cdp aside and re-pass the CAPTCHA.
+        print(f"\n[BLOQUEADO] {e}")
+        print("  Ingesta ese JSON, luego renombra %LOCALAPPDATA%\\pjud_cdp y pasa el CAPTCHA "
+              "de nuevo (una IP nueva NO sirve).")
+        sys.exit(3)

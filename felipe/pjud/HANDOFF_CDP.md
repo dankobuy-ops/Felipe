@@ -99,6 +99,120 @@ period with zero rejections. **`--docs-inpage`** (new) fetches the identical URL
 in-page `fetch()` and returns the bytes base64 — same PDF, but issued by the page. A/B these
 two before concluding anything about document volume.
 
+### A session must be WARMED BY A HUMAN — fully unattended runs are not possible
+
+Tested 2026-07-22 on two Chromes side by side (separate profile dirs and CDP ports, so the
+good session was never at risk — **do it this way for any risky experiment**):
+
+| profile | history | verdict |
+|---|---|---|
+| port 9333 — operator passed the CAPTCHA + searched, then the script ran | human-warmed | **HEALTHY** after 20 causas / 54 PDFs |
+| port 9334 — virgin, never touched by a human | script only | **BLOCKED on its first search** |
+
+Clicking through `www.pjud.cl` → Causas *does* reach the date form with no visible challenge
+(`#fecCompetencia` is right there). It does not matter. The site runs **reCAPTCHA v3
+enterprise** — invisible and **score-based**, the token in every search POST carrying a score
+derived from the session's behavioural history. A profile with no human history has nothing to
+score. **The manual step is the session earning trust, not solving a puzzle**, so it cannot be
+automated away; plan on one human warm-up per session, then unattended running.
+
+*Not yet separated:* that test also used `establish_form_kbd`, whose arrow-key bursts fire one
+`leeTrib.php` per press on `#corteFec`. To tell the two apart: pass the CAPTCHA by hand and
+**stop there** (no form, no search), then run `--corte 90`. If it works, a session costs the
+operator ~10 s instead of ~45 s. `scraper/bootstrap_probe.py` records all of this.
+
+### ★ THE OTHER BIG ONE: a stuck modal looks EXACTLY like a WAF block
+
+Most of the "blocks" chased on 2026-07-22 were not blocks at all. The chain:
+
+1. one causa open goes slow and times out (30 s)
+2. **the detail modal never closes**
+3. its **backdrop now covers the Buscar button and the magnifier links**
+4. every later click lands on the backdrop → searches "return" nothing, causa opens time out
+5. `waf_check` sees the dead page trapped in that modal and says **BLOCKED-DETAIL**
+
+Worker 2 hit this and reported **20 consecutive tribunales as "sin resultados"** — then exited
+**0 / LISTO**, as if the corte were empty. The tell was in its own log, 20 times:
+`[warn] human_click: target still covered`. The operator disproved the block by hand: close the
+modal, search again, open a causa — all fine. A script run then scraped the same "dead" profile
+without a hitch.
+
+**Fixes (all validated live):**
+- **`clear_stuck_modal()`** — Escape → close button → jQuery `modal('hide')` → page reload as a
+  last resort. Called from the causa error handler and from `human_click`.
+- **`human_click` NEVER clicks a covered target** any more. It waits up to 8 s, tries clearing
+  the modal, and then **refuses to click** (returns False). The old "click anyway" fallback sent
+  real clicks to backdrops at coordinates where nothing legitimate was.
+- **`wait_idle()` / `page_busy()`** — waits on the site's OWN spinner. `#loadPre*` divs are
+  EMPTY when idle and get a spinner injected while a request runs; that is the loading icon the
+  operator watches. **Never judge readiness by the results table** — it keeps showing the
+  PREVIOUS search's rows while a new one runs, which is why a rejected or pending search can
+  look like 100 happy rows.
+- **`waf_check` now reports STUCK-MODAL** (exit 4) instead of condemning a live profile, and
+  prints which modal is open. It over-diagnosed BLOCKED-DETAIL repeatedly and cost good profiles.
+- Bonus: **`.loadTotalFec`** holds `Total de registros: N` — the true result count for the
+  current search. Use it to verify pagination actually reached the end.
+
+### ★ A BLOCKED PROFILE CAN BE RECOVERED — no rotation, no CAPTCHA
+
+Contradicting rule 8's remedy: the operator revived a genuinely blocked session by **closing the
+Consulta-Causas tab and reopening it from `www.pjud.cl`**. Verified functionally straight after
+(a real causa scraped in 30 s). This is automatable and worth wiring in.
+
+**But recovery restores function, not standing.** The same profile decays with each cycle:
+
+| profile | run 1 | after 1st recovery | after 2nd |
+|---|---|---|---|
+| worker 2 | 121 causas | 23 | **2** |
+| worker 3 | 4 causas | — | **0** |
+
+So a twice-blocked profile is nearly worthless. Prefer a fresh profile + a rich warm-up.
+
+### ★ PARALLELISM: two workers yes, three no
+
+Setup: one Chrome per worker, each with its **own profile dir and CDP port**
+(`--user-data-dir=%LOCALAPPDATA%\pjud_cdp_wN --remote-debugging-port=933N`), one human warm-up
+each. **Always test risky things this way** — a burned profile never harmed a healthy one.
+
+- **2 workers:** ran over an hour side by side, ~120 causas on the second, **no blocks**. Worker 1
+  held **2.9–3.0 causas/min whether alone or with siblings**, so throughput is ~linear.
+- **3 workers:** blocked in TWO independent trials. In the second, **worker 3 was blocked having
+  opened ZERO causas, 36 seconds in, with zero clicks refused.** It cannot be caused by how the
+  script clicks.
+- The survivor in both trials was worker 1 — the profile carrying the operator's rich 8.7-minute
+  manual warm-up (8 searches, 21 causa opens, 38 document downloads, ~605 TSPD events).
+
+**Unresolved (the next experiment):** is the limit the IP, or the trust standing of thin
+profiles? Give a FRESH profile a RICH warm-up (5+ min of genuine manual browsing) and add it as
+the third worker. Survives → warm-up quality is the lever. Blocked on arrival → it is the IP, and
+more throughput needs more connections (a phone hotspot / second machine).
+
+**A correlation that turned out NOT to be causal:** covered-clicks predicted blocks perfectly in
+trial 1 (0 → survived 50 causas, 1 → blocked at 23, 2 → blocked at 4). Trial 2 killed it: worker 3
+blocked with zero covered clicks. The no-blind-click rule is still right — it just was not the
+cause. **Do not re-derive that theory.**
+
+### Watchdogs + reliability (new)
+
+- **`--max-fails N` (default 3)** — N consecutive causa failures → check for the F5 rejection
+  page → if present, flush the JSON and exit **code 3** ("profile spent"), instead of grinding out
+  30 s timeouts for hours unattended, which is what actually happened before it existed.
+- **`--max-empty N` (default 4)** — same for consecutive empty searches, the OTHER way a spent
+  profile fails. Small rural tribunales genuinely are empty, so only a STREAK is suspicious.
+- **Neon reconnect** — `causa_state()` / `scraped_rols()` now retry through `dbstore._reconnect()`.
+  A multi-hour sweep outlives Neon's idle timeout; the old code caught the error, returned empty,
+  and **silently disabled `--resume`**, so the run re-scraped causas it already had.
+
+### ⚠️ `--count-only` UNDERCOUNTS — do not trust it for planning
+
+`--count-only` reported **91** bank causas for tribunal 260; the detail sweep of the same tribunal
+and date range found **135**. Same bank filter, so the suspect is pagination: `next_page` gives up
+if the table does not visibly change in its window, and under load the table shows stale rows
+while the next page loads. **The detail sweep is authoritative.** The 189-across-3-tribunales
+figure and the ~1,500 Santiago-January extrapolation are floors, and `--list-only` shells built
+from count-only runs are an incomplete work queue. Fix `next_page` (use `.loadTotalFec` and the
+spinner) before anyone plans against a count.
+
 ### The tools that settled it
 
 - **`scraper/net_probe.py`** — read-only network recorder; injects nothing. Logs every request
@@ -500,19 +614,37 @@ that is intended, not a bug.
 
 ---
 
+## Where the data stands (end of 2026-07-22)
+
+```
+causas     3718        scraped 676 causas across 14 tribunales
+litigantes 16265       (started the day at 6 scraped)
+cuadernos  74213
+receptor   20617
+documentos  1816
+```
+Cortes touched: **Santiago** (259-266, January + some February), **Concepción / Los Ángeles**
+(154, 155, 157), **Antofagasta** (13, 16), **La Serena** (40). Santiago 259-266 January are the
+most complete. NB worker 1 spent its last hours on **February** Santiago (the operator rebuilt
+the form with `01/02..28/02` after a session-expiry reset), so January is NOT finished.
+
 ## NEXT STEPS (in order)
 
-1. **Re-measure the detail-open budget with `human_click`.** The old "~6 causas then blocked"
-   number was measured with teleport clicks and is probably meaningless now. Run
-   `--max-tribs 1 --max-causas N --docs --gps --resume` on a fresh profile and push N up until
-   something breaks (or nothing does). **This is the number the whole plan depends on.**
-2. **Count the job**: `--count-only` across all 31 tribunales, ingesting each list with
-   `ingest_cdp.py --list-only`, enumerates the corte and makes the DB — not a JSON in
-   Downloads — the work queue. Measured so far: 259=54, 260=91, 261=44 for January
-   (**189 in 3 tribunales**, so Santiago-Jan ≈ ~1,500 is a reasonable extrapolation).
-   Cheap: **run it on a burned profile**, never on a clean one.
-3. Then bulk **detail** collection with `--resume --docs`, sized by whatever step 1 measures.
-4. (Optional) migrate `georref` from the `=HYPERLINK` formula to real lat/lng columns.
+1. **Settle the 3-worker question** — fresh profile + RICH manual warm-up (5+ min), added as the
+   third worker. IP limit or trust standing? This decides whether throughput scales on one
+   connection or needs a second (mobile) one. See the parallelism section.
+2. **Run the overnight single-worker sweep.** One well-warmed profile holds ~3 causas/min
+   indefinitely (439 causas in one run, then 68 more in another, no blocks). Santiago-January has
+   ~23 tribunales left. `cdp_scrape.py --resume` (no `--docs`), watchdogs on.
+3. **Fix `next_page` before trusting any count** (see the undercount section) — use
+   `.loadTotalFec` (`Total de registros: N`) and the `#loadPre*` spinner instead of "did the table
+   change".
+4. **Automate the block recovery**: close the OJV tab → reopen from `www.pjud.cl` → re-establish
+   the form. That is the operator's manual fix and it works; wiring it in turns a block into a
+   pause. Pair it with `establish_form_kbd` so a session-expiry reset does not need a human either.
+5. **Re-measure the detail/`--docs-inpage` budget.** 5 causas / 54 PDFs ran clean; the ceiling is
+   unknown, and the old "died at 3 causas" datum is suspect (it may have been a stuck modal).
+6. (Optional) migrate `georref` from the `=HYPERLINK` formula to real lat/lng columns.
 6. **Revoke the leaked GitHub PAT** — it was stripped from `settings.local.json` before ever
    being pushed, but the token itself is still live on GitHub.
 7. **Housekeeping:** 4 burned profile dirs `%LOCALAPPDATA%\pjud_cdp.burned-*` accumulated on
@@ -525,7 +657,11 @@ that is intended, not a bug.
 **CDP path (current/active):**
 - `scraper/cdp_scrape.py` — the scraper. Connect-only; **`human_click()` + `_human_pointer()`
   — the WAF fix, used for EVERY click (see the top section; never reintroduce a bare
-  `.click()`)**; `--no-search` harvest; `select_tribunal_kbd` keyboard sweep;
+  `.click()`), which now waits via `wait_idle()` and REFUSES to click a covered target**;
+  `clear_stuck_modal()` (Escape → close → jQuery hide → reload); `page_busy()`/`wait_idle()` on
+  the site's `#loadPre*` spinner; watchdogs `--max-fails` / `--max-empty` (exit 3 = profile
+  spent); `download_doc_inpage()` + **`--docs-inpage`** (PDFs fetched BY the page);
+  `--no-search` harvest; `select_tribunal_kbd` keyboard sweep;
   **`--corte/--desde/--hasta` → `establish_form_kbd`** (builds the whole Búsqueda-por-Fecha
   form with TRUSTED keyboard, no manual search; VALIDATED — returns 53 for trib 259) +
   `form_ok()` auto-recovery for the session-expiry form reset; **`type_date_kbd`** (dates set
@@ -543,8 +679,15 @@ that is intended, not a bug.
 - `scraper/search_probe.py` — **one search per run, one variable changed, verdict from the
   RESPONSE.** `--mode click|human|clear|kbd|kbd-slow`, `--bare`. The cheapest way to test any
   future WAF hypothesis; it is what proved `page.click` was the blocker.
-- `scraper/waf_check.py` — **read-only WAF/session health check. Run before and after.**
-  (TODO: teach it the stuck-disabled-Buscar signature = instant block tell.)
+- `scraper/waf_check.py` — **read-only WAF/session health check. Run before and after.** Picks the
+  tab holding the search form (not a leftover document tab) and distinguishes **STUCK-MODAL**
+  (exit 4, recoverable) from **BLOCKED-DETAIL** (exit 1). ⚠️ Still not authoritative: when it says
+  blocked, CONFIRM functionally with `cdp_scrape.py --no-search --max-causas 1` before burning a
+  profile. (TODO: teach it the stuck-disabled-Buscar signature.)
+- `scraper/bootstrap_probe.py` — can we reach Consulta Causas with no human? Clicks through from
+  `www.pjud.cl`. Answer: the form is reachable, but a virgin profile is **blocked on its first
+  scripted search** — the human warm-up is the session earning a reCAPTCHA-v3 trust score, not
+  solving a puzzle.
 - `Abrir_CDP.cmd` — open the CDP Chrome only. `Probar_CDP.cmd` — venv + Chrome + scraper.
 - `scraper/dbstore.py` (Neon + Drive), `scraper/gauth.py` (Drive OAuth), `scraper/gstore.py`
   (Drive helpers + `TABS` schema), `scraper/pjud_config.json` (gitignored secrets).
