@@ -149,6 +149,17 @@ def main():
         print("       reopen Abrir_CDP.cmd, re-pass the CAPTCHA. A new IP alone will NOT help.")
         return 1
     if rows == 0:
+        # No rows + no tribunal selected = nobody has searched yet (fresh tab, or a reload reset
+        # the form). Calling that THROTTLED and advising a fresh session condemns a perfectly
+        # healthy profile — exactly what happened to worker 3 on 2026-07-23, which had zero
+        # rejection frames and was simply sitting on a reloaded page.
+        if not trib or trib.startswith("Seleccione") or trib.startswith("(no"):
+            print("\nVERDICT: SIN-BUSQUEDA (sesion sana, sin bloqueo)")
+            print("  No hay rechazo F5 y no hay tribunal seleccionado: aqui todavia no se ha")
+            print("  buscado (pestana nueva, o una recarga reseteo el formulario).")
+            print("  Si la recarga dejo el panel 'Busqueda por Fecha' colapsado, el scraper lo")
+            print("  reabre solo con --corte (open_fecha_panel).")
+            return 0
         print("\nVERDICT: THROTTLED (or no search run yet)")
         print("  No rejection page, but no results either. If you HAVE searched, this is the")
         print("  throttle symptom — stop and take a fresh session.")
