@@ -893,6 +893,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=9333)
     ap.add_argument("--max-tribs", type=int, default=0, help="0 = all tribunales")
+    ap.add_argument("--skip-tribs", type=int, default=0,
+                    help="skip the first N tribunales of the corte. With --max-tribs this cuts "
+                         "a disjoint slice per worker (0/8, 8/8, 16/8) so several workers can "
+                         "share ONE corte without scraping the same tribunal twice.")
     ap.add_argument("--max-causas", type=int, default=0, help="0 = no limit")
     ap.add_argument("--proc", default="", help="only keep causas whose Proc. matches (e.g. 'Ejecutivo Obligación de Dar')")
     ap.add_argument("--docs", action="store_true", help="download historia doc/anexo PDFs -> Drive")
@@ -980,6 +984,11 @@ def main():
             sys.exit("[ALTO] Faltan las FECHAS (Desde / Hasta).")
         corte = page.eval_on_selector(
             "#corteFec", "e=>e.options[e.selectedIndex]?e.options[e.selectedIndex].text.trim():''")
+        if args.skip_tribs:
+            if args.skip_tribs >= len(tribs):
+                sys.exit(f"[ALTO] --skip-tribs {args.skip_tribs} deja 0 tribunales "
+                         f"(esta corte tiene {len(tribs)}).")
+            tribs = tribs[args.skip_tribs:]
         if args.max_tribs:
             tribs = tribs[:args.max_tribs]
         print(f"[OK] Corte: {corte} · {len(tribs)} tribunales · fechas {desde}..{hasta}"
