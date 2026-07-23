@@ -11,6 +11,40 @@ first; it **disproves** most of what the 07-20/07-21 versions of this doc conclu
 
 ---
 
+## ★★★ 2026-07-23 (evening) — the per-IP limit is a REQUEST-RATE budget, not a session count ★★★
+
+One model now fits every parallelism trial we have:
+
+| config | per-IP request rate | result |
+|---|---|---|
+| 1 worker (metadata OR docs) | low/moderate | ✅ fine |
+| 2 workers, **metadata only** | low-ish | ✅ fine >1 h (morning) |
+| 3 workers, metadata | higher | ❌ 2 blocked (morning, ×2) |
+| 2 workers, **both docs** | high — docs ≈ 8 PDF fetches/causa ×2 | ❌ both blocked in ~1–2 min |
+
+**Proven by a STAGGERED run on a FRESH IP:** worker 1 solo *with docs* stayed healthy (2 causas,
+`docs=8` each); **both died ~1–2 min after the 2nd docs-worker joined.** The block tracks the added
+request rate, not the mere existence of a 2nd session (2 metadata sessions are fine for an hour).
+
+**Consequences:**
+- **Docs pass = 1 worker per IP.** **Metadata/detail sweep = 2 workers per IP.** A 2nd docs-worker
+  needs a **2nd IP** (this is where the mobile connection pays off: 1 docs-worker per connection).
+- **⚠️ FLAG GOTCHA:** in-page docs need **BOTH `--docs --docs-inpage`**. `--docs-inpage` alone
+  leaves `DOCS=False` and downloads **nothing** — it silently becomes a metadata run. Confirm docs
+  are really flowing by `docs=N` (N>0) in the `OK` line. (The first "2-worker docs" block actually
+  downloaded zero docs, so that one was pure concurrency/rate, not docs.)
+- **Recommended workflow:** run **pass 2 as metadata-only at 2 workers** (fast, builds the target
+  list), then a **separate docs pass at 1 worker per IP** on the confirmed keepers.
+
+**Caveats (don't over-trust):** the 2-docs-worker block is ~1 clean trial; these profiles had a
+**lighter warm-up** than the morning survivors; and "1 docs-worker sustains a LONG solo run" is not
+yet confirmed (only 2 causas solo before the 2nd joined). **NEXT:** (a) a 30-min single-worker docs
+run to confirm 1-docs-per-IP is durable; (b) finish the interrupted **1 list-only + 1 docs**
+staggered test — list-only is cheap search+pagination, so per the rate model it should survive
+alongside one docs-worker, which would confirm the budget is about rate, not sessions.
+
+---
+
 ## ★★★ 2026-07-23 — CAN A WORKER RUN WITH ZERO HUMAN INPUT? NO. Two human-only gates. ★★★
 
 The full path a fresh profile must walk (recorded live with `nav_record.py`):
