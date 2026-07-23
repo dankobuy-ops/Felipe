@@ -551,15 +551,47 @@ def type_date_kbd(page, sel, value):
     return False
 
 
+def fecha_form_visible(page):
+    """True if the Busqueda-por-Fecha panel is actually OPEN. Presence is not enough: on
+    indexN.php the selects exist in the DOM even while the accordion is collapsed."""
+    try:
+        return bool(page.eval_on_selector("#fecCompetencia", "e=>!!(e&&e.offsetParent!==null)"))
+    except Exception:
+        return False
+
+
+def open_fecha_panel(page):
+    """Expand 'Busqueda por Fecha'.
+
+    After a reload, indexN.php comes back as the Consulta Unificada page with every search panel
+    COLLAPSED. #fecCompetencia and #fecTribunal are still in the DOM, so `query_selector` happily
+    reports the form as present while every keyboard select fails on an invisible element. The
+    old code tried `a[href='#BusFecha']`, but the real accordion link is `#BusFecha-collapse`, so
+    the expand silently did nothing: worker 3 skipped 9 tribunales printing '[establish]
+    competencia select failed' and still exited 0 / LISTO (2026-07-23)."""
+    if fecha_form_visible(page):
+        return True
+    for sel in ("a[href='#BusFecha-collapse']", "a[href='#BusFecha']",
+                "a[data-target='#BusFecha-collapse']"):
+        if not page.query_selector(sel):
+            continue
+        if not human_click(page, sel, timeout=6000):
+            continue
+        for _ in range(20):
+            page.wait_for_timeout(300)
+            if fecha_form_visible(page):
+                return True
+    return fecha_form_visible(page)
+
+
 def establish_form_kbd(page, corte_val, desde, hasta):
     """Establish the Busqueda por Fecha form BASE with TRUSTED keyboard only — no manual search
     needed, and this is also the session-expiry recovery. Sets: Fecha tab, Civil competencia,
     corte, dates. Tribunals are iterated by the caller. Returns True on success."""
     try:
-        if page.query_selector("a[href='#BusFecha']"):
-            page.locator("a[href='#BusFecha']").focus()
-            page.keyboard.press("Enter")
-            page.wait_for_timeout(1000)
+        if not open_fecha_panel(page):
+            print("      [establish] no puedo abrir el panel 'Busqueda por Fecha'")
+            return False
         if not select_by_kbd(page, "#fecCompetencia", "3"):     # Civil
             print("      [establish] competencia select failed")
             return False
@@ -597,10 +629,12 @@ def waf_blocked(page):
 
 
 def form_ok(page):
-    """True if the date form is still established (competencia=Civil, tribunal select enabled).
-    False after a session-expiry popup resets it (corte/tribunal go disabled)."""
+    """True if the date form is still established AND usable: panel open (a collapsed accordion
+    hides a perfectly valid-looking form), competencia=Civil, tribunal select enabled. False
+    after a session-expiry popup resets it, or after a reload collapses the panel."""
     try:
-        return (page.eval_on_selector("#fecCompetencia", "e=>e.value") == "3"
+        return (fecha_form_visible(page)
+                and page.eval_on_selector("#fecCompetencia", "e=>e.value") == "3"
                 and not page.eval_on_selector("#fecTribunal", "e=>e.disabled"))
     except Exception:
         return False
@@ -1005,6 +1039,7 @@ def main():
         fails = 0        # consecutive causa failures -> WAF watchdog (see --max-fails)
         empties = 0      # consecutive empty searches -> soft-block watchdog (--max-empty)
         incomplete = []  # tribunales whose pagination did not reach the end -> .incomplete.json
+        lost_form = 0    # consecutive tribunales skipped because the form is gone (exit 5)
 
         def flush():
             out.write_text(json.dumps(details, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1022,8 +1057,24 @@ def main():
                     establish_form_kbd(page, args.corte, args.desde, args.hasta)
                 if not select_tribunal_kbd(page, tb["v"]):    # TRUSTED keyboard (not select_option)
                     print(f"[{ti}/{len(tribs)}] {tb['t'][:40]}  [skip: could not select tribunal]")
+                    # A skip is normally a one-off (cascade not settled). A STREAK means the form
+                    # is gone and every remaining tribunal will be skipped too — worker 3 burned
+                    # through 9 that way and exited 0 with a cheerful LISTO (2026-07-23). Losing
+                    # the form is not a WAF block, so it gets its own exit code: 5 = re-open the
+                    # OJV tab, do not rotate the profile.
+                    lost_form += 1
+                    if lost_form >= 3:
+                        flush()
+                        print(f"\n[SIN FORMULARIO] {lost_form} tribunales seguidos sin poder "
+                              f"seleccionar. El formulario se perdio (recarga -> panel 'Busqueda "
+                              f"por Fecha' colapsado, o sesion caida).")
+                        print(f"  {len(details)} causas guardadas en {out}")
+                        print("  El perfil NO esta necesariamente quemado: cierra la pestana de "
+                              "la OJV, reabrela desde www.pjud.cl y reanuda con --resume.")
+                        sys.exit(5)
                     pace(P_STEP)
                     continue
+                lost_form = 0
                 pace(P_STEP)
             print(f"[{ti}/{len(tribs)}] {tb['t'][:40]}"
                   + ("  (harvest current results)" if args.no_search else ""))
@@ -1146,6 +1197,14 @@ def main():
                                 page.reload(wait_until="domcontentloaded", timeout=30000)
                                 page.wait_for_timeout(2500)
                                 clear_stuck_modal(page)
+                                # The reload returns indexN.php with every search panel COLLAPSED.
+                                # Re-open it here so the next tribunal's form_ok/establish has
+                                # something usable; without --corte the form itself is gone and
+                                # the run cannot rebuild it, so say so plainly.
+                                open_fecha_panel(page)
+                                if not args.corte:
+                                    print("      [recover] sin --corte no puedo reconstruir el "
+                                          "formulario tras una recarga — relanza con --corte")
                             except Exception as e2:
                                 print(f"      [recover] recarga fallida: {str(e2)[:50]}")
                             break        # results are gone after a reload -> next tribunal
