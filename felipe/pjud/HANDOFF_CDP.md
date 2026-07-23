@@ -203,15 +203,44 @@ cause. **Do not re-derive that theory.**
   A multi-hour sweep outlives Neon's idle timeout; the old code caught the error, returned empty,
   and **silently disabled `--resume`**, so the run re-scraped causas it already had.
 
-### ⚠️ `--count-only` UNDERCOUNTS — do not trust it for planning
+### ★★ THE PAGINATOR WAS LOSING MOST OF EVERY TRIBUNAL — fixed 2026-07-23
 
-`--count-only` reported **91** bank causas for tribunal 260; the detail sweep of the same tribunal
-and date range found **135**. Same bank filter, so the suspect is pagination: `next_page` gives up
-if the table does not visibly change in its window, and under load the table shows stale rows
-while the next page loads. **The detail sweep is authoritative.** The 189-across-3-tribunales
-figure and the ~1,500 Santiago-January extrapolation are floors, and `--list-only` shells built
-from count-only runs are an incomplete work queue. Fix `next_page` (use `.loadTotalFec` and the
-spinner) before anyone plans against a count.
+Not "an undercount". Tribunal 260 (2º Civil de Santiago), January, one identical window:
+
+| run | bank causas |
+|---|---|
+| old `--count-only` (2026-07-22) | 91 |
+| old detail sweep (2026-07-22) | 135 |
+| **fixed paginator (2026-07-23)** | **293** — 7 pages, 654/654 rows |
+
+**158 of the 293 were absent from Neon entirely.** Every earlier enumeration is roughly half of
+reality, `--list-only` shells are an incomplete work queue, and the ~1,500 Santiago-January
+extrapolation was built on sand.
+
+**The cause.** `next_page()` returned `False` for two situations that are nothing alike —
+Siguiente *disabled* (genuinely the last page) and *"I clicked and the table never changed within
+10 s"* — and both callers read `False` as "tribunal finished" and moved on with exit code 0. A
+paginator AJAX slower than the poll was therefore indistinguishable from the end of the list.
+Detail sweeps hid it because minutes of causa-opening pass between pages; count runs paginate
+back-to-back, which is why they lost the most.
+
+**★ The losses are systematic, not random.** Results sort **newest-first** (page 1 of January
+starts at 31/01), so a paginator that quits early always drops the **OLDEST** dates. This is why
+every tribunal in Neon starts mid-month — 260's earliest row was 19/01 — and why the 158 new rols
+are `C-100`, `C-101`, `C-102`… **If you see a tribunal whose causas begin mid-window, that is this
+bug's fingerprint. Do not read it as "a different search window was used" (I did, for an hour).**
+
+**The fix** (`eb987aa`, `bd50def`): `next_page()` returns `"advanced" | "last" | "stuck"`, waits on
+the site's own spinner before clicking, polls 20 s instead of 10, re-checks whether Siguiente went
+disabled, and retries the click once. `total_registros()` reads the site's own `Total de
+registros: N` — the only ground truth for "did we reach the end" — and it is compared against
+**all** rows seen, never the bank subset. Every tribunal now prints `[n pag · seen/total filas]`;
+a short one is flagged `[INCOMPLETO]` and written to a `<run>.incomplete.json` re-run list that is
+rewritten on every flush, so it survives a kill or a `Blocked` exit.
+
+Note when reading `seen/total`: each page carries one blank-rol filler row. Counting those
+inflated 654 real rows to 661 — one per page, enough to mask a genuinely short page. Blank rols
+are skipped now.
 
 ### The tools that settled it
 
@@ -251,6 +280,8 @@ spinner) before anyone plans against a count.
 - **Counting is cheap, detail is precious:** a `BLOCKED-DETAIL` profile **still searches and
   paginates**, so `--count-only` enumeration can be run on a burned profile. Spend clean
   profiles on **detail opens**, never on counting.
+- **⚠️ Any number produced before 2026-07-23 is a floor, not a census** — the paginator was
+  dropping most pages of each tribunal, oldest dates first. See the paginator section.
 
 ---
 
@@ -636,9 +667,10 @@ the form with `01/02..28/02` after a session-expiry reset), so January is NOT fi
 2. **Run the overnight single-worker sweep.** One well-warmed profile holds ~3 causas/min
    indefinitely (439 causas in one run, then 68 more in another, no blocks). Santiago-January has
    ~23 tribunales left. `cdp_scrape.py --resume` (no `--docs`), watchdogs on.
-3. **Fix `next_page` before trusting any count** (see the undercount section) — use
-   `.loadTotalFec` (`Total de registros: N`) and the `#loadPre*` spinner instead of "did the table
-   change".
+3. ~~Fix `next_page`~~ **DONE 2026-07-23** — but the consequence is outstanding: **every tribunal
+   swept before that commit must be re-swept**, because the missing causas are the oldest dates of
+   each window and nothing in the DB marks them as missing. `--resume` handles it correctly (it
+   skips what is already `scraped` and collects the rest), so a re-run costs only the new causas.
 4. **Automate the block recovery**: close the OJV tab → reopen from `www.pjud.cl` → re-establish
    the form. That is the operator's manual fix and it works; wiring it in turns a block into a
    pause. Pair it with `establish_form_kbd` so a session-expiry reset does not need a human either.
