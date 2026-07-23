@@ -1,4 +1,4 @@
-# PJUD scraper — CDP Handoff (updated 2026-07-22)
+# PJUD scraper — CDP Handoff (updated 2026-07-23)
 
 **Supersedes the 2026-07-21 version.** Project: **Poder Judicial Virtual** (Oficina
 Judicial Virtual, OJV — `oficinajudicialvirtual.pjud.cl`). Goal: collect civil
@@ -8,6 +8,43 @@ with **full detail + PDF files + GPS**, into a **Neon Postgres** DB (+ PDFs to G
 The scraper **works end-to-end** — detail, files, GPS, Neon ingest, resume. On 2026-07-22 the
 WAF blocker was **found and fixed**: it was our own `page.click()`. Read the next section
 first; it **disproves** most of what the 07-20/07-21 versions of this doc concluded.
+
+---
+
+## ★★★ 2026-07-23 — CAN A WORKER RUN WITH ZERO HUMAN INPUT? NO. Two human-only gates. ★★★
+
+The full path a fresh profile must walk (recorded live with `nav_record.py`):
+
+```
+www.pjud.cl
+  └─ click <a href="https://oficinajudicialvirtual.pjud.cl/home/">   "Plataforma para el ingreso…"
+OJV /home/  (login landing, opens in a NEW tab)
+  └─ click <button onclick="accesoConsultaCausas()">Consulta causas</button>   ← GATE 1 (reCAPTCHA v3)
+indexN.php  (Consulta Unificada console, SAME tab)
+  └─ open #BusFecha accordion, establish form by keyboard, search             ← GATE 2 (F5 on 1st search)
+```
+
+- **GATE 1 — reCAPTCHA v3 at guest entry.** `accesoConsultaCausas()` runs an INVISIBLE v3 check
+  (the floating badge, no checkbox, nothing to solve). A real human click passes silently; a
+  **scripted click STALLS on `/home/` and never navigates — even after 3.5 min of scripted pointer
+  warm-up** (150 s on pjud.cl + 60 s on /home/). v3 weighs fingerprint / cookie-history / IP /
+  timing, which a fresh scripted profile lacks. This gate is UPSTREAM of any search.
+- **GATE 2 — F5 Shape trust at the first search.** A human can get past gate 1 in two clicks, but a
+  **thin/cold session** (2 clicks, no manual search) is **F5-rejected on its FIRST scripted search**
+  (profile "zero", 2026-07-23) — while a well-used session searches fine. So F5 trust ALSO
+  accumulates with behavioural history; `human_click`'s good motion is necessary, not sufficient.
+  The operator's own day-one instinct was right: **acting before the session has settled/earned
+  trust is a bot tell.**
+
+**Irreducible human cost = ONE warm-up per profile:** 2 clicks in **+ a couple of MANUAL searches**
+(this is what earns gate-2 trust), then hand off — after which the profile scrapes for **days,
+unattended**. Both halves of the ritual are load-bearing, not superstition.
+
+**Corrects two earlier beliefs:** "virgin profile blocked on its first SEARCH" (it never *reached*
+a search — it is blocked at *entry*, gate 1) and "2 clicks and the script does the rest" (only true
+for an already-warm profile like w5). Tools added: `nav_record.py` (read-mostly click/URL recorder),
+`unattended_worker.py` (`--warmup` scripted-entry attempt). ⚠️ `_human_pointer` PRESSES the mouse —
+warm-up MUST pass `press=False` or it clicks at random coordinates (it opened stray PDFs/tabs once).
 
 ---
 
