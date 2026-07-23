@@ -95,13 +95,16 @@ def warm_up(page, seconds):
         n += 1
         try:
             box = page.viewport_size or {"width": 1280, "height": 800}
-            cs._human_pointer(page, 80 + (n * 137) % max(box["width"] - 160, 200),
-                              90 + (n * 211) % max(box["height"] - 180, 200))
+            # MOVE ONLY (press=False). Warming up must never CLICK — a clicking warm-up randomly
+            # opened PDFs and navigated the page away (2026-07-23). Stay off the very edges too,
+            # so a stray hover never lands on a nav link's active area.
+            cs._human_pointer(page, 120 + (n * 137) % max(box["width"] - 260, 200),
+                              140 + (n * 211) % max(box["height"] - 300, 200), press=False)
             page.mouse.wheel(0, 220 if n % 3 else -260)
             page.wait_for_timeout(900 + (n * 173) % 1600)
         except Exception:
             page.wait_for_timeout(1000)
-    print(f"    [warmup] {n} interacciones en {seconds}s")
+    print(f"    [warmup] {n} interacciones (solo movimiento) en {seconds}s")
 
 
 def reach_ojv(ctx, start, wait=15.0):
@@ -195,6 +198,13 @@ def main():
         # new tab on indexN.php with the Consulta Unificada console (recorded 2026-07-23).
         page.wait_for_timeout(1500)
         if not on_form(ctx):
+            # Warm up ON the OJV /home/ page before the guest-entry click: the reCAPTCHA v3 that
+            # gates accesoConsultaCausas() is scored on THIS domain, so behaviour on pjud.cl may
+            # not carry over. Spend up to a minute of pointer movement here first.
+            if args.warmup:
+                secs = min(60.0, args.warmup / 2.0)
+                print(f"    [warmup-ojv] {secs:.0f}s de movimiento en /home/ antes de entrar")
+                warm_up(page, secs)
             for sel in ("[onclick*='accesoConsultaCausas']", "[onclick*='accesoInvitado']"):
                 btn = page.query_selector(sel)
                 if not btn:

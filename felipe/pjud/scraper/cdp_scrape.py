@@ -52,8 +52,11 @@ def pace(rng):
     time.sleep(random.uniform(*rng))
 
 
-def _human_pointer(page, x, y):
-    """Drive the pointer to (x,y) along an ARC with easing and jitter, dwell, then press."""
+def _human_pointer(page, x, y, press=True):
+    """Drive the pointer to (x,y) along an ARC with easing and jitter, dwell, then (optionally)
+    press. press=False is a MOVE only — use it for warm-up/hover, never for clicking. (A warm-up
+    that left press=True clicked at random coordinates all over the page and opened stray tabs,
+    2026-07-23.)"""
     sx, sy = x - random.uniform(180, 320), y + random.uniform(90, 200)
     page.mouse.move(sx, sy)
     page.wait_for_timeout(random.randint(60, 140))
@@ -68,6 +71,8 @@ def _human_pointer(page, x, y):
         page.wait_for_timeout(random.randint(8, 22))
     page.mouse.move(x + random.uniform(-1.5, 1.5), y + random.uniform(-1.5, 1.5))
     page.wait_for_timeout(random.randint(140, 380))      # hover dwell before committing
+    if not press:
+        return
     page.mouse.down()
     page.wait_for_timeout(random.randint(55, 130))       # press duration
     page.mouse.up()
