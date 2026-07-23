@@ -763,16 +763,62 @@ def scraped_rols(tribunal_id):
             return set()
 
 
-def page_bank_causas(page):
-    rows = page.eval_on_selector_all(
+def page_rows(page):
+    """Every row of the current results page (bank or not). Kept separate from the bank filter
+    so pagination can be audited against `.loadTotalFec`: the site's total counts ALL rows, so
+    comparing it to the bank subset would be meaningless."""
+    return page.eval_on_selector_all(
         "#dtaTableDetalleFecha tbody tr",
         r"""els=>els.map((tr,i)=>{var td=tr.querySelectorAll('td');
               var a=tr.querySelector("a[onclick*='detalleCausaCivil']");
               return {i:i, rol:td[1]?td[1].innerText.trim():'', car:td[3]?td[3].innerText.trim():'',
                       fecha:td[2]?td[2].innerText.trim():'', trib:td[4]?td[4].innerText.trim():'',
                       has:!!a};})""")
-    return [r for r in rows if r["has"]
+
+
+def page_bank_causas(page):
+    return [r for r in page_rows(page) if r["has"]
             and r["rol"].upper().startswith("C") and is_bank(r["car"])]
+
+
+def total_registros(page):
+    """The search's TRUE row count, from the site's own `Total de registros: N` label.
+
+    This is the only ground truth for "did pagination reach the end?". Without it the loop can
+    only ask "did the table change?", and a slow paginator AJAX then looks exactly like the last
+    page — which is how tribunal 260 was recorded as 91 bank causas when it really has 135
+    (2026-07-22). Returns None if the label is missing or unparseable: never guess a total."""
+    for sel in (".loadTotalFec", "#loadTotalFec", "[class*='loadTotal']"):
+        try:
+            txt = page.eval_on_selector(sel, "e=>e?e.innerText:''") or ""
+        except Exception:
+            continue
+        m = re.search(r"([\d.,]+)\s*$", txt.strip())
+        if m:
+            try:
+                return int(re.sub(r"[.,]", "", m.group(1)))
+            except ValueError:
+                pass
+    return None
+
+
+def paginator_state(page):
+    """(current, last) page numbers from the paginator, or (None, None) if unreadable.
+    Advisory only — used to log progress and to confirm a 'stuck' verdict."""
+    try:
+        got = page.evaluate(
+            """()=>{const s=document.querySelector('#sigId'); if(!s) return null;
+                 const ul=s.closest('ul'); if(!ul) return null;
+                 const nums=[...ul.querySelectorAll('li')].map(li=>({
+                   n:parseInt((li.innerText||'').trim(),10),
+                   act:li.classList.contains('active')})).filter(o=>!isNaN(o.n));
+                 const cur=nums.find(o=>o.act);
+                 return {cur:cur?cur.n:null, last:nums.length?Math.max(...nums.map(o=>o.n)):null};}""")
+    except Exception:
+        return (None, None)
+    if not got:
+        return (None, None)
+    return (got.get("cur"), got.get("last"))
 
 
 def first_sig(page):
@@ -781,23 +827,51 @@ def first_sig(page):
         "e=>e?e.getAttribute('onclick'):''") or ""
 
 
-def next_page(page):
-    """Click 'Siguiente' (TRUSTED). True only once the table actually changes."""
+def sig_disabled(page):
+    """True when 'Siguiente' is greyed out = we are genuinely on the last page."""
     try:
-        disabled = page.eval_on_selector(
-            "#sigId", "e=>{const li=e.closest('li');return !!(li&&li.classList.contains('disabled'));}")
+        return bool(page.eval_on_selector(
+            "#sigId",
+            "e=>{const li=e.closest('li');return !!(li&&li.classList.contains('disabled'));}"))
     except Exception:
-        return False
-    if disabled:
-        return False
-    before = first_sig(page)
-    if not human_click(page, "#sigId", timeout=4000):  # human arc — never page.click()
-        return False
-    for _ in range(20):
-        page.wait_for_timeout(500)
-        if first_sig(page) not in ("", before):
-            return True
-    return False
+        return True     # no paginator at all -> nothing to advance to
+
+
+def next_page(page, tries=2):
+    """Advance the results paginator one page. Returns a REASON, not a bool:
+
+        "advanced"  the table really swapped — keep harvesting
+        "last"      Siguiente is disabled — the tribunal is genuinely finished
+        "stuck"     we clicked and the table never changed — pages were LOST
+
+    The old version returned False for both "last" and "stuck", and every caller read that as
+    "no more pages" and moved on with exit code 0. That is the whole `--count-only` undercount:
+    tribunal 260 reported 91 bank causas in January against 135 real ones (~one page dropped),
+    because a paginator AJAX that took longer than the 10 s poll is indistinguishable from the
+    end of the list. Now a timeout retries the click once and, if it still will not move, says
+    so out loud so the caller can flag the tribunal instead of silently truncating it."""
+    if sig_disabled(page):
+        return "last"
+    for attempt in range(1, tries + 1):
+        wait_idle(page)                       # never click while the site is mid-request
+        before = first_sig(page)
+        if not human_click(page, "#sigId", timeout=4000):   # human arc — never page.click()
+            page.wait_for_timeout(1500)
+            continue
+        for _ in range(40):                   # poll up to ~20s for the AJAX swap (was 10s)
+            page.wait_for_timeout(500)
+            if first_sig(page) not in ("", before):
+                return "advanced"
+        # No swap. Two innocent explanations before calling it stuck: the click landed on the
+        # last page (Siguiente just became disabled), or the request is still in flight.
+        if sig_disabled(page):
+            return "last"
+        if page_busy(page) and wait_idle(page, secs=25):
+            if first_sig(page) not in ("", before):
+                return "advanced"
+        if attempt < tries:
+            print(f"    [warn] paginador no avanzo — reintento {attempt + 1}/{tries}")
+    return "stuck"
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -921,9 +995,15 @@ def main():
         details, t0, count_total = [], time.time(), 0
         fails = 0        # consecutive causa failures -> WAF watchdog (see --max-fails)
         empties = 0      # consecutive empty searches -> soft-block watchdog (--max-empty)
+        incomplete = []  # tribunales whose pagination did not reach the end -> .incomplete.json
 
         def flush():
             out.write_text(json.dumps(details, ensure_ascii=False, indent=2), encoding="utf-8")
+            # Sidecar, rewritten on every flush so it survives a kill or a Blocked exit: the
+            # tribunales that must be re-run. Without it a truncated tribunal is invisible.
+            if incomplete:
+                out.with_suffix(".incomplete.json").write_text(
+                    json.dumps(incomplete, ensure_ascii=False, indent=2), encoding="utf-8")
         for ti, tb in enumerate(tribs, 1):
             if args.max_causas and len(details) >= args.max_causas:
                 break
@@ -959,8 +1039,12 @@ def main():
                 continue
             empties = 0                                  # a real result set clears the streak
             if COUNT_ONLY:
-                cnt, cpages = set(), 0
+                cnt, cpages, why = set(), 0, "last"
+                expected = total_registros(page)      # ground truth: ALL rows, not just banks
+                rows_seen = set()
                 while cpages < 80:
+                    for r in page_rows(page):
+                        rows_seen.add(r["rol"] or f"?{cpages}.{r['i']}")
                     for c in page_bank_causas(page):
                         if c["rol"] in cnt:
                             continue
@@ -970,15 +1054,29 @@ def main():
                                         "tribunalSel": tb["t"], "tribunalId": tb["v"],
                                         "corte": corte, "rango": f"{desde} a {hasta}"})
                     cpages += 1
-                    if not next_page(page):
+                    why = next_page(page)
+                    if why != "advanced":
                         break
                     pace(P_PAGE)
                 count_total += len(cnt)
-                print(f"      -> {len(cnt)} bank C-causas  (running total {count_total})")
+                short = expected is not None and len(rows_seen) < expected
+                print(f"      -> {len(cnt)} bank C-causas  (running total {count_total})"
+                      f"  [{cpages} pag · {len(rows_seen)}"
+                      f"{'/' + str(expected) if expected is not None else ''} filas]")
+                if short or why == "stuck":
+                    note = {"tribunalId": tb["v"], "tribunal": tb["t"],
+                            "rango": f"{desde} a {hasta}", "esperadas": expected,
+                            "vistas": len(rows_seen), "paginas": cpages, "motivo": why}
+                    incomplete.append(note)
+                    print(f"      [INCOMPLETO] faltan filas ({note['vistas']} de "
+                          f"{note['esperadas']}) · paginador: {why} — este tribunal hay que "
+                          f"repetirlo")
                 flush()                                  # save the list incrementally
                 pace(P_TRIB)
                 continue
             seen, pages, kept_trib = set(), 0, 0
+            why, rows_seen = "last", set()
+            expected = total_registros(page)
             # DB state per tribunal: {rol: (fill_status, detalles)}. Needed for --resume AND to
             # decide full vs reduced doc set per causa (Detalles flag).
             state = causa_state(tb["v"]) if (RESUME or DOCS) else {}
@@ -990,6 +1088,8 @@ def main():
             while pages < 80:
                 if args.max_causas and len(details) >= args.max_causas:
                     break
+                for r in page_rows(page):
+                    rows_seen.add(r["rol"] or f"?{pages}.{r['i']}")
                 causas = page_bank_causas(page)
                 for c in causas:
                     if c["rol"] in seen:
@@ -1057,20 +1157,38 @@ def main():
                 pages += 1
                 if args.max_causas and len(details) >= args.max_causas:
                     break
-                if not next_page(page):
+                why = next_page(page)
+                if why != "advanced":
                     break
                 pace(P_PAGE)
-            print(f"      -> {kept_trib} causas de banco en este tribunal")
+            print(f"      -> {kept_trib} causas de banco en este tribunal"
+                  f"  [{pages} pag · {len(rows_seen)}"
+                  f"{'/' + str(expected) if expected is not None else ''} filas]")
+            # Only trust "finished" when the paginator said so AND we saw every row the site
+            # claims. A page lost here is a hole nobody notices: the tribunal looks done.
+            if why == "stuck" or (expected is not None and len(rows_seen) < expected
+                                  and not args.max_causas):
+                incomplete.append({"tribunalId": tb["v"], "tribunal": tb["t"],
+                                   "rango": f"{desde} a {hasta}", "esperadas": expected,
+                                   "vistas": len(rows_seen), "paginas": pages, "motivo": why})
+                print(f"      [INCOMPLETO] {len(rows_seen)} de {expected} filas · "
+                      f"paginador: {why} — este tribunal hay que repetirlo")
             pace(P_TRIB)
 
         mins = (time.time() - t0) / 60.0
+        flush()
         if COUNT_ONLY:
-            flush()
             print(f"\n[COUNT] {count_total} bank C-causas across {len(tribs)} tribunal(s) "
                   f"in {mins:.1f} min -> {out}")
         else:
-            flush()
             print(f"\n[LISTO] {len(details)} causas en {mins:.1f} min -> {out}")
+        if incomplete:
+            print(f"\n[INCOMPLETO] {len(incomplete)} tribunal(es) sin paginar hasta el final — "
+                  f"NO son un censo:")
+            for n in incomplete:
+                print(f"    {n['tribunalId']:>4} {n['tribunal'][:34]:36} "
+                      f"{n['vistas']}/{n['esperadas']} filas · {n['paginas']} pag · {n['motivo']}")
+            print(f"    -> {out.with_suffix('.incomplete.json')}")
 
 
 if __name__ == "__main__":
