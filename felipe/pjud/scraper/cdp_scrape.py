@@ -1052,8 +1052,9 @@ def main():
                 expected = total_registros(page)      # ground truth: ALL rows, not just banks
                 rows_seen = set()
                 while cpages < 80:
-                    for r in page_rows(page):
-                        rows_seen.add(r["rol"] or f"?{cpages}.{r['i']}")
+                    # Skip blank-rol filler rows: every page carries one, and counting them
+                    # inflated 654 real rows to 661 — enough to hide a short page.
+                    rows_seen.update(r["rol"] for r in page_rows(page) if r["rol"])
                     for c in page_bank_causas(page):
                         if c["rol"] in cnt:
                             continue
@@ -1097,8 +1098,7 @@ def main():
             while pages < 80:
                 if args.max_causas and len(details) >= args.max_causas:
                     break
-                for r in page_rows(page):
-                    rows_seen.add(r["rol"] or f"?{pages}.{r['i']}")
+                rows_seen.update(r["rol"] for r in page_rows(page) if r["rol"])
                 causas = page_bank_causas(page)
                 for c in causas:
                     if c["rol"] in seen:

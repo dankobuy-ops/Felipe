@@ -12,7 +12,21 @@ REM  bloqueado DOS veces vale casi nada (rindio 121 -> 23 -> 2 causas el 22-07),
 REM  asi que para una prueba limpia conviene 'fresh' + un calentamiento largo.
 REM ---------------------------------------------------------------------------
 
+REM Sin argumentos (doble clic en el Explorador) PREGUNTA. Antes asumia worker 1, y
+REM entonces Chrome veia el mismo perfil que el worker 1 ya abierto y solo abria una
+REM pestana mas en esa ventana: dos "workers" compartiendo sesion, que es justo lo
+REM que la prueba de paralelismo no debe hacer.
 set "N=%~1"
+set "FRESH=%~2"
+if "%N%"=="" (
+  echo.
+  echo   1 = veterano  ^(pjud_cdp, puerto 9333^)
+  echo   2 = worker 2  ^(pjud_cdp_w2, puerto 9335^)
+  echo   3 = worker 3  ^(pjud_cdp_w3, puerto 9336^)
+  echo.
+  set /p "N=  Numero de worker [1-5]: "
+  set /p "FRESH=  Perfil NUEVO desde cero? Escribe 'fresh' (o Enter para reusar): "
+)
 if "%N%"=="" set "N=1"
 if "%N%"=="1" (set "PORT=9333" & set "PROFILE=%LOCALAPPDATA%\pjud_cdp")
 if "%N%"=="2" (set "PORT=9335" & set "PROFILE=%LOCALAPPDATA%\pjud_cdp_w2")
@@ -37,10 +51,22 @@ REM Sello dd-mm -> nombre del perfil viejo. Se calcula FUERA del bloque: dentro 
 REM parentesis las variables se expanden al parsear, no al ejecutar.
 for /f "tokens=1-3 delims=/-. " %%a in ("%DATE%") do set "STAMP=%%b%%a"
 set "OLD=%PROFILE%.viejo-%STAMP%-%RANDOM%"
-if /I "%~2"=="fresh" if exist "%PROFILE%" (
+if /I "%FRESH%"=="fresh" if exist "%PROFILE%" (
   echo  Renombrando perfil usado a: %OLD%
   move "%PROFILE%" "%OLD%" >nul 2>&1
   if errorlevel 1 echo  [AVISO] No pude renombrar. Cierra ESE Chrome primero y reintenta.
+)
+
+REM Si el puerto ya escucha, ese worker YA esta abierto. Lanzar otra vez solo abriria
+REM una pestana en la ventana existente y pareceria que "no se abre el segundo".
+netstat -ano | findstr /r /c:":%PORT% .*LISTENING" >nul
+if not errorlevel 1 (
+  echo.
+  echo  [AVISO] El puerto %PORT% ya esta escuchando: el worker %N% YA esta abierto.
+  echo          Usa su ventana de Chrome, o elige otro numero de worker.
+  echo.
+  pause
+  exit /b 1
 )
 
 echo.
