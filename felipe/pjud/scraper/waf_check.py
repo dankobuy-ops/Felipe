@@ -24,7 +24,19 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-REJECT_MARKERS = ("requested URL was rejected", "Support ID", "consult with your administrator")
+# ⚠️ The rejection page is served in the browser's language. Ours is SPANISH, and until
+# 2026-08-05 this tuple was English-only — so a real block (4 rejection frames, 2 support IDs,
+# Buscar stuck disabled) read as "THROTTLED". Keep BOTH languages. The Spanish page reads:
+#     [X] CLOSE  .  (2)  .   Su numero de soporte es : <11224827243296953039>   [Go Back]
+# Note it is unaccented ("numero"), but match the accented form too in case that varies.
+REJECT_MARKERS = ("requested URL was rejected", "Support ID", "consult with your administrator",
+                  "numero de soporte", "número de soporte", "Go Back")
+
+# Language-independent tells, for when F5 changes the wording again:
+#   TSBrPFrame_* / TSPD_* iframes are Shape's own client-side challenge frames, and one of them
+#   parks itself ON TOP of the Buscar button (elementFromPoint returns it, so human_click's
+#   hit-test correctly refuses to click — which is why a block also shows up as "objetivo tapado").
+CHALLENGE_FRAME_RE = r"TSBrPFrame|TSPD_.*chlg|cs_chlg"
 
 
 def main():
@@ -114,6 +126,38 @@ def main():
             except Exception:
                 pass
 
+        # --- language-independent block tell: F5 parks a challenge iframe ON Buscar ---
+        # Wording changes with the browser locale (that is how the English-only marker list
+        # missed a real block on 2026-08-05), but this does not: Shape injects a
+        # TSBrPFrame_cs_chlg_* iframe and it covers #btnConConsultaFec, which is left disabled.
+        challenge = None
+        try:
+            challenge = ojv.evaluate(
+                """(re)=>{
+                  const rx = new RegExp(re);
+                  const named = [...document.querySelectorAll('iframe,div')]
+                      .map(e=>e.id||'').filter(id=>rx.test(id));
+                  const b = document.querySelector('#btnConConsultaFec');
+                  let cover = null, disabled = null;
+                  if (b) { disabled = b.disabled;
+                    const r = b.getBoundingClientRect();
+                    const t = document.elementFromPoint(r.x+r.width/2, r.y+r.height/2);
+                    cover = t ? (t.id || t.className || t.tagName) : null; }
+                  return {frames: named, buscar_disabled: disabled, buscar_covered_by: cover};
+                }""", CHALLENGE_FRAME_RE)
+        except Exception:
+            pass
+        challenged = False
+        if challenge:
+            import re as _re
+            covered_by_f5 = bool(challenge.get("buscar_covered_by")
+                                 and _re.search(CHALLENGE_FRAME_RE, challenge["buscar_covered_by"]))
+            challenged = bool(challenge.get("frames")) or covered_by_f5
+            if challenged:
+                print(f"F5 challenge    : frames={challenge['frames']} "
+                      f"buscar_disabled={challenge['buscar_disabled']} "
+                      f"covered_by={challenge['buscar_covered_by']!r}")
+
         # --- F5 cookies: TSPD_101_DID is the device id that survives IP changes ---
         did = []
         try:
@@ -147,6 +191,15 @@ def main():
         print("  The WAF is rejecting detail opens. Search may still work — that is the tell.")
         print("  FIX: close Chrome, rename %LOCALAPPDATA%\\pjud_cdp to pjud_cdp.burned-<date>,")
         print("       reopen Abrir_CDP.cmd, re-pass the CAPTCHA. A new IP alone will NOT help.")
+        return 1
+    if challenged:
+        # No rejection text matched, but F5's own challenge frame is sitting on Buscar. Trust
+        # the structure over the wording — this is the case the marker list will keep missing.
+        print("\nVERDICT: BLOCKED-CHALLENGE")
+        print("  No hay texto de rechazo reconocido, pero F5 tiene su iframe de desafio")
+        print("  (TSBrPFrame/cs_chlg) encima de Buscar, que quedo disabled. Es un bloqueo.")
+        print("  FIX: cierra la pestana OJV y reentra desde www.pjud.cl; si vuelve a bloquear")
+        print("       enseguida, el perfil esta gastado -> perfil nuevo + warm-up manual.")
         return 1
     if rows == 0:
         # No rows + no tribunal selected = nobody has searched yet (fresh tab, or a reload reset

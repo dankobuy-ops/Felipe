@@ -11,6 +11,40 @@ first; it **disproves** most of what the 07-20/07-21 versions of this doc conclu
 
 ---
 
+## ★★★ 2026-08-05 — BOTH BLOCK DETECTORS WERE BLIND: the rejection page is in SPANISH ★★★
+
+`waf_check.REJECT_MARKERS` and `cdp_scrape.waf_blocked()` both tested the **English** F5 text
+(`"requested URL was rejected"`, `"Support ID"`). The page our browser actually gets is Spanish:
+
+```
+[X] CLOSE  .  (2)  .   Su numero de soporte es : <11224827243296953039>   [Go Back]
+```
+
+Neither matched. **Consequences, measured on one live block:**
+
+- `waf_check` printed `rejection frames: 0` → **`VERDICT: THROTTLED`** on a page carrying **four**
+  rejection frames and two distinct support IDs.
+- Far worse: `waf_blocked()` returned False, so `--max-empty` / `--max-fails` **never fired**. The
+  Santiago sweep sailed past the block and began recording tribunal after tribunal as
+  `sin resultados`. Left alone it would have walked all 31 and exited **0 / `[LISTO]`** with most
+  of the corte silently missing — the same false-success as the worker-3 collapsed-panel bug, from
+  a different cause. It was caught only because the operator was watching the browser.
+
+**Fixed both**, and added a **locale-proof structural tell** so the next rewording cannot repeat
+this: Shape injects `TSBrPFrame_cs_chlg_ajax_frame_*` iframes and **parks one directly on top of
+`#btnConConsultaFec`**, which is left `disabled`. Verified on the live block —
+`covered_by='TSBrPFrame_cs_chlg_ajax_frame_810'`, `buscar_disabled=True`. New
+`BLOCKED-CHALLENGE` verdict fires on the structure alone when no text matches.
+
+This also explains the old **"objetivo tapado"** warning from `human_click`: when F5 blocks, its
+challenge iframe *is* the thing covering the button. A covered target is not merely correlated
+with a block — during a challenge it **is** the block, seen from the pointer's side.
+
+**Rule: never conclude "sin resultados" or `[LISTO]` from a run whose detector you have not
+confirmed can see a block in your browser's locale.**
+
+---
+
 ## ★★★ 2026-07-23 (evening) — the per-IP limit is a REQUEST-RATE budget, not a session count ★★★
 
 One model now fits every parallelism trial we have:

@@ -621,15 +621,42 @@ class Blocked(Exception):
 
 
 def waf_blocked(page):
-    """True if any frame is showing the F5 rejection page. Same signal as waf_check.py, read
-    only when a causa fails, so it costs nothing on the happy path."""
+    """True if the F5 WAF is rejecting us. Same signal as waf_check.py, read only when a causa
+    fails or a streak of searches comes back empty, so it costs nothing on the happy path.
+
+    ⚠️ 2026-08-05: this used to test the ENGLISH rejection text only. Our browser gets the page
+    in SPANISH ("Su numero de soporte es : <...>"), so a real block returned False, the
+    --max-empty/--max-fails watchdogs never fired, and the sweep marched on recording tribunal
+    after tribunal as "sin resultados" — heading for a silent exit 0 / [LISTO] with most of the
+    corte missing. Caught only because the operator was watching the browser. Match BOTH
+    languages, and also the structural tell below, which does not depend on wording at all.
+    """
     for fr in page.frames:
         try:
             txt = fr.evaluate("document.body?document.body.innerText.slice(0,400):''") or ""
         except Exception:
             continue
-        if "requested URL was rejected" in txt or "Support ID" in txt:
+        low = txt.lower()
+        if ("requested url was rejected" in low or "support id" in low
+                or "numero de soporte" in low or "número de soporte" in low):
             return True
+    # Structural tell: Shape injects a TSBrPFrame_cs_chlg_* iframe and parks it ON the Buscar
+    # button, which is left disabled. Locale-proof — if F5 rewords the page again, this holds.
+    try:
+        if page.evaluate(
+                """()=>{
+                  const rx = /TSBrPFrame|cs_chlg/;
+                  if ([...document.querySelectorAll('iframe,div')].some(e=>rx.test(e.id||'')))
+                      return true;
+                  const b = document.querySelector('#btnConConsultaFec');
+                  if (!b || !b.disabled) return false;
+                  const r = b.getBoundingClientRect();
+                  const t = document.elementFromPoint(r.x+r.width/2, r.y+r.height/2);
+                  return !!t && rx.test(t.id || t.className || '');
+                }"""):
+            return True
+    except Exception:
+        pass
     return False
 
 
