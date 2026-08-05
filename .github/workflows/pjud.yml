@@ -5,8 +5,27 @@ name: Consulta PJUD
 # CORTE (each on its own runner IP), so all cortes sweep at the same time.
 
 on:
-  schedule:
-    - cron: "0 9 * * *"          # daily 09:00 UTC (~05:00 Chile)
+  # ── CRON DISARMED 2026-08-05 ────────────────────────────────────────────────
+  # This workflow drives pjud/scraper/run.py — the headless-Playwright generation
+  # that the CDP pivot superseded (see pjud/HANDOFF_CDP.md, "the older Sheets/
+  # daily-sweep design is dead for the same isTrusted reason").
+  #
+  # It cannot work, and no code change here can fix it. A headless runner is
+  # stopped at GATE 1 — the invisible reCAPTCHA v3 on accesoConsultaCausas() —
+  # so it never reaches indexN.php and never sees a search form at all:
+  #
+  #     RuntimeError: could not establish the date search form: Timeout 30000ms exceeded.
+  #     ##[error]Process completed with exit code 1
+  #
+  # Identical failure on all 17 cortes, every scheduled run from at least
+  # 2026-07-27 through 2026-08-05 — ~13 days x 17 jobs hitting the OJV for nothing.
+  # Scraping now happens locally over CDP against a human-warmed Chrome profile
+  # (pjud/Abrir_Worker.cmd -> pjud/scraper/cdp_scrape.py).
+  #
+  # workflow_dispatch is kept so the matrix can still be fired by hand if the
+  # site's entry path ever changes.
+  #   schedule:
+  #     - cron: "0 9 * * *"        # daily 09:00 UTC (~05:00 Chile)
   workflow_dispatch:
     inputs:
       mode:

@@ -748,10 +748,18 @@ the form with `01/02..28/02` after a session-expiry reset), so January is NOT fi
 5. **Re-measure the detail/`--docs-inpage` budget.** 5 causas / 54 PDFs ran clean; the ceiling is
    unknown, and the old "died at 3 causas" datum is suspect (it may have been a stuck modal).
 6. (Optional) migrate `georref` from the `=HYPERLINK` formula to real lat/lng columns.
-6. **Revoke the leaked GitHub PAT** — it was stripped from `settings.local.json` before ever
-   being pushed, but the token itself is still live on GitHub.
-7. **Housekeeping:** 4 burned profile dirs `%LOCALAPPDATA%\pjud_cdp.burned-*` accumulated on
-   2026-07-21; safe to delete once a run is green.
+7. **⚠️ Revoke the leaked GitHub PAT — still open, and it is more exposed than this list said.**
+   It was stripped from `settings.local.json` before ever being pushed, but the token is not just
+   sitting in an old file: **it is embedded in the `origin` remote URL in `C:\Claude\.git\config`**
+   (`https://dankobuy-ops:ghp_…@github.com/dankobuy-ops/Felipe.git`), so it is what this repo
+   authenticates with on every fetch/push and it prints in full to anyone who runs `git remote -v`.
+   `.git/config` is not tracked, so it has never been pushed. Fix: revoke the token on GitHub,
+   then re-point the remote at the bare URL (`git remote set-url origin
+   https://github.com/dankobuy-ops/Felipe.git`) and let the credential manager hold the new one.
+8. ~~**Housekeeping:** burned profile dirs~~ **DONE 2026-08-05** — 19 dead
+   `%LOCALAPPDATA%\pjud_cdp*.{burned,viejo,polluted,old}-*` dirs deleted, 3.58 GB freed. The 7
+   live/experiment profiles (`pjud_cdp`, `_w2`…`_w5`, `_boot`, `_zero`) were left untouched —
+   **never delete those; each one holds earned F5/v3 trust that costs a human warm-up to rebuild.**
 
 ---
 
@@ -799,3 +807,25 @@ the form with `01/02..28/02` after a session-expiry reset), so January is NOT fi
 - `inpage/*` + `Abrir_PJUD_sin_debug.cmd` — in-page bookmarklet (isTrusted wall).
 - `scraper/run.py` + `HANDOFF.md` + `schema.sql` + `coord.py` — the older Sheets/daily-sweep
   design; `run.py --fill` CDP-collab is dead for the same isTrusted reason.
+  `schema.sql` now carries a SUPERSEDED header (the live Neon tables are unprefixed and built by
+  `dbstore._ddl()`, not by that file).
+
+### ★ 2026-08-05 — the daily GitHub-Actions cron was still armed, and failing 17×/day
+
+`.github/workflows/pjud.yml` (at the **repo root**, `C:\Claude\.github\workflows\` — not
+`felipe/.github/`, which GitHub ignores) still had `schedule: cron "0 9 * * *"` firing a 17-job
+matrix of `run.py`. It had failed **every scheduled run** from at least 2026-07-27 through
+2026-08-05 — every corte, same error:
+
+```
+RuntimeError: could not establish the date search form: Timeout 30000ms exceeded.
+```
+
+That is **GATE 1**: a headless runner never gets past the invisible reCAPTCHA v3 on
+`accesoConsultaCausas()`, so it never reaches `indexN.php` and never sees a form to establish.
+The failure is a clean confirmation of the two-gates finding from a completely different code
+path — and it means the daily job was hitting the OJV from 17 runner IPs for nothing.
+
+**The `schedule:` block is now commented out; `workflow_dispatch` is kept** so the matrix can
+still be fired by hand if the site's entry path ever changes. Scraping remains local-CDP only
+(`Abrir_Worker.cmd` → `cdp_scrape.py`).

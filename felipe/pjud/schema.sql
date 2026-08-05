@@ -1,4 +1,21 @@
 -- ============================================================================
+-- ⚠️  SUPERSEDED — HISTORICAL REFERENCE ONLY. DO NOT RUN THIS FILE.  ⚠️
+--
+-- This is the original Supabase-era DDL. It does NOT describe the live database.
+-- The live store is Neon Postgres, and its tables are created at runtime by
+-- dbstore._ddl() (pjud/scraper/dbstore.py:113) from the column lists in
+-- gstore.TABS (pjud/scraper/gstore.py:26).
+--
+-- Two differences that will bite you if you read this as current:
+--   * Live tables are UNPREFIXED — `causas`, not `pjud_causas`.
+--   * Live `causas` has extra DB-managed columns (fill, fill_status, detalles)
+--     and its primary key is `causa_id`; there is no `id` column.
+-- Also note `documentos.cuaderno_id` FKs to cuadernos.id, not to the causa.
+--
+-- Kept because it is still the clearest picture of the original relational
+-- model. For the schema that actually exists, read dbstore.py + HANDOFF_CDP.md.
+-- ============================================================================
+--
 -- PJUD (Oficina Judicial Virtual) relational schema — run once in the Supabase
 -- SQL editor. Same project as JPL (xjlpsgchgfxryvhhrklx); all tables use the
 -- `pjud_` prefix to stay clearly separate from the JPL tables.
