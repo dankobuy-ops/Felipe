@@ -11,6 +11,52 @@ first; it **disproves** most of what the 07-20/07-21 versions of this doc conclu
 
 ---
 
+## ★★★ 2026-08-05 — THE BUDGET COLLAPSED: ~2 MINUTES / ~11-14 ACTIONS PER PROFILE ★★★
+
+**Four profiles burned in one afternoon, all on Corte Santiago, window 15/07..05/08/2026.**
+Every one died at the same scale of work, and profile standing did NOT predict it:
+
+| run | profile | mode | work done before the block | died at |
+|---|---|---|---|---|
+| 1 | veteran (created 23-07, 13 d dormant) | detail | 4 searches + 3 causas + 4 cuaderno + 3 receptor ≈ **14** | trib 5 |
+| 2 | **fresh, created 20:10** | detail | **identical — the same 3 causas** | trib 5 |
+| 3 | fresh, created 21:16 | `--count-only` | 10 searches, no modals ≈ **11** | trib 11 |
+
+Run 2 is the one that matters: **a brand-new profile died in exactly the same place as the
+13-day-old veteran** — same tribunal, same 3 causas. That **kills "the profile is decayed"** as an
+explanation, the same way trial 3 killed "rich warm-up decides who survives" back on 2026-07-23.
+
+**`sin resultados` at tribunal 5 was the block, not an empty court — PROVEN.** Both detail runs
+reported 5º Civil de Santiago as empty. A later healthy session searched that exact tribunal and
+window: **52 causas**. So a spent session reports empty searches, and every tribunal after the
+block is a false negative. Nothing in the DB marks them.
+
+**Against the documented baseline this is a collapse of ~2 orders of magnitude:** this doc's own
+"overnight single-worker sweep" section records one well-warmed profile holding ~3 causas/min and
+**439 causas in a single run**. We now get **3 causas, or 10 counted tribunales.**
+
+**What is NOT the cause** (measured, not assumed): profile age or standing (run 1 vs 2); IP
+(unchanged all afternoon); detail opens alone (count-only also dies, just later); a stuck modal
+(no modal, no backdrop, in every post-mortem).
+
+**★ OPEN — and it inverts the pacing philosophy.** Both ~14-action detail runs and the ~11-action
+count-only run also died at **roughly two minutes of scripted activity**. Action-count and
+wall-clock are confounded in all three runs, and they imply opposite fixes:
+
+- **action-count** → pacing is irrelevant; plan around ~11 actions per profile.
+- **wall-clock** → the gentle pacing (`P_TRIB` 6–12 s, `P_CAUSA` 5–10 s, `P_PAGE` 4–8 s) is
+  **spending** the budget, not protecting it, and the scraper should run FASTER.
+
+**The test** (one profile, `search_probe.py` discipline — one variable changed): count-only with
+`P_TRIB` stretched ~3×. Dies at ~10 tribunales → action-count. Dies at ~4 → wall-clock.
+**Do not plan around the current pacing constants until this is settled.**
+
+**Practical meanwhile:** count-only covers ~10 tribunales/profile, so Santiago's 31 need three
+warm-ups via disjoint `--skip-tribs` slices (0/10, 10/10, 20/11). The detail pass at ~3 causas per
+profile is not a workflow — ~20 manual warm-ups for one corte-month.
+
+---
+
 ## ★★★ 2026-08-05 — BOTH BLOCK DETECTORS WERE BLIND: the rejection page is in SPANISH ★★★
 
 `waf_check.REJECT_MARKERS` and `cdp_scrape.waf_blocked()` both tested the **English** F5 text

@@ -30,7 +30,11 @@ from playwright.sync_api import sync_playwright
 #     [X] CLOSE  .  (2)  .   Su numero de soporte es : <11224827243296953039>   [Go Back]
 # Note it is unaccented ("numero"), but match the accented form too in case that varies.
 REJECT_MARKERS = ("requested URL was rejected", "Support ID", "consult with your administrator",
-                  "numero de soporte", "número de soporte", "Go Back")
+                  "numero de soporte", "número de soporte")
+# NOT "Go Back": added 2026-08-05 and removed the same day. It matched a frame that carried no
+# support ID and no other marker, reporting BLOCKED-DETAIL on a session whose Buscar was enabled,
+# uncovered, and challenge-free. A false BLOCKED costs a good profile — the expensive direction of
+# this error. Every marker here must be a string only F5's rejection page would carry.
 
 # Language-independent tells, for when F5 changes the wording again:
 #   TSBrPFrame_* / TSPD_* iframes are Shape's own client-side challenge frames, and one of them
