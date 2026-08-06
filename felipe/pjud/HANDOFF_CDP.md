@@ -11,6 +11,91 @@ first; it **disproves** most of what the 07-20/07-21 versions of this doc conclu
 
 ---
 
+## ★★★★★ 2026-08-06 — "TODOS" WORKS, AND MOST OF OUR BLOCKS WERE SELF-INFLICTED ★★★★★
+
+**Set Competencia=Civil and leave Corte on "Todos": `#fecTribunal` fills with all ~230 civil
+tribunales nationwide and searching works across them** (Los Ángeles to Santiago; verified by the
+operator by hand, then by script). **This did not work before** — the site is being actively
+changed. ⚠️ **Treat every rule in this file as DATED. Re-verify anything load-bearing.** Several
+sections below were overturned within a single day.
+
+**Why it matters far beyond convenience: `#corteFec` is the ONLY control that fires a server
+request when it changes**, and `select_by_kbd` walks the options one arrow at a time, firing a
+`change` — and a tribunal-list load — at EVERY step. Reaching Concepción from the placeholder
+fired **ten list-loads in under a second**. That burst caused both:
+- **desynced tribunal lists** (`#corteFec`=46 while `#fecTribunal` held Chillán's courts, then
+  Iquique's — responses landing out of order, last one wins), and
+- **the fast blocks** we spent a day misattributing to profile standing, then to the IP.
+The operator got blocked doing the same thing **by hand**. Never changing corte removes the
+entire class of problem. Tribunal is a leaf: no cascade, no request, one ArrowDown per step.
+
+### ★ THE BUG THAT FAKED EVERY SCRIPTED "GATE-1 BLOCKED"
+`/home/` has **TWO** `accesoConsultaCausas` buttons. Playwright locators are strict, so passing a
+SELECTOR to `human_click` makes `bounding_box()` throw ("resolved to 2 elements"); `human_click`
+catches it, falls through to `.click()` which throws identically, and returns False. **No click is
+ever delivered** — and the caller reports "no form appeared", i.e. a reCAPTCHA refusal, for a
+click that never happened. Pick ONE element that hit-tests (`enter_ojv.py` does, and enters first
+try every time). **"Two human-only gates", "gate 1 is flaky" and "fresh profiles score low" were
+all explanations for a click that never happened.**
+
+### Measured cost of DOCS + GPS (first real numbers)
+On a typical `Ejecutivo Obligación de Dar` (C-9923-2026, 9º Civil Santiago): **14 historia docs in
+cuaderno 1, 4 in cuaderno 2, 3 header docs, 9 georreferencia rows** — about **30 requests at
+~3.5 s each, 2-3 minutes for ONE causa**, versus ~4 requests for a metadata-only open. That is why
+docs passes died in 1-2 minutes.
+
+**A document is ONE click and opens a NEW TAB** (`form` + `target=_blank`); the causa modal
+survives untouched. The PDF body is readable from that tab's response, so **docs can be captured
+without `APIRequestContext`** — the out-of-page fetch this doc flags as the prime block suspect.
+Close each tab as you go. Five endpoints: `docu.php` (texto demanda), `docuN.php` (cuaderno 1),
+`docuS.php` (cuaderno 2), `docCertificadoDemanda.php`, `newebookcivil.php`. Five documents plus a
+cuaderno switch on one session produced **zero rejection frames**.
+⚠️ Header doc controls share one ancestor `div` and differ only by **x-position**, and **Anexos
+has no `<form>` at all when unavailable** — ordinal position is NOT stable across causas. Map by
+neighbouring label or by endpoint, never by index.
+★ The demanda PDF carries data **found nowhere in the metadata**: `MATERIA: COBRO DE PAGARÉ`,
+`NÚMERO DE OPERACIÓN` (the bank's own loan reference), both parties' legal representatives and
+domiciles. It is a **text PDF, not a scan** — extractable without OCR.
+
+### Two whole tabs are never read
+The detalle modal has five tabs: Historia, Litigantes, **Notificaciones**, Escritos por Resolver,
+**Exhortos**. There is no parser for Notificaciones (`ROL | Est. Notif. | Tipo Notif. | Fecha
+Trámite | Tipo Part. | Nombre | Trámite | Obs. Fallida`) or Exhortos, and no column for either in
+`gstore.TABS`. Both are pre-rendered in the DOM, so reading them costs **no extra request**. For
+debt recovery, `Est. Notif.` and `Obs. Fallida` — whether service succeeded and why it failed —
+are arguably as valuable as the causa itself.
+
+### Traps found the same day (all cost hours)
+- **Never judge results by the presence of "Total de registros"** — it is left over from the
+  PREVIOUS search. A census recorded 35 tribunales at `elapsed 0.0s` with ZERO empties, each
+  holding the previous tribunal's numbers. Use the **network** as ground truth: a
+  `consultaFechaCivil.php` response after the click proves the search ran. A DOM fingerprint
+  cannot tell empty→empty apart — both leave the table cleared.
+- **Do not time out while the site's own spinner is up.** `page_busy()` true + Buscar disabled =
+  a request genuinely in flight. The site slowed from 11-35 s to over 75 s and we discarded valid
+  searches as stale — including Los Ángeles, one of the richest tribunales in the country.
+- **`query_selector` throws "Execution context was destroyed" during navigation** — exactly when
+  polling for the form after a successful entry click. Unguarded it kills the run at the moment it
+  works. See `census.find_form()`.
+- **Real mouse coordinates land on the VISIBLE tab.** Leftover `/home/` tabs made retries click the
+  wrong tab. Close stale OJV tabs and `bring_to_front()` before every click.
+- **Phantom tribunales**: the dropdown carries decommissioned twins (`1º Juzgado De Letras de Arica
+  ex 4`) differing only in a suffix that is truncated on a narrow window. They always return
+  nothing. Match case-insensitively and log the tribunal **id** next to the name.
+- A blocked session returns **`sin resultados`**, not an error. Tribunal 5 was reported empty by
+  two runs; a healthy session then found **52 causas** there.
+- A **profile is never "burned"**: tier 2 (206 B rejection / `TSBrPFrame` overlay) clears by
+  re-entering from www.pjud.cl; tier 3 (full-page image CAPTCHA) clears by rotating to a fresh
+  profile dir — **you do not need to solve it**. Never solve it by script: it is an explicit
+  human-verification gate.
+
+**New tools (`scraper/`):** `census.py` (national search-only census, resumable by index),
+`settle.py` (four-condition quiescence: spinner idle + content assertion + no tracked in-flight
+request excluding the Shape endpoint + DOM quiet), `enter_ojv.py` (dismiss AVISO, hit-test, enter),
+`step.py` (one operator-driven step at a time: setup / trib / search / open / close).
+
+---
+
 ## ★★★ 2026-08-05 — THE BUDGET COLLAPSED: ~2 MINUTES / ~11-14 ACTIONS PER PROFILE ★★★
 
 **Four profiles burned in one afternoon, all on Corte Santiago, window 15/07..05/08/2026.**

@@ -48,8 +48,11 @@ P_TRIB  = (6.0, 12.0)   # between tribunales
 P_STEP  = (0.6, 1.6)    # small pauses inside a causa (cuaderno switches, receptor)
 
 
+PACE_MULT = 1.0  # --pace: scales every pause below. See the note in main()'s --pace help.
+
+
 def pace(rng):
-    time.sleep(random.uniform(*rng))
+    time.sleep(random.uniform(*rng) * PACE_MULT)
 
 
 def _human_pointer(page, x, y, press=True):
@@ -991,12 +994,26 @@ def main():
                     help="consecutive causa failures before checking for the F5 rejection page; "
                          "if it is there the run STOPS (exit 3) instead of grinding out "
                          "timeouts on a spent profile")
+    ap.add_argument("--pace", type=float, default=1.0,
+                    help="multiply every pause (P_CAUSA/P_PAGE/P_TRIB/P_STEP). 1.0 = the gentle "
+                         "defaults. THIS IS AN EXPERIMENT KNOB: as of 2026-08-05 a profile dies "
+                         "after ~11-14 actions AND ~2 minutes, and those two are confounded "
+                         "because pacing has always been ~10 s/action. Run count-only at "
+                         "--pace 0.2 to separate them: ~11 tribunales => the budget counts "
+                         "ACTIONS (pacing is irrelevant); ~30 tribunales => it is WALL-CLOCK "
+                         "(gentle pacing is spending the budget, go faster); fewer than 11 => "
+                         "it is REQUEST-RATE (the July model, slow down).")
     ap.add_argument("--desde", default="01/01/2026", help="date Desde DD/MM/YYYY (with --corte)")
     ap.add_argument("--hasta", default="31/01/2026", help="date Hasta DD/MM/YYYY (with --corte)")
     args = ap.parse_args()
-    global DOCS, GPS, RESUME, COUNT_ONLY, DOCS_INPAGE
+    global DOCS, GPS, RESUME, COUNT_ONLY, DOCS_INPAGE, PACE_MULT
     DOCS, GPS, RESUME, COUNT_ONLY = args.docs, args.gps, args.resume, args.count_only
     DOCS_INPAGE = args.docs_inpage
+    PACE_MULT = args.pace
+    if PACE_MULT != 1.0:
+        print(f"[PACE] x{PACE_MULT} — causa {P_CAUSA[0]*PACE_MULT:.1f}-{P_CAUSA[1]*PACE_MULT:.1f}s, "
+              f"pag {P_PAGE[0]*PACE_MULT:.1f}-{P_PAGE[1]*PACE_MULT:.1f}s, "
+              f"trib {P_TRIB[0]*PACE_MULT:.1f}-{P_TRIB[1]*PACE_MULT:.1f}s")
 
     print(f"Conectando a Chrome (puerto CDP {args.port})...")
     with sync_playwright() as pw:

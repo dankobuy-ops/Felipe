@@ -115,7 +115,13 @@ def main():
             try:
                 txt = resp.text()
                 size = len(txt)
-                rejected = "requested URL was rejected" in txt or "Support ID" in txt
+                # Both languages. Our browser gets the SPANISH rejection page, so the
+                # English-only test used here until 2026-08-05 silently logged rejected=False
+                # for every real block — which would have made this recorder, the tool we
+                # diff evidence with, agree that nothing went wrong.
+                low = txt.lower()
+                rejected = ("requested url was rejected" in low or "support id" in low
+                            or "numero de soporte" in low or "número de soporte" in low)
             except Exception:
                 pass
             rec = record("response", url=resp.url, status=resp.status,
