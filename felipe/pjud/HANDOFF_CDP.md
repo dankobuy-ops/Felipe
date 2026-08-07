@@ -1,4 +1,11 @@
-# PJUD scraper — CDP Handoff (updated 2026-07-23)
+# PJUD scraper — CDP Handoff (updated 2026-08-07)
+
+> **Building or running a worker? Read [`HANDOFF_WORKERS.md`](HANDOFF_WORKERS.md) first.**
+> It covers the three-worker architecture, pacing with its evidence, block recovery, the Neon
+> schema, and the traps that cost real time. **This** file is the reference for the *site and the
+> WAF* — entry gates, block tiers, the corte-change burst — and for the history of how each
+> conclusion was reached.
+
 
 **Supersedes the 2026-07-21 version.** Project: **Poder Judicial Virtual** (Oficina
 Judicial Virtual, OJV — `oficinajudicialvirtual.pjud.cl`). Goal: collect civil
