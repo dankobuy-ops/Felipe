@@ -1,0 +1,181 @@
+"""Load worker A's state.json into Neon. Safe to run WHILE the sweep is running.
+
+The sweep and this script share nothing but a file. The sweep writes state.json and PDFs to
+disk; this reads them and writes to Postgres. No CDP, no request to pjud.cl, so ingesting costs
+nothing against the WAF budget and cannot disturb a run in progress.
+
+The one real hazard is the file itself: state.json is rewritten after every causa with a plain
+write_text, which is not atomic, so a read can land mid-write and see truncated JSON. We snapshot
+it to a temp copy and retry a few times rather than ever parse the live file.
+
+Mapping is delegated to ingest_cdp.build() — the same deterministic ids the rest of the data
+already uses (causa_id = <tribunal_id>-<rol>, litigante = <causa_id>-<rut>, cuaderno =
+<causa_id>-c<n>-<folio>-<k>). Re-running updates in place.
+
+Worker A collects only cuaderno 1 and no receptor rows, so it writes exactly what it saw and
+nothing it did not: no empty Notificaciones rows, no phantom cuaderno-2 shells.
+
+Usage
+    python ingest_worker_a.py --dry          # counts only, no writes
+    python ingest_worker_a.py                # upsert metadata
+    python ingest_worker_a.py --upload-pdfs  # also push ebooks to Drive and store the URL
+"""
+import argparse
+import json
+import shutil
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+import psycopg2.extras
+
+sys.path.insert(0, str(Path(__file__).parent))
+import run
+import dbstore
+import ingest_cdp
+
+DATA = Path(__file__).parent.parent / "data" / "worker_a"
+STATE = DATA / "state.json"
+PDFS = DATA / "pdfs"
+
+# Tribunales is handled separately — see ingest() for why it must never be a plain upsert.
+ORDER = ["Ruts", "Causas", "Litigantes", "Cuadernos", "Escritos"]
+
+
+def snapshot(path, tries=6):
+    """Read a file that another process is actively rewriting."""
+    last = None
+    for i in range(tries):
+        tmp = Path(tempfile.gettempdir()) / f"wa_state_{i}.json"
+        try:
+            shutil.copy2(path, tmp)
+            return json.loads(tmp.read_text(encoding="utf-8"))
+        except Exception as e:            # torn write — the sweep is mid-save
+            last = e
+            time.sleep(1.5)
+    raise SystemExit(f"could not read a consistent {path.name}: {str(last)[:90]}")
+
+
+def as_causa(rec):
+    """worker A record -> the shape ingest_cdp.build() consumes."""
+    cuads = rec.get("cuadernos") or ["1 - Principal"]
+    return {
+        "rol": rec["rol"],
+        "tribunalId": rec["tribunal_id"],
+        "tribunalSel": rec.get("tribunal", ""),
+        "corte": "",                     # Corte=Todos: worker A genuinely does not know it
+        "header": rec.get("header") or {},
+        "litigantes": rec.get("litigantes") or [],
+        # Only cuaderno 1 was read. Claiming the others exist with empty historia would look
+        # like "we checked and there was nothing", which is the opposite of the truth.
+        "cuadernos": [{"cuaderno": cuads[0], "historia": rec.get("historia_c1") or []}],
+        "escritos": rec.get("escritos") or [],
+        "receptor": [],
+        "ebook": rec.get("_ebook_url", ""),
+        "scrape_level": "scraped",
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--upload-pdfs", action="store_true",
+                    help="upload each ebook to Drive and store its URL in causas.ebook. "
+                         "Off by default: it is a long network job and the sweep is usually "
+                         "still running, so it should be a deliberate act, not a side effect.")
+    a = ap.parse_args()
+
+    st = snapshot(STATE)
+    causas = st.get("causas") or {}
+    if not causas:
+        return print("no causas in state.json yet")
+
+    store = None if a.dry else dbstore.Store()
+
+    if a.upload_pdfs and not a.dry:
+        for cid, rec in causas.items():
+            eb = rec.get("ebook") or {}
+            if not eb.get("file") or rec.get("_ebook_url"):
+                continue
+            f = PDFS / eb["file"]
+            if not f.exists():
+                continue
+            try:
+                rec["_ebook_url"] = store.upload_pdf(f"{cid}/ebook.pdf", f.read_bytes())
+                print(f"  uploaded {eb['file']} ({eb['bytes']:,} B)")
+            except Exception as e:
+                print(f"  [warn] upload {eb['file']}: {str(e)[:70]}")
+
+    merged, tribs, ids = {}, {}, []
+    for cid, rec in sorted(causas.items()):
+        if not (rec.get("header") or {}):
+            print(f"  skip {cid}: no header (metadata never harvested)")
+            continue
+        parts = ingest_cdp.build(as_causa(rec), {})
+        for tab, rows in parts.items():
+            if tab == "Tribunales":
+                for t in rows:
+                    tribs[t["id"]] = t["tribunal"]
+                continue
+            merged.setdefault(tab, []).extend(rows)
+        ids.append(cid)
+
+    print(f"worker A state: {len(causas)} causas, {len(ids)} with detail")
+    for tab in ORDER:
+        print(f"  {tab:14} {len(merged.get(tab, [])):6} rows")
+    print(f"  {'Tribunales':14} {len(tribs):6} (insert-if-absent only)")
+    eb = sum(1 for r in causas.values() if (r.get('ebook') or {}).get('bytes'))
+    print(f"  ebooks on disk {eb} — "
+          f"{'uploaded to Drive' if a.upload_pdfs else 'NOT uploaded; causas.ebook left empty'}")
+    if a.dry:
+        return print("[DRY] no writes.")
+
+    # ⚠️ Tribunales must NOT go through upsert. Worker A sweeps with Corte='Todos' and so has no
+    # corte value; upsert writes every column from EXCLUDED, which would overwrite the corte of
+    # every tribunal already in the table with ''. Insert the ones we do not have, touch nothing
+    # that exists.
+    with store.conn.cursor() as cur:
+        psycopg2.extras.execute_values(
+            cur, 'INSERT INTO "tribunales" ("id","corte","tribunal") VALUES %s '
+                 'ON CONFLICT ("id") DO NOTHING',
+            [(tid, "", name) for tid, name in tribs.items()])
+        print(f"  tribunales: {cur.rowcount} new (existing rows untouched)")
+
+    # ⚠️ Same trap as tribunales.corte, one table over. upsert writes EVERY column from
+    # EXCLUDED, and worker A has no value for the document URLs — so ingesting a causa that was
+    # already scraped with documents would blank ebook/texto_demanda/certificado. Harmless in the
+    # north, where nothing overlaps; quietly destructive the moment this sweep reaches Santiago,
+    # where 74 causas already carry those URLs. Carry the existing values forward.
+    keep = ("ebook", "texto_demanda", "certificado")
+    with store.conn.cursor() as cur:
+        cur.execute(f'SELECT causa_id, {", ".join(keep)} FROM causas WHERE causa_id = ANY(%s)',
+                    (ids,))
+        prior = {r[0]: dict(zip(keep, r[1:])) for r in cur.fetchall()}
+    kept = 0
+    for row in merged.get("Causas", []):
+        was = prior.get(row["causa_id"])
+        if not was:
+            continue
+        for col in keep:
+            if was.get(col) and not row.get(col):
+                row[col] = was[col]
+                kept += 1
+    if kept:
+        print(f"  preserved {kept} existing document URL(s) on {len(prior)} known causa(s)")
+
+    for tab in ORDER:
+        rows = merged.get(tab, [])
+        if rows:
+            print(f"  upserted {tab:14} {store.upsert(tab, rows)}")
+
+    # 'scraped' = header/litigantes/historia collected. detalles stays false: the other documents
+    # are still outstanding, and that flag is what tells a later pass there is work left here.
+    with store.conn.cursor() as cur:
+        cur.execute("UPDATE causas SET fill_status='scraped' WHERE causa_id = ANY(%s)", (ids,))
+        print(f"  marked {cur.rowcount} causas fill_status='scraped'")
+    print("DONE")
+
+
+if __name__ == "__main__":
+    main()
