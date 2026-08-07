@@ -56,9 +56,17 @@ PDFS = DATA / "pdfs"
 # this run is the experiment that will tell us whether spacing was ever the variable.
 SEARCH_GAP = 60.0      # from one search CLICK to the next
 PAGE_GAP = 20.0        # between paginator clicks (same request class as a search)
-CAUSA_GAP = 45.0       # between causa opens — the scarce resource
+# 2026-08-07: at 45 s the run reached 11 causa opens before a tier-2 block (~24 opens on this
+# IP across the afternoon). Detail is the binding constraint and the operator's standing rule is
+# "i'd rather wait a few seconds more, than to get blocked", so the gap is doubled. Searches are
+# untouched: 60 s is the one number with real evidence behind it (208 searches, one evening).
+CAUSA_GAP = 90.0       # between causa opens — the scarce resource
 EBOOK_GAP = 8.0        # after the modal renders, before asking for the pdf
-POST_CAUSA = 15.0      # after closing a causa, before anything else
+POST_CAUSA = 30.0      # after closing a causa, before anything else
+# A block is a RATE verdict, so the one thing that must not happen after one is walking straight
+# back in at the same pace. Multiplied by the recovery number, so repeat blocks wait ever longer.
+COOL_OFF = 180.0
+CLEAN_STREAK = 12      # clean causa opens that earn the recovery budget back
 
 CIVIL = "3"
 net = []
@@ -293,11 +301,14 @@ def main():
     ap.add_argument("--max-causas", type=int, default=0,
                     help="stop after N causa opens (0 = no limit). For probing the budget.")
     ap.add_argument("--no-detail", action="store_true", help="census only, open nothing")
+    ap.add_argument("--max-recover", type=int, default=6,
+                    help="how many times a block may be cleared by re-entry before giving up. "
+                         "Re-entry works because a tier-2 block parks challenge frames on a "
+                         "session that is otherwise healthy; nothing about the profile is burned.")
     ap.add_argument("--no-ebook", action="store_true",
                     help="open causas and take the FREE metadata, but request no document. "
-                         "Use while the F5 APM challenge on /documentos/ is unresolved — the "
-                         "causa open is the scarce act and its metadata is worth having on its "
-                         "own, so there is no reason to idle the profile waiting on that answer.")
+                         "The causa open is the scarce act and its metadata is worth having on "
+                         "its own, so a document problem never needs to idle the profile.")
     a = ap.parse_args()
 
     PDFS.mkdir(parents=True, exist_ok=True)
@@ -335,42 +346,85 @@ def main():
             raise SystemExit(f"CDP handshake failed on {a.port}: {str(e)[:80]}\n"
                              f"Restart Chrome on the SAME --user-data-dir and retry.")
         ctx = b.contexts[0]
-        tidy_tabs(ctx)
-        p = ojv.walk_in(ctx)
+
+        def enter():
+            """Walk in and build the search form. Returns (page, Settler, tribunal list).
+
+            Also the recovery path. A tier-2 block leaves TSBrPFrame_cs_chlg_* frames parked on a
+            session that is otherwise fine, and re-entry clears them — measured 2026-08-07, 18 s,
+            0 rejection frames afterwards, same profile. NOTHING is burned by a block, so rotating
+            the profile dir (which waf_check still advises) throws away a warm session for nothing.
+            """
+            tidy_tabs(ctx)
+            pg = ojv.walk_in(ctx)
+            if pg is None:
+                return None, None, None
+            note(f"in: {pg.url[:60]}")
+            del net[:]
+            pg.on("response", ojv.make_tap(net))
+            settler = Settler(pg)
+            C.open_fecha_panel(pg)
+            # Competencia is the ONLY cascade we trigger; corte stays on "Todos"
+            if pg.eval_on_selector("#fecCompetencia", "e=>e.value") != CIVIL:
+                note("Competencia = Civil")
+                C.select_by_kbd(pg, "#fecCompetencia", CIVIL)
+                ojv.click_away(pg)
+                settler.wait(need="document.querySelectorAll('#fecTribunal option').length>50",
+                             quiet_ms=1200, timeout=60, label="all-tribunales")
+            corte = pg.eval_on_selector("#corteFec", "e=>e.value")
+            if corte not in ("", "0"):
+                note(f"[!] corte={corte}, expected Todos — refusing to change it (the burst)")
+                raise SystemExit(2)
+            for sel, val in (("#fecDesde", a.desde), ("#fecHasta", a.hasta)):
+                if pg.eval_on_selector(sel, "e=>e.value") != val:
+                    C.type_date_kbd(pg, sel, val)
+                    ojv.click_away(pg)
+            lst = pg.eval_on_selector_all("#fecTribunal option",
+                                          "e=>e.filter(o=>o.value&&o.value!=='0')"
+                                          ".map(o=>({v:o.value,t:(o.textContent||'').trim()}))")
+            note(f"tribunales={len(lst)} corte=Todos dates "
+                 f"{pg.eval_on_selector('#fecDesde','e=>e.value')}.."
+                 f"{pg.eval_on_selector('#fecHasta','e=>e.value')}")
+            return pg, settler, lst
+
+        p, S, tl = enter()
         if p is None:
             raise SystemExit("could not reach the form")
-        note(f"in: {p.url[:60]}")
-        p.on("response", ojv.make_tap(net))
-        S = Settler(p)
-        C.open_fecha_panel(p)
-
-        # ---- form: Competencia is the ONLY cascade we trigger; corte stays on "Todos" ----
-        if p.eval_on_selector("#fecCompetencia", "e=>e.value") != CIVIL:
-            note("Competencia = Civil")
-            C.select_by_kbd(p, "#fecCompetencia", CIVIL)
-            ojv.click_away(p)
-            S.wait(need="document.querySelectorAll('#fecTribunal option').length>50",
-                   quiet_ms=1200, timeout=60, label="all-tribunales")
-        corte = p.eval_on_selector("#corteFec", "e=>e.value")
-        if corte not in ("", "0"):
-            note(f"[!] corte={corte}, expected Todos — refusing to change it (that is the burst)")
-            raise SystemExit(2)
-        for sel, val in (("#fecDesde", a.desde), ("#fecHasta", a.hasta)):
-            if p.eval_on_selector(sel, "e=>e.value") != val:
-                C.type_date_kbd(p, sel, val)
-                ojv.click_away(p)
-
-        tl = p.eval_on_selector_all("#fecTribunal option",
-                                    "e=>e.filter(o=>o.value&&o.value!=='0')"
-                                    ".map(o=>({v:o.value,t:(o.textContent||'').trim()}))")
-        note(f"tribunales={len(tl)} corte=Todos dates "
-             f"{p.eval_on_selector('#fecDesde','e=>e.value')}.."
-             f"{p.eval_on_selector('#fecHasta','e=>e.value')}")
         if len(tl) < 50:
             raise SystemExit("not the national list — aborting")
 
+        recoveries = 0
+        clean_since_block = 0
+
+        def recover(idx):
+            """Re-enter after a block. True if we may carry on from `idx`."""
+            nonlocal p, S, tl, recoveries, last_search, clean_since_block
+            recoveries += 1
+            clean_since_block = 0
+            if recoveries > a.max_recover:
+                note(f"  *** {recoveries - 1} recoveries already used — stopping. "
+                     f"resume with --start {idx}")
+                return False
+            # Back off HARD before re-entering. The block is a rate verdict, so walking straight
+            # back in at the same pace just earns another one; each successive block waits longer.
+            cool = COOL_OFF * recoveries
+            note(f"  recovery {recoveries}/{a.max_recover}: cooling off {cool:.0f}s, then re-entry")
+            time.sleep(cool)
+            p, S, tl = enter()
+            if p is None:
+                note("  *** re-entry failed (tier-3 CAPTCHA needs a human?) — stopping. "
+                     f"resume with --start {idx}")
+                return False
+            last_search = 0.0
+            note(f"  recovered — resuming at idx {idx}")
+            return True
+
         last_search = 0.0
-        for idx in range(a.start, len(tl)):
+        idx = a.start - 1
+        while True:
+            idx += 1
+            if idx >= len(tl):
+                break
             tgt = tl[idx]
             done = st["tribunales"].get(tgt["v"])
             if done and done.get("complete") and not done.get("undercount"):
@@ -400,9 +454,11 @@ def main():
             hit, why = ojv.blocked(p, net)
             if hit:
                 note(f"  *** BLOCKED at idx {idx} ({tgt['v']} {tgt['t'][:28]}) {why}")
-                note(f"  *** resume with --start {idx}")
                 save()
                 tally_line("TALLY at block:")
+                if recover(idx):
+                    idx -= 1          # re-enter puts us back before this tribunal
+                    continue
                 return 3
             if kind in ("stale", "timeout"):
                 note(f"  [{idx}/{len(tl)}] {tgt['v']:>5} {tgt['t'][:34]:36} {kind.upper()} "
@@ -422,7 +478,7 @@ def main():
                 continue
 
             # ---- walk the result pages, harvesting detail from each BEFORE advancing ----
-            page, seen, stuck = 1, 0, False
+            page, seen, stuck, blocked_here = 1, 0, False, False
             while True:
                 rows = C.page_rows(p)
                 banks = [dict(r, page=page) for r in rows if r["has"]
@@ -455,10 +511,10 @@ def main():
                         hit, why = ojv.blocked(p, net)
                         if hit:
                             note(f"  *** BLOCKED on detail, idx {idx} causa {c['rol']} — {why}")
-                            note(f"  *** resume with --start {idx}")
                             save()
                             tally_line("TALLY at block:")
-                            return 3
+                            blocked_here = True
+                            break
                         if rec is None:
                             # Not a block (just checked). A stuck modal poisons every LATER open,
                             # so clear it — one hiccup used to look exactly like a burned profile
@@ -466,6 +522,15 @@ def main():
                             C.clear_stuck_modal(p)
                             continue
                         st["causas"][rec["causa_id"]] = rec
+                        # A long clean stretch means the session genuinely recovered, so the
+                        # budget must reset. Counting blocks for the LIFE of the run would strand
+                        # a 250-causa sweep after six, however many hours of clean work sat
+                        # between them.
+                        clean_since_block += 1
+                        if clean_since_block >= CLEAN_STREAK and recoveries:
+                            note(f"      {clean_since_block} clean opens since the last block "
+                                 f"— recovery budget reset")
+                            recoveries = 0
                         if rec["ebook"].get("bytes"):
                             tally["ebooks"] += 1
                             tally["bytes"] += rec["ebook"]["bytes"]
@@ -475,6 +540,8 @@ def main():
                         tally_line("      running:")
                         time.sleep(POST_CAUSA)
 
+                if blocked_here:
+                    break
                 why = advance(p, page)
                 if why != "more":
                     stuck = why == "stuck"
@@ -482,6 +549,15 @@ def main():
                 page += 1
                 tally["pages"] += 1
 
+            if blocked_here:
+                # The tribunal is half-done; leave it incomplete so the resume logic re-searches
+                # it and picks up whichever causas never got their detail.
+                ent["complete"] = False
+                save()
+                if recover(idx):
+                    idx -= 1
+                    continue
+                return 3
             ent["complete"] = not stuck
             ent["undercount"] = total is not None and seen < total
             save()
