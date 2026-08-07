@@ -34,7 +34,7 @@ Usage
     python worker_a.py --port 9337 --start 42         # resume at tribunal index 42
     python worker_a.py --port 9337 --max-causas 12    # bounded probe of the detail budget
 """
-import sys, json, time, argparse
+import sys, json, time, base64, argparse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -62,35 +62,7 @@ POST_CAUSA = 15.0      # after closing a causa, before anything else
 
 CIVIL = "3"
 net = []
-pdf_hits = []
-
-
 # ── pdf capture ──────────────────────────────────────────────────────────────
-
-def attach_pdf_tap(ctx):
-    """Capture document bodies at CONTEXT level — registered once, before any click.
-
-    ⚠️ Do NOT do this per page. The document click opens a POPUP, and that popup's main-document
-    response routinely lands before a per-page listener can be attached, so the capture silently
-    saw nothing at all (an empty hit list, which reads exactly like "the click did nothing").
-    A context-level listener is registered ahead of every popup that will ever exist, so there is
-    no attach race. Reading the body here also means we never use APIRequestContext — the
-    out-of-page fetch the handoff flags as the prime block suspect.
-    """
-    def h(r):
-        u = r.url or ""
-        if "/documentos/" not in u and "ebook" not in u.lower():
-            return
-        body, ct = None, ""
-        try:
-            body = r.body()
-            ct = (r.headers or {}).get("content-type", "")
-        except Exception:
-            pass
-        pdf_hits.append({"ep": u.split("/")[-1].split("?")[0], "status": r.status,
-                         "n": len(body) if body else 0, "ct": ct, "body": body})
-    ctx.on("response", h)
-
 
 def classify(body):
     """'pdf' | 'apm' | 'other' — what did the document endpoint actually return?
@@ -110,76 +82,111 @@ def classify(body):
     return "other"
 
 
-def close_doc_tabs(ctx):
+def needs_visit(st, causa_id, want_ebook):
+    """Should we (re)open this causa? Not just "have we seen it" — have we got what we came for.
+
+    A causa harvested during a --no-ebook pass, or one whose document was refused by the WAF, is
+    NOT done: the metadata is banked but the ebook is the other half of the job. Retry those.
+    Never retry a causa that simply HAS no ebook control, or whose endpoint served something that
+    was not a pdf — those are answers, not failures, and retrying them forever would spend the
+    scarcest budget we have on a question already settled.
+    """
+    rec = st["causas"].get(causa_id)
+    if rec is None:
+        return True
+    if not want_ebook:
+        return False
+    eb = rec.get("ebook") or {}
+    if eb.get("bytes"):
+        return False
+    return bool(eb.get("skipped") or eb.get("apm_challenge") or eb.get("failed")
+                or eb.get("click_refused"))
+
+
+def tidy_tabs(ctx):
+    """Leave exactly the tabs we need: the OJV form page and one www.pjud.cl.
+
+    Operator's standing instruction: close document tabs once we have the bytes. In-page fetching
+    means we no longer open any, but a stray click or a leftover from an earlier run still can —
+    and stale tabs are not cosmetic here. human_click drives REAL MOUSE COORDINATES, which land
+    on whatever tab is actually VISIBLE, so an extra tab silently sends clicks to the wrong page.
+    """
+    seen_home = False
     for q in list(ctx.pages):
         u = q.url or ""
-        if "/documentos/" in u or "ebook" in u.lower():
-            try:
+        try:
+            if "/documentos/" in u:
                 q.close()
-            except Exception:
-                pass
+            elif u.rstrip("/") == "https://www.pjud.cl":
+                if seen_home:
+                    q.close()
+                seen_home = True
+        except Exception:
+            pass
 
 
-def ebook_control(p):
-    """The Ebook control, identified by the ENDPOINT its form posts to — never by index.
+FETCH_DOC_JS = r"""
+async (frag) => {
+  const f = [...document.querySelectorAll('#modalDetalleCivil form')]
+      .find(x => (x.getAttribute('action') || '').toLowerCase().includes(frag));
+  if (!f) return {err: 'no form for ' + frag};
+  const inp = f.querySelector('input');
+  if (!inp) return {err: 'form has no input'};
+  const url = new URL(f.getAttribute('action'), location.href).href
+            + '?' + encodeURIComponent(inp.name) + '=' + encodeURIComponent(inp.value);
+  const t0 = performance.now();
+  const r = await fetch(url, {credentials: 'include'});
+  const buf = new Uint8Array(await r.arrayBuffer());
+  let s = '', CH = 8192;                       // chunked: a 4 MB spread blows the call stack
+  for (let i = 0; i < buf.length; i += CH)
+    s += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+  return {status: r.status, ct: r.headers.get('content-type'), n: buf.length,
+          ms: Math.round(performance.now() - t0), b64: btoa(s)};
+}
+"""
 
-    Header doc controls share an ancestor div and differ only by x-position, and Anexos has no
-    form at all when unavailable, so positional selection silently grabs the wrong document.
+
+def grab_doc(p, causa_id, label, frag):
+    """Fetch one document and write it verified. Returns a record — never raises.
+
+    ⚠️ THE CLICK PATH LOOKS LIKE IT WORKS AND SILENTLY DOES NOT. Clicking a doc icon opens a
+    popup, Chrome renders the pdf in its built-in viewer, and the navigation response Playwright
+    hands back is the VIEWER'S HOST DOCUMENT — `<embed type="application/x-google-chrome-pdf">`.
+    So response.body() returns ~14 KB of wrapper HTML, status 200, for a document that loaded
+    perfectly. That one fact caused both wrong calls of 2026-08-07: three wrapper files sat on
+    disk named *.pdf, and later a perfectly good scripted click was reported as a WAF block.
+
+    So we do not click. The PAGE fetches the document itself — same origin, its own cookies, the
+    same request the click would have made — and hands back the bytes. Same cost (one request),
+    no popup to close, no viewer in the way, and the result is either %PDF or it is not.
+
+    This is NOT the out-of-process APIRequestContext the handoff warns about: that fetch happens
+    outside the browser with copied cookies, which is the thing that looks nothing like a user.
+    This runs inside the page that is already holding the session.
     """
-    idx = p.evaluate("""()=>{
-      const forms=[...document.querySelectorAll('#modalDetalleCivil form')];
-      for (let i=0;i<forms.length;i++){
-        const act=(forms[i].getAttribute('action')||'').toLowerCase();
-        if (act.indexOf('newebook')<0) continue;
-        const a=forms[i].querySelector("a[onclick*='submit']")||forms[i].querySelector('a,button');
-        if (!a) continue;
-        const r=a.getBoundingClientRect();
-        if (r.width>0 && r.height>0) return i;
-      }
-      return -1; }""")
-    if idx < 0:
-        return None
-    return (p.locator("#modalDetalleCivil form").nth(idx)
-            .locator("a[onclick*='submit'], a, button").first)
-
-
-def grab_ebook(ctx, p, causa_id):
-    """One click, one tab, one pdf. Returns a record — never raises."""
-    loc = ebook_control(p)
-    if loc is None:
-        note("      ebook: no control on this causa")
-        return {"bytes": 0, "missing": True}
-    pdf_hits.clear()
     t0 = time.time()
-    if not C.human_click(p, loc, timeout=8000):
-        note("      ebook: click REFUSED (covered?)")
-        return {"bytes": 0, "click_refused": True}
-    # Wait for an ACTUAL pdf, not merely for something big. F5 answers the first document request
-    # in a new browsing context with its JS challenge; if that challenge is going to clear, it
-    # clears by the popup re-requesting, so keep listening past the interstitial.
-    pdf = None
-    for _ in range(75):                       # up to ~30 s
-        p.wait_for_timeout(400)
-        pdf = next((h for h in pdf_hits if classify(h["body"]) == "pdf"), None)
-        if pdf:
-            break
+    try:
+        res = p.evaluate(FETCH_DOC_JS, frag)
+    except Exception as e:
+        note(f"      {label}: fetch threw — {str(e)[:70]}")
+        return {"bytes": 0, "failed": True}
     el = round(time.time() - t0, 1)
-    if pdf:
-        fn = PDFS / f"{causa_id}__ebook.pdf"
-        fn.write_bytes(pdf["body"])
-        note(f"      ebook: {pdf['n']:,} B via {pdf['ep']} in {el}s -> {fn.name}")
-        rec = {"bytes": pdf["n"], "endpoint": pdf["ep"], "file": fn.name, "secs": el}
-    elif any(classify(h["body"]) == "apm" for h in pdf_hits):
-        note(f"      ebook: F5 APM CHALLENGE on the document endpoint after {el}s "
-             f"(no pdf served) — {[(h['ep'], h['n']) for h in pdf_hits]}")
-        rec = {"bytes": 0, "apm_challenge": True, "secs": el}
-    else:
-        note(f"      ebook: no response captured after {el}s "
-             f"{[(h['ep'], h['status'], h['n']) for h in pdf_hits]}")
-        rec = {"bytes": 0, "failed": True, "secs": el}
-    close_doc_tabs(ctx)
-    p.wait_for_timeout(400)
-    return rec
+    if res.get("err"):
+        note(f"      {label}: {res['err']}")
+        return {"bytes": 0, "missing": True}
+    body = base64.b64decode(res["b64"])
+    if body[:4] != b"%PDF":
+        kind = classify(body)
+        note(f"      {label}: {res['status']} {res.get('ct')} {len(body):,} B is NOT a pdf "
+             f"({kind}) after {el}s")
+        if kind == "apm":
+            return {"bytes": 0, "apm_challenge": True, "secs": el}
+        (PDFS / f"{causa_id}__{label}.bin").write_bytes(body)
+        return {"bytes": 0, "not_pdf": True, "secs": el}
+    fn = PDFS / f"{causa_id}__{label}.pdf"
+    fn.write_bytes(body)
+    note(f"      {label}: {len(body):,} B PDF in {el}s -> {fn.name}")
+    return {"bytes": len(body), "file": fn.name, "secs": el, "ct": res.get("ct")}
 
 
 # ── one causa ────────────────────────────────────────────────────────────────
@@ -229,7 +236,7 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=True):
 
     if want_ebook:
         time.sleep(EBOOK_GAP)
-        rec["ebook"] = grab_ebook(ctx, p, causa_id)
+        rec["ebook"] = grab_doc(p, causa_id, "ebook", "newebook")
     else:
         rec["ebook"] = {"bytes": 0, "skipped": True}
     # worker B's queue: what we deliberately did NOT take while we were in here
@@ -328,13 +335,12 @@ def main():
             raise SystemExit(f"CDP handshake failed on {a.port}: {str(e)[:80]}\n"
                              f"Restart Chrome on the SAME --user-data-dir and retry.")
         ctx = b.contexts[0]
-        close_doc_tabs(ctx)
+        tidy_tabs(ctx)
         p = ojv.walk_in(ctx)
         if p is None:
             raise SystemExit("could not reach the form")
         note(f"in: {p.url[:60]}")
         p.on("response", ojv.make_tap(net))
-        attach_pdf_tap(ctx)
         S = Settler(p)
         C.open_fecha_panel(p)
 
@@ -372,7 +378,7 @@ def main():
                 # listed has a detail record. Otherwise re-search it and pick up the stragglers —
                 # this is what makes a blocked run resumable without re-doing the whole country.
                 missing = [c for c in done.get("causas", [])
-                           if f"{tgt['v']}-{c['rol']}" not in st["causas"]]
+                           if needs_visit(st, f"{tgt['v']}-{c['rol']}", not a.no_ebook)]
                 if a.no_detail or not missing:
                     continue
                 note(f"  [{idx}] {tgt['v']} re-search: {len(missing)} causa(s) lack detail")
@@ -431,7 +437,7 @@ def main():
 
                 if not a.no_detail:
                     for c in banks:
-                        if f"{tgt['v']}-{c['rol']}" in st["causas"]:
+                        if not needs_visit(st, f"{tgt['v']}-{c['rol']}", not a.no_ebook):
                             continue
                         if a.max_causas and tally["opens"] >= a.max_causas:
                             note(f"  --max-causas {a.max_causas} reached — stopping cleanly")
