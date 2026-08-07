@@ -77,6 +77,25 @@ _FOLDER_MIME = "application/vnd.google-apps.folder"
 _SHEET_MIME = "application/vnd.google-apps.spreadsheet"
 
 
+# ── Drive links ────────────────────────────────────────────────────────────────
+# Drive's webViewLink is /file/d/<id>/view — its own UI wrapper page, NOT the document. A link
+# stored in the database exists to be followed to the file, so every Drive URL is normalised to
+# the direct form. This lives here, in the module BOTH backends import, because there are two
+# uploaders (gstore for Sheets, dbstore for Postgres) and two doc caches: a second copy is how
+# the WAF rejection matcher ended up fixed in one file and blind in another.
+_DRIVE_ID = re.compile(r"/file/d/([\w-]+)|[?&]id=([\w-]+)")
+
+
+def direct_link(url):
+    """Any Drive URL -> the one that returns the PDF itself. Non-Drive URLs pass through."""
+    if not url or "drive.google.com" not in url:
+        return url
+    m = _DRIVE_ID.search(url)
+    if not m:
+        return url
+    return f"https://drive.google.com/uc?export=download&id={m.group(1) or m.group(2)}"
+
+
 def log(msg):
     print(msg, flush=True)
 
@@ -363,7 +382,7 @@ class Store:
                 fields="nextPageToken, files(id, name, webViewLink)",
                 pageSize=1000, pageToken=page_token).execute()
             for f in resp.get("files", []):
-                cache[f["name"]] = f.get("webViewLink", "")
+                cache[f["name"]] = direct_link(f.get("webViewLink", ""))
             page_token = resp.get("nextPageToken")
             if not page_token:
                 break
@@ -390,14 +409,14 @@ class Store:
         name = _flatten_name(object_path)
         cache = self._load_doc_cache()
         if name in cache and cache[name]:
-            return cache[name]
+            return direct_link(cache[name])
         media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/pdf",
                                   resumable=False)
         f = self.drive.files().create(
             body={"name": name, "parents": [self.docs_folder]},
-            media_body=media, fields="id, webViewLink").execute()
+            media_body=media, fields="id, webViewLink, webContentLink").execute()
         _make_public_reader(self.drive, f["id"])
-        link = f.get("webViewLink", "")
+        link = direct_link(f.get("webContentLink") or f.get("webViewLink", ""))
         cache[name] = link
         return link
 

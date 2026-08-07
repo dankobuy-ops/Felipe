@@ -159,21 +159,8 @@ def _from_db(tab, header, v):
     return str(v)
 
 
-# Drive hands back webViewLink — the PREVIEW PAGE (/file/d/<id>/view), which renders Drive's own
-# UI, not the document. A link stored in a database is there to be followed to the file, so we
-# normalise every Drive URL to the direct form. Applied on the way out of BOTH upload paths and
-# to cache hits, because the cache still holds preview links from earlier runs.
-_DRIVE_ID = re.compile(r"/file/d/([\w-]+)|[?&]id=([\w-]+)")
-
-
-def direct_link(url):
-    """Any Drive URL -> the one that returns the PDF itself. Non-Drive URLs pass through."""
-    if not url or "drive.google.com" not in url:
-        return url
-    m = _DRIVE_ID.search(url)
-    if not m:
-        return url
-    return f"https://drive.google.com/uc?export=download&id={m.group(1) or m.group(2)}"
+# One copy, in gstore — see the note there. Re-exported so callers can use either name.
+direct_link = gstore.direct_link
 
 
 def _conn_kwargs(cfg=None):
@@ -476,7 +463,7 @@ class Store:
                 fields="nextPageToken, files(id, name, webViewLink)",
                 pageSize=1000, pageToken=page_token).execute()
             for f in resp.get("files", []):
-                cache[f["name"]] = f.get("webViewLink", "")
+                cache[f["name"]] = direct_link(f.get("webViewLink", ""))
             page_token = resp.get("nextPageToken")
             if not page_token:
                 break
