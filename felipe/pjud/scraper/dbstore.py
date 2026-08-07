@@ -159,6 +159,23 @@ def _from_db(tab, header, v):
     return str(v)
 
 
+# Drive hands back webViewLink — the PREVIEW PAGE (/file/d/<id>/view), which renders Drive's own
+# UI, not the document. A link stored in a database is there to be followed to the file, so we
+# normalise every Drive URL to the direct form. Applied on the way out of BOTH upload paths and
+# to cache hits, because the cache still holds preview links from earlier runs.
+_DRIVE_ID = re.compile(r"/file/d/([\w-]+)|[?&]id=([\w-]+)")
+
+
+def direct_link(url):
+    """Any Drive URL -> the one that returns the PDF itself. Non-Drive URLs pass through."""
+    if not url or "drive.google.com" not in url:
+        return url
+    m = _DRIVE_ID.search(url)
+    if not m:
+        return url
+    return f"https://drive.google.com/uc?export=download&id={m.group(1) or m.group(2)}"
+
+
 def _conn_kwargs(cfg=None):
     """Connection params for psycopg2.connect(**kwargs). Any Postgres (Neon,
     Supabase, self-hosted). Prefers the component dict `pg_conn` in config (password
@@ -489,18 +506,18 @@ class Store:
             with lock:
                 hit = cache.get(name)
             if hit:
-                return path, hit
+                return path, direct_link(hit)
             drive = self._uclients.get()
             try:
                 media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/pdf",
                                           resumable=False)
                 f = drive.files().create(
                     body={"name": name, "parents": [self.docs_folder]},
-                    media_body=media, fields="id, webViewLink").execute()
+                    media_body=media, fields="id, webViewLink, webContentLink").execute()
                 gstore._make_public_reader(drive, f["id"])
             finally:
                 self._uclients.put(drive)
-            link = f.get("webViewLink", "")
+            link = direct_link(f.get("webContentLink") or f.get("webViewLink", ""))
             with lock:
                 cache[name] = link
             return path, link
@@ -523,13 +540,13 @@ class Store:
         name = gstore._flatten_name(object_path)
         cache = self._load_doc_cache()
         if name in cache and cache[name]:
-            return cache[name]
+            return direct_link(cache[name])
         media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/pdf",
                                   resumable=False)
         f = self.drive.files().create(
             body={"name": name, "parents": [self.docs_folder]},
-            media_body=media, fields="id, webViewLink").execute()
+            media_body=media, fields="id, webViewLink, webContentLink").execute()
         gstore._make_public_reader(self.drive, f["id"])
-        link = f.get("webViewLink", "")
+        link = direct_link(f.get("webContentLink") or f.get("webViewLink", ""))
         cache[name] = link
         return link
