@@ -11,6 +11,60 @@ first; it **disproves** most of what the 07-20/07-21 versions of this doc conclu
 
 ---
 
+## ★★★★★ 2026-08-07 — WORKER A, AND THREE THINGS THAT LOOKED LIKE BLOCKS AND WERE NOT ★★★★★
+
+`worker_a.py` is the discovery worker: sweep every tribunal (Corte=Todos), and for each bank
+causa open it **once** and take everything that open makes free — header, litigantes, escritos,
+cuaderno list, cuaderno-1 historia — plus the **ebook** PDF. Everything else is worker B's.
+`ojv.py` now holds the single copy of walk-in / search / freshness / block detection.
+`census.py` is a shim onto `worker_a.py --no-detail`.
+
+**1. A PDF that "failed to download" had downloaded perfectly.** Clicking a doc icon opens a
+popup; Chrome renders the PDF in its built-in viewer; and the navigation response Playwright
+hands back is the **viewer's host document** — `<embed type="application/x-google-chrome-pdf">`.
+So `response.body()` returns ~14 KB of wrapper HTML with status 200. This cost a full day twice
+over: first three wrapper files sat on disk named `*.pdf`, then, once magic bytes were checked, a
+perfectly good scripted click got reported as a WAF block. **Never judge a document by size or
+status. Check for `%PDF`.**
+
+**FIX — do not click documents. Have the page fetch them:**
+```js
+const url = new URL(form.action, location.href).href + '?' + name + '=' + encodeURIComponent(val);
+const buf = new Uint8Array(await (await fetch(url, {credentials:'include'})).arrayBuffer());
+```
+Same one request the click would have made, no popup, no viewer, bytes verified. Measured
+0.7–5.2 s per ebook. This is **not** the out-of-process `APIRequestContext` this file warns
+about — that one fetches from outside the browser with copied cookies. This runs *inside* the
+page already holding the session.
+
+**2. The result page holds 100 rows, and the 2026-08-06 census read only page 1.** Its 207
+causas are a **floor** — 33 tribunales reported totals above 100. Worker A paginates, and
+harvests each page's detail *before* advancing, because a row index belongs to the page it was
+read from: paginating first and clicking page-1 indices afterwards opens the **wrong causas**.
+End-of-list is the site's own greyed-out *Siguiente*, never a row count (the blank filler row
+drifts the count and truncates the biggest tribunales — the exact bug pagination was added to
+fix).
+
+**3. A tier-2 block does NOT burn the profile — re-entry clears it in ~18 s.** Measured on a
+blocked session: close the OJV tab, walk in again, 0 rejection frames, and the very causa that
+had been refused opened fine. ⚠️ **`waf_check.py` still advises renaming the profile dir. That
+advice is stale** and throws away a warm session for nothing. Worker A now cools off (3, 6, 9…
+min — a block is a *rate* verdict) and re-enters automatically; the budget counts **consecutive**
+blocks, reset by 12 clean opens, because a lifetime cap strands a long sweep however much clean
+work sits between blocks.
+
+**⚠️ OPERATIONAL: long runs must be launched DETACHED.** A background task started from the
+agent harness gets **killed** after ~30 minutes. This is what actually happened to the census
+that "stalled overnight" on 2026-08-06 at 208/230 — not a block, not a hang. Launch with
+`Iniciar_Worker_A.ps1` (PowerShell `Start-Process`), which reparents the process so nothing
+reaps it, and poll the log file.
+
+**Budget, measured 2026-08-07:** ~24 causa opens on one IP across an afternoon before a tier-2
+block, at 45 s spacing. Detail is the binding constraint — searches are cheap by comparison
+(208 in an evening, no search-block). `CAUSA_GAP` is now 90 s.
+
+---
+
 ## ★★★★★ 2026-08-06 — "TODOS" WORKS, AND MOST OF OUR BLOCKS WERE SELF-INFLICTED ★★★★★
 
 **Set Competencia=Civil and leave Corte on "Todos": `#fecTribunal` fills with all ~230 civil
