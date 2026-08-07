@@ -16,9 +16,9 @@ Worker A collects only cuaderno 1 and no receptor rows, so it writes exactly wha
 nothing it did not: no empty Notificaciones rows, no phantom cuaderno-2 shells.
 
 Usage
-    python ingest_worker_a.py --dry          # counts only, no writes
-    python ingest_worker_a.py                # upsert metadata
-    python ingest_worker_a.py --upload-pdfs  # also push ebooks to Drive and store the URL
+    python ingest_worker_a.py --dry        # counts only, no writes
+    python ingest_worker_a.py              # upload ebooks to Drive + upsert everything
+    python ingest_worker_a.py --no-upload  # metadata only, leave causas.ebook alone
 """
 import argparse
 import json
@@ -80,10 +80,13 @@ def as_causa(rec):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true")
-    ap.add_argument("--upload-pdfs", action="store_true",
-                    help="upload each ebook to Drive and store its URL in causas.ebook. "
-                         "Off by default: it is a long network job and the sweep is usually "
-                         "still running, so it should be a deliberate act, not a side effect.")
+    # Uploading is ON by default. It was opt-in at first, on the reasoning that a long network
+    # job should not fire as a side effect — but that left PDFs sitting on disk with causas.ebook
+    # empty, which reads as "the documents were never captured". A stored document nobody can
+    # find is not stored. The Drive traffic never touches the OJV, so there is no scrape cost to
+    # protect against here.
+    ap.add_argument("--no-upload", dest="upload_pdfs", action="store_false",
+                    help="skip pushing ebooks to Drive (leaves causas.ebook untouched)")
     a = ap.parse_args()
 
     st = snapshot(STATE)
@@ -94,18 +97,25 @@ def main():
     store = None if a.dry else dbstore.Store()
 
     if a.upload_pdfs and not a.dry:
+        # upload_pdfs_parallel runs 5 Drive uploads at once and skips names already in the
+        # folder, so re-running is cheap. Parallelism here is safe in a way it never is upstream:
+        # these requests go to Google, not to the OJV, so they cost nothing against the WAF.
+        items = []
+        for cid, rec in sorted(causas.items()):
+            f = PDFS / ((rec.get("ebook") or {}).get("file") or "")
+            if f.name and f.exists():
+                body = f.read_bytes()
+                if body[:4] != b"%PDF":         # never publish a challenge page as a document
+                    print(f"  [warn] {f.name} is not a pdf — skipped")
+                    continue
+                items.append((f"{cid}/ebook.pdf", body))
+        print(f"  uploading {len(items)} ebook(s) to Drive...")
+        links = store.upload_pdfs_parallel(items)
         for cid, rec in causas.items():
-            eb = rec.get("ebook") or {}
-            if not eb.get("file") or rec.get("_ebook_url"):
-                continue
-            f = PDFS / eb["file"]
-            if not f.exists():
-                continue
-            try:
-                rec["_ebook_url"] = store.upload_pdf(f"{cid}/ebook.pdf", f.read_bytes())
-                print(f"  uploaded {eb['file']} ({eb['bytes']:,} B)")
-            except Exception as e:
-                print(f"  [warn] upload {eb['file']}: {str(e)[:70]}")
+            url = links.get(f"{cid}/ebook.pdf")
+            if url:
+                rec["_ebook_url"] = url
+        print(f"  {len(links)} link(s) returned")
 
     merged, tribs, ids = {}, {}, []
     for cid, rec in sorted(causas.items()):
