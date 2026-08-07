@@ -87,6 +87,78 @@ def _sql_table(tab):
     return re.sub(r"\s+", "_", tab.strip().lower())
 
 
+# ── typed columns ───────────────────────────────────────────────────────────────
+# Everything else is TEXT. Keyed by SQL column name (post-_sqlcol), per tab.
+#
+# NOT listed on purpose:
+#   folio (cuadernos/documentos/anexos) — 4,166 values look like '[11E]': a folio carrying an
+#     escrito marker. It is an identifier, not a quantity, and integer cannot hold it.
+#   rut, dv — identifiers too. A check digit can be 'K' and leading zeros are significant, so
+#     numeric would corrupt them while buying no arithmetic anyone would ever want.
+COLUMN_KIND = {
+    "Causas": {"f_ingreso": "DATE", "updated_at": "TIMESTAMPTZ"},
+    "Cuadernos": {"fecha_tramite": "DATE", "fecha_diligencia": "DATE", "foja": "INTEGER"},
+    "Escritos": {"fecha_ingreso": "DATE"},
+    "Litigantes": {"updated_at": "TIMESTAMPTZ"},
+    "Ruts": {"updated_at": "TIMESTAMPTZ"},
+    "Notificaciones Receptor": {"fecha": "DATE"},
+    "Anexos": {"fecha": "DATE"},
+}
+_DMY = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
+
+
+def _kind(tab, header):
+    return COLUMN_KIND.get(tab, {}).get(_sqlcol(header))
+
+
+def _to_db(tab, header, raw):
+    """Python value -> what this column can actually store.
+
+    Two things a TEXT column tolerated and a typed one will not:
+      * '' — perfectly ordinary in TEXT, a hard error in DATE/INTEGER. Becomes NULL.
+      * 'dd/mm/yyyy' — parses only if the SESSION's DateStyle happens to say DMY, which makes
+        correctness depend on a connection setting nobody sets deliberately. Get it backwards and
+        03/07 silently lands as 7 March. We convert to ISO here, so the value is unambiguous
+        before it ever reaches Postgres.
+    """
+    s = "" if raw is None else str(raw).strip()
+    kind = _kind(tab, header)
+    if kind is None:
+        return s                       # TEXT keeps '' — long-standing behaviour, don't disturb it
+    if not s:
+        return None
+    if kind == "DATE":
+        m = _DMY.match(s)
+        if m:
+            return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+        return s                       # already ISO, or garbage that SHOULD fail loudly
+    if kind == "INTEGER":
+        t = s.replace(".", "").replace(",", "")
+        return int(t) if t.lstrip("-").isdigit() else None
+    return s
+
+
+def _from_db(tab, header, v):
+    """Typed column -> the string shape every existing caller already expects.
+
+    read_tab used to str() everything, so a DATE would start arriving as '2026-07-22' where the
+    Sheet exporter and every comparison in the codebase expect '22/07/2026'. Changing the storage
+    type should not change what callers see.
+    """
+    if v is None:
+        return ""
+    kind = _kind(tab, header)
+    if kind == "DATE" and hasattr(v, "strftime"):
+        return v.strftime("%d/%m/%Y")
+    if kind == "TIMESTAMPTZ" and hasattr(v, "strftime"):
+        try:
+            v = v.astimezone(datetime.timezone.utc)
+        except (ValueError, TypeError):
+            pass
+        return v.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return str(v)
+
+
 def _conn_kwargs(cfg=None):
     """Connection params for psycopg2.connect(**kwargs). Any Postgres (Neon,
     Supabase, self-hosted). Prefers the component dict `pg_conn` in config (password
@@ -117,8 +189,9 @@ def _ddl():
     stmts = []
     for tab in TAB_ORDER:
         sqlcols = [_sqlcol(c) for c in TABS[tab]]
+        kinds = COLUMN_KIND.get(tab, {})
         lines = [f'"{sqlcols[0]}" TEXT PRIMARY KEY']
-        lines += [f'"{c}" TEXT' for c in sqlcols[1:]]
+        lines += [f'"{c}" {kinds.get(c, "TEXT")}' for c in sqlcols[1:]]
         lines += [f'"{name}" {decl}' for name, decl in EXTRA_COLS.get(tab, [])]
         # Short (10-char) stable unique key for every row — AppSheet-friendly. Auto-
         # generated; never written by upsert (stays stable).
@@ -247,7 +320,7 @@ class Store:
                 merged[k] = r
         if not merged:
             return 0
-        tuples = [tuple(str(r.get(h, "") or "") for h in headers)
+        tuples = [tuple(_to_db(tab, h, r.get(h)) for h in headers)
                   for r in merged.values()]
 
         collist = ", ".join(f'"{c}"' for c in sqlcols)
@@ -289,7 +362,7 @@ class Store:
                     self._reconnect()
                     continue
                 raise
-        return [{h: ("" if v is None else str(v)) for h, v in zip(headers, row)}
+        return [{h: _from_db(tab, h, v) for h, v in zip(headers, row)}
                 for row in data]
 
     def dedup(self, table):
