@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import run
 import dbstore
 import ingest_cdp
+import gstore
 
 DATA = Path(__file__).parent.parent / "data" / "worker_a"
 STATE = DATA / "state.json"
@@ -100,22 +101,35 @@ def main():
         # upload_pdfs_parallel runs 5 Drive uploads at once and skips names already in the
         # folder, so re-running is cheap. Parallelism here is safe in a way it never is upstream:
         # these requests go to Google, not to the OJV, so they cost nothing against the WAF.
-        items = []
+        # ⚠️ Consult the Drive cache BEFORE reading any bytes. upload_pdfs_parallel skips files
+        # already in the folder, but only after being handed them — so reading every pdf first
+        # meant this job loaded the ENTIRE corpus into memory on every run just to discard it.
+        # Fine at 70 MB, not fine at the several hundred a full national sweep produces, and it
+        # runs hourly.
+        cache = store._load_doc_cache()
+        items, known = [], 0
         for cid, rec in sorted(causas.items()):
+            obj = f"{cid}/ebook.pdf"
+            hit = cache.get(gstore._flatten_name(obj))
+            if hit:
+                rec["_ebook_url"] = dbstore.direct_link(hit)
+                known += 1
+                continue
             f = PDFS / ((rec.get("ebook") or {}).get("file") or "")
             if f.name and f.exists():
                 body = f.read_bytes()
                 if body[:4] != b"%PDF":         # never publish a challenge page as a document
                     print(f"  [warn] {f.name} is not a pdf — skipped")
                     continue
-                items.append((f"{cid}/ebook.pdf", body))
-        print(f"  uploading {len(items)} ebook(s) to Drive...")
-        links = store.upload_pdfs_parallel(items)
+                items.append((obj, body))
+        print(f"  {known} ebook(s) already in Drive; uploading {len(items)} new...")
+        links = store.upload_pdfs_parallel(items) if items else {}
         for cid, rec in causas.items():
             url = links.get(f"{cid}/ebook.pdf")
             if url:
                 rec["_ebook_url"] = url
-        print(f"  {len(links)} link(s) returned")
+        if items:
+            print(f"  {len(links)} link(s) returned")
 
     merged, tribs, ids = {}, {}, []
     for cid, rec in sorted(causas.items()):

@@ -80,6 +80,20 @@ python scraper\ingest_worker_a.py            # uploads ebooks to Drive + upserts
 python scraper\ingest_worker_a.py --dry      # counts only
 ```
 
+**The ingest runs hourly on its own** — Windows Scheduled Task `PJUD ingesta horaria`, registered
+by `.\Ingesta_Horaria.ps1 -Install`, logging to `data\worker_a\ingesta.log`. It skips a run if the
+previous one is still going (a stale lock from a crash is ignored, not obeyed — otherwise one
+crash silently stops the ingest forever), and consults the Drive cache before reading any PDF
+bytes, so a run costs ~12 s once the corpus is uploaded instead of loading the whole corpus into
+memory. `schtasks /run /tn "PJUD ingesta horaria"` to fire it by hand.
+
+⚠️ **`.ps1` files here need a UTF-8 BOM.** Task Scheduler invokes Windows PowerShell 5.1, which
+reads scripts as ANSI without one — so the `──`/`⚠️` characters in the comments corrupted the
+parse and the task failed with exit 1 and an empty log. It ran fine when tested interactively
+under PowerShell 7, which is exactly why it has to be tested the way the scheduler runs it.
+Same reason `Say()` uses `Add-Content -Encoding UTF8`: 5.1's `Tee-Object` writes UTF-16 and left
+half the log unreadable.
+
 Useful flags: `--no-detail` (census only), `--no-ebook` (open causas, take metadata, request no
 document), `--max-causas N` (bounded probe), `--start N` (resume at a tribunal index),
 `--max-recover N` (consecutive blocks tolerated, default 6).

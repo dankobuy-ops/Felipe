@@ -1,4 +1,4 @@
-# Launch worker A DETACHED, so nothing reaps it mid-sweep.
+﻿# Launch worker A DETACHED, so nothing reaps it mid-sweep.
 #
 # ⚠️ WHY THIS SCRIPT EXISTS. A long run started as a background task from the agent harness is
 # KILLED after roughly half an hour. That is what actually happened to the census that appeared
