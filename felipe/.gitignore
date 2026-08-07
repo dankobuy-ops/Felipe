@@ -21,5 +21,9 @@ logs/
 netprobe_*.jsonl
 pjud_cdp_*.json
 
+# PJUD worker output — scraped causa data (names, RUTs) and downloaded PDFs.
+# This belongs in Neon and Drive, never in git.
+pjud/data/
+
 # Local Claude Code config
 .claude/
