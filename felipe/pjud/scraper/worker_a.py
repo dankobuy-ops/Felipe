@@ -455,6 +455,10 @@ def main():
 
         last_search = 0.0
         select_fails = 0
+        # ⚠️ Run-level, NOT per-tribunal. Scoped to the tribunal it never reached the
+        # limit: a throttle that costs two opens per court simply moved on to the next
+        # one, degrading for hours without a single detector firing (2026-08-08).
+        consec_fail = 0
         idx = a.start - 1
         while True:
             idx += 1
@@ -509,8 +513,18 @@ def main():
             if kind in ("stale", "timeout"):
                 note(f"  [{idx}/{len(tl)}] {tgt['v']:>5} {tgt['t'][:34]:36} {kind.upper()} "
                      f"after {el:.1f}s — never proved fresh, NOT recording")
+                consec_fail += 1
+                if consec_fail >= MODAL_FAIL_LIMIT:
+                    note(f"  *** {consec_fail} unproductive actions in a row — silent throttle. "
+                         f"Recovering.")
+                    consec_fail = 0
+                    if recover(idx):
+                        idx -= 1
+                    else:
+                        return 3
                 continue
 
+            consec_fail = 0                      # a search that proved fresh clears it too
             total = C.total_registros(p) if kind == "results" else None
             ent = {"idx": idx, "name": tgt["t"], "kind": kind, "elapsed": round(el, 1),
                    "total": total, "pages": 0, "rows_seen": 0, "complete": False,
@@ -525,7 +539,6 @@ def main():
 
             # ---- walk the result pages, harvesting detail from each BEFORE advancing ----
             page, seen, stuck, blocked_here = 1, 0, False, False
-            consec_fail = 0
             while True:
                 try:
                     rows = C.page_rows(p)
@@ -579,7 +592,7 @@ def main():
                                 blocked_here = True
                                 break
                             continue
-                        consec_fail = 0
+                        consec_fail = 0          # a real harvest clears the throttle counter
                         st["causas"][rec["causa_id"]] = rec
                         # A long clean stretch means the session genuinely recovered, so the
                         # budget must reset. Counting blocks for the LIFE of the run would strand

@@ -128,7 +128,32 @@ try {
     else {
         Say "*** sweep is DOWN (no worker_a process; sweep.log $age min old) — restarting"
 
-        # Chrome first: the worker cannot walk in without it, and restarting Chrome on the SAME
+        # ── escalation: same profile, then a FRESH one ────────────────────────────────────
+        # Restart #1 reuses the profile — a warm session is worth keeping and a block clears by
+        # re-entry. But if restarting has not helped, the session itself is the problem, and the
+        # operator's rule (2026-08-08) is that resetting the profile is fine. Nothing is lost:
+        # no login, no history worth keeping, and a virgin profile walks in first try.
+        if ($restarts -ge 2 -and (Test-Path $Profile)) {
+            Say "    $restarts restarts have not helped — retiring this profile and starting fresh"
+            Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
+                Where-Object { $_.CommandLine -like "*--user-data-dir=$Profile*" } |
+                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+            Start-Sleep -Seconds 5
+            $spent = "$Profile.spent-$(Get-Date -Format 'yyyyMMdd\-HHmm')"
+            try {
+                Rename-Item $Profile $spent -ErrorAction Stop
+                Say "    profile retired to $(Split-Path $spent -Leaf)"
+            } catch {
+                Say "    could not rename the profile ($($_.Exception.Message)) — continuing"
+            }
+            # Dead profiles are ~1 GB each and 3.58 GB of them had accumulated by 2026-08-05.
+            Get-ChildItem "$(Split-Path $Profile -Parent)" -Directory -Filter "$(Split-Path $Profile -Leaf).spent-*" |
+                Sort-Object Name -Descending | Select-Object -Skip 2 |
+                ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                                 Say "    pruned old profile $($_.Name)" }
+        }
+
+        # Chrome: the worker cannot walk in without it, and restarting Chrome on the SAME
         # profile dir is the documented, safe recovery — cookies and TSPD_101_DID survive, so
         # nothing is burned.
         $cdpOk = $false

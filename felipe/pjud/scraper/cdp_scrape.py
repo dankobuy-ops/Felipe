@@ -84,12 +84,27 @@ def _human_pointer(page, x, y, press=True):
 def page_busy(page):
     """True while the site is mid-request. It injects a spinner into #loadPre* (empty when
     idle) — the loading icon the operator watches on screen. Judging 'ready' by the results
-    table is useless: it keeps showing the PREVIOUS search's rows while the new one runs."""
+    table is useless: it keeps showing the PREVIOUS search's rows while the new one runs.
+
+    ⚠️ The #loadPre* spinner is NOT the only overlay. The site also throws a
+    `.jquery-loading-modal__bg` sheet across the page, and page_busy knew nothing about it — so
+    while it was up this returned "idle", the code went ahead and clicked, and human_click
+    correctly refused every target as covered. That cascade ("objetivo tapado" over and over,
+    causas never opening, searches never proving fresh) is the SILENT THROTTLE of 2026-08-07/08:
+    not the WAF at all, our own blindness to one div.
+    """
     try:
         return bool(page.evaluate(
-            "()=>['loadPre','loadPreFecha','loadPreNombre','loadPreJuridica']"
-            " .some(id=>{const e=document.getElementById(id);"
-            "  return e && e.offsetParent!==null && e.innerHTML.trim().length>0;})"))
+            "()=>{const pre=['loadPre','loadPreFecha','loadPreNombre','loadPreJuridica']"
+            "  .some(id=>{const e=document.getElementById(id);"
+            "   return e && e.offsetParent!==null && e.innerHTML.trim().length>0;});"
+            # offsetParent is NULL for position:fixed, and this overlay IS fixed — testing
+            # visibility that way is why the first attempt at this fix saw nothing at all.
+            " const vis=e=>{const r=e.getBoundingClientRect();const s=getComputedStyle(e);"
+            "   return r.width>0 && r.height>0 && s.display!=='none' && s.visibility!=='hidden';};"
+            " const ov=[...document.querySelectorAll("
+            "   '.jquery-loading-modal__bg,.jquery-loading-modal')].some(vis);"
+            " return pre||ov;}"))
     except Exception:
         return False
 
@@ -319,6 +334,36 @@ def clear_stuck_modal(page):
         if modal_open(page, sel):
             print(f"      [warn] {sel} sigue abierto — la pagina esta atascada")
             return False
+    # ⚠️ A modal that FAILED to open still leaves Bootstrap's backdrop behind, and the backdrop
+    # covers Buscar and every causa link. human_click then refuses each target as "tapado" and the
+    # run degrades with no block, no rejection page and nothing in any detector — the silent
+    # throttle of 2026-08-07/08 looked exactly like this. Removing the orphan backdrop is a DOM
+    # cleanup, not a click: it costs no request.
+    try:
+        n = page.evaluate("""()=>{
+          let k=0;
+          document.querySelectorAll('.jquery-loading-modal__bg,.jquery-loading-modal')
+              .forEach(e=>{ const r=e.getBoundingClientRect();
+                            if(r.width>0 && r.height>0){ e.remove(); k++; } });
+          return k;}""")
+        if n:
+            print(f"      [fix] removed {n} stuck loading overlay(s) covering the page")
+    except Exception:
+        pass
+    try:
+        page.evaluate("""()=>{
+          const anyOpen=[...document.querySelectorAll('.modal')]
+              .some(m=>m.classList.contains('show')||m.classList.contains('in')
+                       ||getComputedStyle(m).display!=='none');
+          if(anyOpen) return 0;
+          let n=0;
+          document.querySelectorAll('.modal-backdrop').forEach(b=>{b.remove();n++;});
+          document.body.classList.remove('modal-open');
+          document.body.style.removeProperty('padding-right');
+          document.body.style.removeProperty('overflow');
+          return n;}""")
+    except Exception:
+        pass
     return True
 
 
