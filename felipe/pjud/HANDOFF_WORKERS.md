@@ -80,12 +80,26 @@ python scraper\ingest_worker_a.py            # uploads ebooks to Drive + upserts
 python scraper\ingest_worker_a.py --dry      # counts only
 ```
 
-**The ingest runs hourly on its own** — Windows Scheduled Task `PJUD ingesta horaria`, registered
-by `.\Ingesta_Horaria.ps1 -Install`, logging to `data\worker_a\ingesta.log`. It skips a run if the
-previous one is still going (a stale lock from a crash is ignored, not obeyed — otherwise one
-crash silently stops the ingest forever), and consults the Drive cache before reading any PDF
-bytes, so a run costs ~12 s once the corpus is uploaded instead of loading the whole corpus into
-memory. `schtasks /run /tn "PJUD ingesta horaria"` to fire it by hand.
+**Hourly maintenance runs on its own and RESTARTS the sweep** — Windows Scheduled Task
+`PJUD mantencion horaria`, registered by `.\Mantencion_Horaria.ps1 -Install`, logging to
+`data\worker_a\ingesta.log`. Each hour it ingests, then checks the sweep and relaunches it if it
+is down — bringing Chrome back first if CDP is not answering (same profile dir; cookies and
+`TSPD_101_DID` survive, nothing is burned).
+
+It exists because the sweep died twice in one day in different ways and each time sat idle until
+a human looked — 19 hours on 2026-08-07. Both times the evidence was already in the logs.
+
+Judgement calls in it, so they are not undone by accident:
+- **Liveness is the PROCESS, not the log age.** A dead sweep is caught within the hour instead of
+  after a staleness timeout, and PID reuse is ruled out by matching the command line.
+- **A running-but-silent sweep is reported, never killed.** A wrongly-killed sweep costs more
+  than a late warning.
+- **Restarts stop after 4 without progress** and say a human is needed, so a tier-3 CAPTCHA (which
+  no script may answer) cannot become an hourly relaunch loop. Any progress resets the budget.
+- A stale lock from a crash is ignored rather than obeyed — otherwise one crash stops maintenance
+  forever, which nobody notices until the data is weeks behind.
+
+`schtasks /run /tn "PJUD mantencion horaria"` fires it by hand.
 
 ⚠️ **`.ps1` files here need a UTF-8 BOM.** Task Scheduler invokes Windows PowerShell 5.1, which
 reads scripts as ANSI without one — so the `──`/`⚠️` characters in the comments corrupted the
