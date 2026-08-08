@@ -65,6 +65,26 @@ try {
         $causas = ($out | Select-String "upserted Causas\s+(\d+)").Matches.Groups[1].Value
         $eb     = ($out | Select-String "ebooks on disk (\d+)").Matches.Groups[1].Value
         Say "ingest ok — causas=$causas ebooks_on_disk=$eb"
+
+        # ── stall detector ─────────────────────────────────────────────────────────────────
+        # This job is the only thing that looks at the project every hour, so it is the natural
+        # place to notice the sweep has died. On 2026-08-07 the sweep crashed at 19:24 and sat
+        # dead for 19 hours while this log recorded the same count 13 times in a row — the
+        # evidence was right here and nothing said so out loud.
+        $sweepLog = Join-Path $data "sweep.log"
+        $mark     = Join-Path $data ".last_count"
+        $prev     = if (Test-Path $mark) { Get-Content $mark -First 1 } else { "" }
+        $age      = if (Test-Path $sweepLog) {
+                        [int]((Get-Date) - (Get-Item $sweepLog).LastWriteTime).TotalMinutes
+                    } else { -1 }
+        if ($prev -eq $causas -and $age -gt 30) {
+            Say "*** SWEEP LOOKS DEAD — causas unchanged at $causas and sweep.log has not been"
+            Say "*** written for $age min. Check the tail of sweep.log / sweep.err, then relaunch"
+            Say "*** with .\Iniciar_Worker_A.ps1 (it resumes; completed tribunales are skipped)."
+        } elseif ($age -ge 0) {
+            Say "sweep.log last written $age min ago"
+        }
+        $causas | Out-File $mark -Encoding ascii
     }
 } catch {
     Say "ingest ERROR: $($_.Exception.Message)"

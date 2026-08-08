@@ -891,9 +891,19 @@ def paginator_state(page):
 
 
 def first_sig(page):
-    return page.eval_on_selector(
-        "#dtaTableDetalleFecha tbody tr a[onclick*='detalleCausaCivil']",
-        "e=>e?e.getAttribute('onclick'):''") or ""
+    """Fingerprint of the first causa link, or '' if the table has none.
+
+    ⚠️ eval_on_selector THROWS when nothing matches the selector, and an EMPTY results table is
+    a perfectly ordinary state — a throttled session clears it. Unguarded, that exception
+    propagated out of next_page and killed a 10-hour sweep at tribunal 73 of 230 (2026-08-07),
+    which then sat dead for 19 hours. Use the _all form: no match is a value, not an error.
+    """
+    try:
+        return page.eval_on_selector_all(
+            "#dtaTableDetalleFecha tbody tr a[onclick*='detalleCausaCivil']",
+            "els=>els.length?els[0].getAttribute('onclick'):''") or ""
+    except Exception:
+        return ""
 
 
 def sig_disabled(page):

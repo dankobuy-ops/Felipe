@@ -35,6 +35,7 @@ Usage
     python worker_a.py --port 9337 --max-causas 12    # bounded probe of the detail budget
 """
 import sys, json, time, base64, argparse
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -67,6 +68,12 @@ POST_CAUSA = 30.0      # after closing a causa, before anything else
 # back in at the same pace. Multiplied by the recovery number, so repeat blocks wait ever longer.
 COOL_OFF = 180.0
 CLEAN_STREAK = 12      # clean causa opens that earn the recovery budget back
+# ⚠️ THE SILENT THROTTLE. On 2026-08-07 the session degraded with NO rejection page, NO challenge
+# iframe and NO support id — waf_check read it as THROTTLED, ojv.blocked() saw nothing, and the
+# run simply kept opening causas that never opened. Four in a row, then a crash. Consecutive
+# modal failures with a clean block-check ARE the tell, and nothing else reports them.
+MODAL_FAIL_LIMIT = 3
+SELECT_FAIL_LIMIT = 5   # consecutive un-selectable tribunales = the form is gone
 
 CIVIL = "3"
 net = []
@@ -311,6 +318,14 @@ def main():
                          "its own, so a document problem never needs to idle the profile.")
     a = ap.parse_args()
 
+    # ⚠️ Validate the window FIRST. PowerShell's Get-Date -Format "dd/MM/yyyy" returns
+    # "08-08-2026" under an es-CL locale — "/" in a .NET format string means "the culture's date
+    # separator", not a literal slash. That malformed date reached the form, the search went
+    # nonsense, and the run recorded a real tribunal as EMPTY. Refuse it at the door.
+    for label, val in (("--desde", a.desde), ("--hasta", a.hasta)):
+        if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
+            raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy — refusing to search with it")
+
     PDFS.mkdir(parents=True, exist_ok=True)
     STATE = DATA / "state.json"
     st = {"meta": {}, "tribunales": {}, "causas": {}}
@@ -356,6 +371,14 @@ def main():
             the profile dir (which waf_check still advises) throws away a warm session for nothing.
             """
             tidy_tabs(ctx)
+            # A modal left open by a crashed run blocks every keyboard select that follows, so
+            # the whole sweep reports "could not select" for all 230 tribunales.
+            for q in list(ctx.pages):
+                try:
+                    if q.query_selector("#modalDetalleCivil"):
+                        C.clear_stuck_modal(q)
+                except Exception:
+                    pass
             pg = ojv.walk_in(ctx)
             if pg is None:
                 return None, None, None
@@ -379,6 +402,11 @@ def main():
                 if pg.eval_on_selector(sel, "e=>e.value") != val:
                     C.type_date_kbd(pg, sel, val)
                     ojv.click_away(pg)
+                # Read it BACK. Typing is not proof it arrived, and a wrong window does not fail
+                # loudly — it returns plausible-looking results for the wrong dates.
+                got = pg.eval_on_selector(sel, "e=>e.value")
+                if got != val:
+                    raise SystemExit(f"{sel} reads {got!r}, expected {val!r} — refusing to search")
             lst = pg.eval_on_selector_all("#fecTribunal option",
                                           "e=>e.filter(o=>o.value&&o.value!=='0')"
                                           ".map(o=>({v:o.value,t:(o.textContent||'').trim()}))")
@@ -420,6 +448,7 @@ def main():
             return True
 
         last_search = 0.0
+        select_fails = 0
         idx = a.start - 1
         while True:
             idx += 1
@@ -438,7 +467,18 @@ def main():
                 note(f"  [{idx}] {tgt['v']} re-search: {len(missing)} causa(s) lack detail")
             if not C.select_tribunal_kbd(p, tgt["v"]):
                 note(f"  [{idx}] {tgt['v']} could not select — skip")
+                select_fails += 1
+                # ⚠️ NEVER let this end in a clean DONE. On 2026-08-08 a stale modal blocked every
+                # select and the run "completed" having swept nothing, reporting the previous
+                # run's totals as if they were this one's. A form we cannot drive is a hard stop.
+                if select_fails >= SELECT_FAIL_LIMIT:
+                    note(f"  *** {select_fails} tribunales in a row could not be selected — the "
+                         f"form is not usable (stale modal? collapsed panel?). Stopping.")
+                    save()
+                    tally_line("TALLY at form-loss:")
+                    return 5
                 continue
+            select_fails = 0
             ojv.click_away(p)
             if last_search:
                 gap = SEARCH_GAP - (time.time() - last_search)
@@ -479,8 +519,14 @@ def main():
 
             # ---- walk the result pages, harvesting detail from each BEFORE advancing ----
             page, seen, stuck, blocked_here = 1, 0, False, False
+            consec_fail = 0
             while True:
-                rows = C.page_rows(p)
+                try:
+                    rows = C.page_rows(p)
+                except Exception as e:
+                    note(f"    [warn] could not read the results table: {str(e)[:80]}")
+                    blocked_here = True
+                    break
                 banks = [dict(r, page=page) for r in rows if r["has"]
                          and r["rol"].upper().startswith("C") and C.is_bank(r["car"])]
                 seen += sum(1 for r in rows if r["rol"].strip())   # skip the blank filler row
@@ -516,11 +562,18 @@ def main():
                             blocked_here = True
                             break
                         if rec is None:
-                            # Not a block (just checked). A stuck modal poisons every LATER open,
-                            # so clear it — one hiccup used to look exactly like a burned profile
-                            # for the whole rest of the run.
+                            # Not a block by the usual tells (just checked). A stuck modal
+                            # poisons every LATER open, so clear it — one hiccup used to look
+                            # exactly like a burned profile for the rest of the run.
                             C.clear_stuck_modal(p)
+                            consec_fail += 1
+                            if consec_fail >= MODAL_FAIL_LIMIT:
+                                note(f"  *** {consec_fail} causa opens in a row failed with no "
+                                     f"rejection page — that is the SILENT THROTTLE. Recovering.")
+                                blocked_here = True
+                                break
                             continue
+                        consec_fail = 0
                         st["causas"][rec["causa_id"]] = rec
                         # A long clean stretch means the session genuinely recovered, so the
                         # budget must reset. Counting blocks for the LIFE of the run would strand
@@ -542,7 +595,14 @@ def main():
 
                 if blocked_here:
                     break
-                why = advance(p, page)
+                try:
+                    why = advance(p, page)
+                except Exception as e:
+                    # A 10-hour sweep must not die on one unexpected exception. Treat it the way
+                    # we treat a block: save, re-enter, retry the tribunal.
+                    note(f"    [warn] paginator threw: {str(e)[:90]} — treating as a block")
+                    blocked_here = True
+                    break
                 if why != "more":
                     stuck = why == "stuck"
                     break

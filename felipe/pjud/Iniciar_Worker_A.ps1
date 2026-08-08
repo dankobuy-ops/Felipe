@@ -14,7 +14,11 @@
 param(
     [int]    $Port   = 9342,
     [string] $Desde  = "15/07/2026",
-    [string] $Hasta  = (Get-Date -Format "dd/MM/yyyy"),
+    # ⚠️ The slashes MUST be escaped. In a .NET format string "/" means "this culture's date
+    # separator", and this machine is es-CL, so "dd/MM/yyyy" yields 08-08-2026. That malformed
+    # date reached the search form on 2026-08-08, the window went nonsense, and a live tribunal
+    # was recorded as EMPTY before anything noticed.
+    [string] $Hasta  = (Get-Date -Format "dd\/MM\/yyyy"),
     [switch] $NoEbook,                      # metadata only, request no documents
     [switch] $NoDetail                      # census only, open nothing
 )
