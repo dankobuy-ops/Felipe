@@ -30,12 +30,15 @@ Two consequences drive the whole architecture:
 | worker | does | costs per causa | status |
 |---|---|---|---|
 | **A — discovery** (`worker_a.py`) | sweep every tribunal, census + free metadata + **ebook** | 1 open + 1 doc | **built, running** |
-| **B — backfill** | the other 4 documents for causas A already found | 4 docs, no search | designed, not built |
+| **B — backfill** (`worker_b.py`) | ebooks for causas ALREADY in Neon, from a filtered work-list | 1 open + 1 doc | **built — runs on PC 2, see `HANDOFF_PC2.md`** |
 | **C — refresh** | re-check known causas for new movements | 1 search per tribunal | designed, not built |
 
-Worker B is mostly written already: `worker_a.grab_doc(p, causa_id, label, frag)` fetches any
-document by endpoint fragment, and every causa record carries a `docs_pending` list naming exactly
-what is missing. The endpoint fragments are `docu.php` (texto demanda),
+Worker B is built (`worker_b.py`): it asks Neon which selected causas lack a document instead of
+discovering anything, so it never competes with A, and it writes with a targeted UPDATE rather
+than an upsert. It shares A's `enter_and_setup()`, `harvest_causa()` and `grab_doc()` verbatim —
+`grab_doc(p, causa_id, label, frag)` fetches ANY document by endpoint fragment, and every causa
+record carries a `docs_pending` list naming what is missing, which is what the remaining four
+documents will hang off. The endpoint fragments are `docu.php` (texto demanda),
 `docCertificadoDemanda` (certificado), `newebook` (ebook); historia-row documents use
 `docuN.php` / `docuS.php` and need the row located first.
 

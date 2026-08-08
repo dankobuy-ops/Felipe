@@ -297,6 +297,65 @@ def advance(p, page):
     return "more"
 
 
+def enter_and_setup(ctx, net, desde, hasta):
+    """Walk in and build the search form. Returns (page, Settler, tribunal list).
+
+    Module level and parameterised so worker B shares it verbatim. Entry, the Competencia
+    cascade, the corte guard and the date read-back are exactly where a second copy would
+    drift — and drift here is invisible until a run searches the wrong window and files live
+    tribunales as empty, which is what happened on 2026-08-08.
+
+    Also the recovery path. A tier-2 block leaves TSBrPFrame_cs_chlg_* frames parked on a
+    session that is otherwise fine, and re-entry clears them — measured 2026-08-07, 18 s,
+    0 rejection frames afterwards, same profile. NOTHING is burned by a block, so rotating
+    the profile dir (which waf_check still advises) throws away a warm session for nothing.
+    """
+    tidy_tabs(ctx)
+    # A modal left open by a crashed run blocks every keyboard select that follows, so
+    # the whole sweep reports "could not select" for all 230 tribunales.
+    for q in list(ctx.pages):
+        try:
+            if q.query_selector("#modalDetalleCivil"):
+                C.clear_stuck_modal(q)
+        except Exception:
+            pass
+    pg = ojv.walk_in(ctx)
+    if pg is None:
+        return None, None, None
+    note(f"in: {pg.url[:60]}")
+    del net[:]
+    pg.on("response", ojv.make_tap(net))
+    settler = Settler(pg)
+    C.open_fecha_panel(pg)
+    # Competencia is the ONLY cascade we trigger; corte stays on "Todos"
+    if pg.eval_on_selector("#fecCompetencia", "e=>e.value") != CIVIL:
+        note("Competencia = Civil")
+        C.select_by_kbd(pg, "#fecCompetencia", CIVIL)
+        ojv.click_away(pg)
+        settler.wait(need="document.querySelectorAll('#fecTribunal option').length>50",
+                     quiet_ms=1200, timeout=60, label="all-tribunales")
+    corte = pg.eval_on_selector("#corteFec", "e=>e.value")
+    if corte not in ("", "0"):
+        note(f"[!] corte={corte}, expected Todos — refusing to change it (the burst)")
+        raise SystemExit(2)
+    for sel, val in (("#fecDesde", desde), ("#fecHasta", hasta)):
+        if pg.eval_on_selector(sel, "e=>e.value") != val:
+            C.type_date_kbd(pg, sel, val)
+            ojv.click_away(pg)
+        # Read it BACK. Typing is not proof it arrived, and a wrong window does not fail
+        # loudly — it returns plausible-looking results for the wrong dates.
+        got = pg.eval_on_selector(sel, "e=>e.value")
+        if got != val:
+            raise SystemExit(f"{sel} reads {got!r}, expected {val!r} — refusing to search")
+    lst = pg.eval_on_selector_all("#fecTribunal option",
+                                  "e=>e.filter(o=>o.value&&o.value!=='0')"
+                                  ".map(o=>({v:o.value,t:(o.textContent||'').trim()}))")
+    note(f"tribunales={len(lst)} corte=Todos dates "
+         f"{pg.eval_on_selector('#fecDesde','e=>e.value')}.."
+         f"{pg.eval_on_selector('#fecHasta','e=>e.value')}")
+    return pg, settler, lst
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -362,60 +421,7 @@ def main():
                              f"Restart Chrome on the SAME --user-data-dir and retry.")
         ctx = b.contexts[0]
 
-        def enter():
-            """Walk in and build the search form. Returns (page, Settler, tribunal list).
-
-            Also the recovery path. A tier-2 block leaves TSBrPFrame_cs_chlg_* frames parked on a
-            session that is otherwise fine, and re-entry clears them — measured 2026-08-07, 18 s,
-            0 rejection frames afterwards, same profile. NOTHING is burned by a block, so rotating
-            the profile dir (which waf_check still advises) throws away a warm session for nothing.
-            """
-            tidy_tabs(ctx)
-            # A modal left open by a crashed run blocks every keyboard select that follows, so
-            # the whole sweep reports "could not select" for all 230 tribunales.
-            for q in list(ctx.pages):
-                try:
-                    if q.query_selector("#modalDetalleCivil"):
-                        C.clear_stuck_modal(q)
-                except Exception:
-                    pass
-            pg = ojv.walk_in(ctx)
-            if pg is None:
-                return None, None, None
-            note(f"in: {pg.url[:60]}")
-            del net[:]
-            pg.on("response", ojv.make_tap(net))
-            settler = Settler(pg)
-            C.open_fecha_panel(pg)
-            # Competencia is the ONLY cascade we trigger; corte stays on "Todos"
-            if pg.eval_on_selector("#fecCompetencia", "e=>e.value") != CIVIL:
-                note("Competencia = Civil")
-                C.select_by_kbd(pg, "#fecCompetencia", CIVIL)
-                ojv.click_away(pg)
-                settler.wait(need="document.querySelectorAll('#fecTribunal option').length>50",
-                             quiet_ms=1200, timeout=60, label="all-tribunales")
-            corte = pg.eval_on_selector("#corteFec", "e=>e.value")
-            if corte not in ("", "0"):
-                note(f"[!] corte={corte}, expected Todos — refusing to change it (the burst)")
-                raise SystemExit(2)
-            for sel, val in (("#fecDesde", a.desde), ("#fecHasta", a.hasta)):
-                if pg.eval_on_selector(sel, "e=>e.value") != val:
-                    C.type_date_kbd(pg, sel, val)
-                    ojv.click_away(pg)
-                # Read it BACK. Typing is not proof it arrived, and a wrong window does not fail
-                # loudly — it returns plausible-looking results for the wrong dates.
-                got = pg.eval_on_selector(sel, "e=>e.value")
-                if got != val:
-                    raise SystemExit(f"{sel} reads {got!r}, expected {val!r} — refusing to search")
-            lst = pg.eval_on_selector_all("#fecTribunal option",
-                                          "e=>e.filter(o=>o.value&&o.value!=='0')"
-                                          ".map(o=>({v:o.value,t:(o.textContent||'').trim()}))")
-            note(f"tribunales={len(lst)} corte=Todos dates "
-                 f"{pg.eval_on_selector('#fecDesde','e=>e.value')}.."
-                 f"{pg.eval_on_selector('#fecHasta','e=>e.value')}")
-            return pg, settler, lst
-
-        p, S, tl = enter()
+        p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
         if p is None:
             raise SystemExit("could not reach the form")
         if len(tl) < 50:
@@ -438,7 +444,7 @@ def main():
             cool = COOL_OFF * recoveries
             note(f"  recovery {recoveries}/{a.max_recover}: cooling off {cool:.0f}s, then re-entry")
             time.sleep(cool)
-            p, S, tl = enter()
+            p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
             if p is None:
                 note("  *** re-entry failed (tier-3 CAPTCHA needs a human?) — stopping. "
                      f"resume with --start {idx}")
