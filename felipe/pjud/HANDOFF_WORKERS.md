@@ -306,3 +306,33 @@ Backups from the migration: `<table>_bak_20260807`. Drop them once the types hav
    in the first draft of this section; GitHub push protection rejected the push, which is the
    only reason a live credential did not land in a PUBLIC repo. The location is enough — the
    value never needs to be written down.
+
+---
+
+## 10. Concurrency — measured 2026-08-09/10, one IP
+
+| workers | pacing | result |
+|---|---|---|
+| 1 | searches 60 s, pages 20 s | fine for hours |
+| 2 | pages at 20 s | ✅ 20 min, then ONE worker blocked mid pagination burst |
+| 2 | **pages share the 60 s budget** | ✅ **65 min, 98 result requests, zero blocks** |
+| 3 | pages share the 60 s budget | ❌ **all three blocked at once, 6 min in, 2 searches each** |
+
+**Two workers is the ceiling on one IP.** The three-worker run is the cleanest datum here: fresh
+profiles, simultaneous start, and all three rejected within **12 seconds of each other**
+(00:21:03 / 00:21:13 / 00:21:15) — which rules out profile age and start ordering, and shows F5
+cutting the whole address at once rather than punishing an individual session.
+
+Rough ceiling: two workers sustained ~1.5 result requests/minute for an hour; three would be
+~2.2/min and died immediately. So the limit sits between those, and it is a RATE, not a quota.
+
+⚠️ **A paginator click is a search.** It hits consultaFechaCivil.php and returns a result set, so
+it must draw on the same budget. `PAGE_GAP` used to be 20 s against `SEARCH_GAP` 60 s, which meant
+every tribunal over 100 rows quietly fired at three times the intended rate — Taltal has 270
+registros, so one worker alone produced 3 requests in 46 s. A single worker rarely noticed
+(pagination averages 1.28 pages/tribunal, so bursts were isolated); two workers made them overlap
+and that is what killed round 1. Fixed: one budget for every result request.
+
+**The old "3 workers = blocked" note from 2026-07-23 was right, but for the wrong reason.** It was
+measured while every worker also fired the corte-change burst, so it never isolated concurrency.
+This trial does, and reaches the same ceiling — now for a reason we can point at.
