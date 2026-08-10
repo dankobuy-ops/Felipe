@@ -284,7 +284,23 @@ def _grab(p, causa_id, label, js, arg):
 
 # ── one causa ────────────────────────────────────────────────────────────────
 
-def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=True):
+def proc_matches(rec, pattern):
+    """Does this causa's procedimiento match what we are collecting?
+
+    ⚠️ This can only be asked AFTER the causa is open. The results table carries Rol, Fecha,
+    Caratulado and Tribunal — no procedimiento — so the list-level filter can only be "a C- rol
+    with a bank among the parties". That is a real filter, but a loose one: it also matches Ley de
+    Bancos, Liquidación Forzosa and Juicio de arrendamiento, which is why ~12% of what we stored
+    was not what anyone asked for. The open is already spent by the time we know; what this saves
+    is the document fetch and a wrong row in Neon.
+    """
+    if not pattern:
+        return True
+    got = C.norm((rec.get("header") or {}).get("procedimiento", ""))
+    return re.search(pattern, got, re.I) is not None
+
+
+def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=True, only_proc=""):
     """Open the causa, take everything free, take the ebook, close. Returns the record or None
     if the modal never opened (which is NOT by itself a block — the caller checks that)."""
     causa_id = f"{trib_id}-{row['rol']}"
@@ -328,6 +344,16 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=True):
          f"{len(rec.get('historia_c1') or [])} historia c1 · "
          f"{len(rec['cuadernos'])} cuadernos · {proc[:40]}")
 
+    if only_proc and not proc_matches(rec, only_proc):
+        # Recorded, so it is never re-opened, but flagged so nothing downstream stores it and no
+        # document is bought for it.
+        rec["skipped_proc"] = True
+        rec["ebook"] = {"bytes": 0, "skipped_proc": True}
+        note(f"      procedimiento {proc[:40]!r} does not match — no document, not stored")
+        C.close_modal(p, "#modalDetalleCivil")
+        p.wait_for_timeout(1200)
+        C.clear_stuck_modal(p)
+        return rec
     if want_ebook:
         time.sleep(EBOOK_GAP)
         rec["ebook"] = grab_doc(p, causa_id, "ebook", "newebook")
@@ -450,6 +476,11 @@ def main():
                     help="stop AFTER this tribunal index (0 = to the end). With --start this "
                          "carves a disjoint slice, which is how several workers share one sweep "
                          "without ever searching the same tribunal twice.")
+    ap.add_argument("--only-proc", default="",
+                    help="regex on procedimiento, e.g. 'obligaci.*dar'. Causas that do not match "
+                         "are recorded (so they are never re-opened) but get no document and are "
+                         "not written to Neon. Only knowable after the open: the results table "
+                         "has no procedimiento column.")
     ap.add_argument("--causa-gap", type=float, default=0.0,
                     help="override CAUSA_GAP. Concurrent DETAIL workers must each go SLOWER: the "
                          "budget looks like ~1.4 request-equivalents/min per IP and a causa open "
@@ -756,7 +787,8 @@ def main():
                         tally["opens"] += 1
                         try:
                             rec = harvest_causa(ctx, p, tgt["v"], tgt["t"], c,
-                                                want_ebook=not a.no_ebook)
+                                                want_ebook=not a.no_ebook,
+                                                only_proc=a.only_proc)
                         except Exception as e:
                             note(f"    [warn] harvest threw: {str(e)[:90]}")
                             rec = None

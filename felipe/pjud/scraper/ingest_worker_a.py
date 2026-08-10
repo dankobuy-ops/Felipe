@@ -140,6 +140,8 @@ def main():
 
     merged, tribs, ids = {}, {}, []
     for cid, rec in sorted(causas.items()):
+        if rec.get("skipped_proc"):      # opened, procedimiento did not match — deliberately not stored
+            continue
         if not (rec.get("header") or {}):
             print(f"  skip {cid}: no header (metadata never harvested)")
             continue
