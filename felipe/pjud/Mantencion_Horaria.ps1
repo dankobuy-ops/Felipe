@@ -63,13 +63,41 @@ if (Test-Path $lock) {
 $PID | Out-File $lock -Encoding ascii
 
 function Get-SweepProcess {
-    # PID alone is not proof — Windows reuses them. Confirm the command line is really our sweep.
+    # ⚠️ NEVER trust the pid file alone. On 2026-08-10 this returned null for a worker that was
+    # demonstrably alive — the supervisor logged "sweep is DOWN ... sweep.log 0 min old", which is
+    # self-contradictory on its face, and started a SECOND worker onto the same state.json and
+    # sweep.log. Two writers on a file rewritten whole after every causa is how state gets shredded.
+    #
+    # The question is "is a worker running", not "is THIS pid running". A pid file can be stale,
+    # raced, or written by a start that bypassed the launcher. So: try it, then fall back to
+    # scanning. The scan is authoritative; the pid file is only a hint.
     $pidFile = Join-Path $data "sweep.pid"
-    if (-not (Test-Path $pidFile)) { return $null }
-    $spid = (Get-Content $pidFile -First 1 -ErrorAction SilentlyContinue)
-    if (-not $spid) { return $null }
-    $p = Get-CimInstance Win32_Process -Filter "ProcessId=$spid" -ErrorAction SilentlyContinue
-    if ($p -and $p.CommandLine -match "worker_a\.py") { return $p }
+    if (Test-Path $pidFile) {
+        $spid = (Get-Content $pidFile -First 1 -ErrorAction SilentlyContinue)
+        if ($spid) {
+            $spid = ($spid -replace '[^0-9]', '')
+            if ($spid) {
+                $p = Get-CimInstance Win32_Process -Filter "ProcessId=$spid" -ErrorAction SilentlyContinue
+                if ($p -and $p.CommandLine -match "worker_a\.py") { return $p }
+            }
+        }
+    }
+    $any = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+             Where-Object { $_.CommandLine -like "*worker_a.py*" })
+    if ($any.Count -gt 1) {
+        # Should never happen, but if it does, keep the newest and stop the rest before they
+        # corrupt state between them.
+        Say "    [!] $($any.Count) workers running — stopping all but the newest"
+        $any | Sort-Object CreationDate | Select-Object -SkipLast 1 |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        $keep = $any | Sort-Object CreationDate | Select-Object -Last 1
+        $keep.ProcessId | Out-File $pidFile -Encoding ascii
+        return $keep
+    }
+    if ($any.Count -eq 1) {
+        $any[0].ProcessId | Out-File $pidFile -Encoding ascii   # heal the stale pid file
+        return $any[0]
+    }
     return $null
 }
 
