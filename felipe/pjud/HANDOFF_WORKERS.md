@@ -316,7 +316,13 @@ Backups from the migration: `<table>_bak_20260807`. Drop them once the types hav
 | 1 | searches 60 s, pages 20 s | fine for hours |
 | 2 | pages at 20 s | ✅ 20 min, then ONE worker blocked mid pagination burst |
 | 2 | **pages share the 60 s budget** | ✅ **65 min, 98 result requests, zero blocks** |
+| 2 | pages share the 60 s budget, fresh profiles | ✅ **94 min, 131 requests, then ONE blocked** |
 | 3 | pages share the 60 s budget | ❌ **all three blocked at once, 6 min in, 2 searches each** |
+
+**Endurance of a 2-worker pair: about 90 minutes / ~130 result requests**, after which one of the
+two takes a tier-2 block and recovers on its own. The other kept running clean throughout, which
+is the useful part: a block hits ONE session, not the pair, so the sweep degrades rather than
+stopping. Plan for it instead of trying to avoid it — the recovery budget exists for exactly this.
 
 **Two workers is the ceiling on one IP.** The three-worker run is the cleanest datum here: fresh
 profiles, simultaneous start, and all three rejected within **12 seconds of each other**
