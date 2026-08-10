@@ -573,6 +573,27 @@ def causa_state(tribunal_id):
             return {}
 
 
+def _kbd_pause(page, base=95, spread=70, long_every=9):
+    """Sleep a human-ish interval between keystrokes.
+
+    ⚠️ THE KEYBOARD WAS PERFECTLY UNIFORM. select_by_kbd waited exactly 70 ms between every
+    arrow press and type_date_kbd typed at exactly 60 ms per character — for dozens of keys in a
+    row. That is the keyboard equivalent of the teleporting pointer that page.click() used to do,
+    and F5 Shape scores keystroke timing just as it scores pointer motion. Measured 2026-08-10 on
+    a session a HUMAN had just walked into: the Competencia cascade, the date typing and the
+    tribunal select all passed, and the very FIRST scripted search drew a tier-3 CAPTCHA. One
+    request, no rate involved — so it was never pacing, it was what the input stream looked like.
+
+    Real typing is noisy: most gaps cluster in a range, with an occasional long one where a
+    person glances away. Both are reproduced here.
+    """
+    d = random.gauss(base, spread / 3.0)
+    d = max(35.0, min(base + spread, d))
+    if long_every and random.randint(1, long_every) == 1:
+        d += random.uniform(180, 520)          # the occasional glance-away
+    page.wait_for_timeout(d)
+
+
 def select_by_kbd(page, sel, value):
     """Change a <select> to `value` via TRUSTED keyboard (focus + arrows). True on success."""
     try:
@@ -586,7 +607,7 @@ def select_by_kbd(page, sel, value):
         key = "ArrowDown" if tgt > cur else "ArrowUp"
         for _ in range(abs(tgt - cur)):
             page.keyboard.press(key)
-            page.wait_for_timeout(70)
+            _kbd_pause(page, base=85, spread=60)
         return page.eval_on_selector(sel, "e=>e.value") == value
     except Exception:
         return False
@@ -617,7 +638,9 @@ def type_date_kbd(page, sel, value):
             page.eval_on_selector(sel, "e=>{e.readOnly=false;e.removeAttribute('readonly');}")
             human_click(page, sel)                    # human arc — also opens the datepicker
             page.keyboard.press("Control+a")
-            page.keyboard.type(value, delay=60)       # TRUSTED keystrokes
+            for ch in value:                          # TRUSTED keystrokes, human cadence
+                page.keyboard.type(ch)
+                _kbd_pause(page, base=110, spread=90)
             page.keyboard.press(closer)               # close the datepicker / blur to fire change
             page.wait_for_timeout(400)
             if page.eval_on_selector(sel, "e=>e.value") == value:
@@ -871,7 +894,7 @@ def select_tribunal_kbd(page, value):
         key = "ArrowDown" if delta > 0 else "ArrowUp"
         for _ in range(abs(delta)):
             page.keyboard.press(key)
-            page.wait_for_timeout(70)
+            _kbd_pause(page, base=85, spread=60)
         return page.eval_on_selector("#fecTribunal", "e=>e.value") == value
     except Exception as e:
         print(f"    [warn] kbd tribunal {value}: {str(e)[:50]}")
