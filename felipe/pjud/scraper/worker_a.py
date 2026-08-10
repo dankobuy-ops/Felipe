@@ -35,6 +35,7 @@ Usage
     python worker_a.py --port 9337 --max-causas 12    # bounded probe of the detail budget
 """
 import sys, json, time, base64, argparse
+import random
 import re
 from pathlib import Path
 
@@ -63,6 +64,14 @@ PDFS = DATA / "pdfs"
 # refused (2026-08-09, rejF=6). The single-worker sweep never showed it because pagination
 # averages 1.28 pages per tribunal, so the bursts were rare and never overlapped.
 SEARCH_GAP = 60.0      # between result requests of ANY kind — searches AND page advances
+# ⚠️ KEEP CONCURRENT WORKERS OUT OF LOCKSTEP. Two workers started together pace from the same
+# instant and stay synchronised for ever: observed 2026-08-10, both logging every step at the
+# IDENTICAL second, right down to three failed entry attempts. To a rate limiter that is not two
+# requests spread across a minute, it is two requests in the same instant, once a minute — the
+# worst possible shape, and plausibly why three workers died within six minutes. Each gap gets a
+# little noise so the workers drift apart instead of re-colliding, and --offset separates their
+# starts in the first place.
+GAP_JITTER = 0.15      # ±15% on every inter-request gap
 # 2026-08-07: at 45 s the run reached 11 causa opens before a tier-2 block (~24 opens on this
 # IP across the afternoon). Detail is the binding constraint and the operator's standing rule is
 # "i'd rather wait a few seconds more, than to get blocked", so the gap is doubled. Searches are
@@ -314,6 +323,12 @@ def page_banks(p, page_no):
             if r["has"] and r["rol"].upper().startswith("C") and C.is_bank(r["car"])]
 
 
+def gap_for(base=None):
+    """An inter-request gap with jitter, so parallel workers do not fire in unison."""
+    base = SEARCH_GAP if base is None else base
+    return base * (1.0 + random.uniform(-GAP_JITTER, GAP_JITTER))
+
+
 def advance(p, page):
     """'more' | 'done' | 'stuck' — walk the paginator one step.
 
@@ -408,6 +423,10 @@ def main():
                     help="stop AFTER this tribunal index (0 = to the end). With --start this "
                          "carves a disjoint slice, which is how several workers share one sweep "
                          "without ever searching the same tribunal twice.")
+    ap.add_argument("--offset", type=float, default=0.0,
+                    help="seconds to wait before the FIRST request. Give each concurrent worker "
+                         "a different offset (e.g. 0 and 30 with a 60 s gap) so their requests "
+                         "interleave instead of arriving together.")
     ap.add_argument("--slot", type=int, default=0,
                     help="worker number. Each slot gets its OWN state.json and pdfs/ under "
                          "data/worker_a<N>. Two workers sharing one state file would interleave "
@@ -568,6 +587,9 @@ def main():
             note(f"  recovered — resuming at idx {idx}")
             return True
 
+        if a.offset:
+            note(f"offset: waiting {a.offset:.0f}s so this worker interleaves with the others")
+            time.sleep(a.offset)
         last_search = 0.0
         select_fails = 0
         # ⚠️ Run-level, NOT per-tribunal. Scoped to the tribunal it never reached the
@@ -606,7 +628,7 @@ def main():
             select_fails = 0
             ojv.click_away(p)
             if last_search:
-                gap = SEARCH_GAP - (time.time() - last_search)
+                gap = gap_for() - (time.time() - last_search)
                 if gap > 0:
                     time.sleep(gap)
 
@@ -680,7 +702,7 @@ def main():
                             save()
                             tally_line("TALLY at cap:")
                             return 0
-                        time.sleep(CAUSA_GAP)
+                        time.sleep(gap_for(CAUSA_GAP))
                         tally["opens"] += 1
                         try:
                             rec = harvest_causa(ctx, p, tgt["v"], tgt["t"], c,
@@ -725,12 +747,12 @@ def main():
                             tally["apm"] += 1
                         save()
                         tally_line("      running:")
-                        time.sleep(POST_CAUSA)
+                        time.sleep(gap_for(POST_CAUSA))
 
                 if blocked_here:
                     break
                 # A page advance draws on the same budget as a search — see SEARCH_GAP.
-                gap = SEARCH_GAP - (time.time() - last_search)
+                gap = gap_for() - (time.time() - last_search)
                 if gap > 0:
                     time.sleep(gap)
                 try:
