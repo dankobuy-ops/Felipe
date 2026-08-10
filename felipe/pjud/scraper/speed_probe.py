@@ -31,6 +31,95 @@ from playwright.sync_api import sync_playwright
 net = []
 
 
+def ramp_detail(p, S, tl, levels, a):
+    """Ramp CAUSA OPENS, which is the cycle that actually costs: open the modal, read it, fetch
+    the ebook, close. Searches are cheap by comparison and already re-measured; this is the 28 of
+    33 hours in a full pass, so it is the number worth knowing.
+    """
+    import worker_a as A
+    A.PDFS = Path(__file__).parent.parent / "data" / "probe_pdfs"
+    A.PDFS.mkdir(parents=True, exist_ok=True)
+    rows, ti, stop = [], 0, None
+    banks, last_search = [], 0.0
+
+    for gap in levels:
+        note(f"--- level: causa gap {gap:.0f}s ---")
+        for k in range(a.per_level):
+            while not banks:                       # need a results page with bank causas
+                tgt = tl[ti % len(tl)]
+                ti += 1
+                if not C.select_tribunal_kbd(p, tgt["v"]):
+                    continue
+                ojv.click_away(p)
+                g = 20.0 - (time.time() - last_search)
+                if g > 0:
+                    time.sleep(g)
+                net.clear()
+                C.human_click(p, "#btnConConsultaFec")
+                last_search = time.time()
+                kind, _ = ojv.wait_results(p, S, net)
+                if ojv.blocked(p, net)[0] or ojv.captcha_frame(p):
+                    note("    blocked while re-stocking causas"); return _report(rows, gap, a)
+                if kind == "results":
+                    C.human_scroll(p)
+                    banks = C.page_bank_causas(p)
+                    if banks:
+                        note(f"    stocked {len(banks)} causas from {tgt['t'][:34]}")
+
+            c = banks.pop(0)
+            cycle0 = time.time()
+            act0 = time.time()
+            rec = None
+            try:
+                rec = A.harvest_causa(ctx_of(p), p, "probe", "probe", c, want_ebook=True)
+            except Exception as e:
+                note(f"    harvest threw: {str(e)[:60]}")
+            act = time.time() - act0
+            blocked, why = ojv.blocked(p, net)
+            cap = ojv.captcha_frame(p)
+            got = bool(rec and (rec.get("ebook") or {}).get("bytes"))
+            spent = time.time() - cycle0
+            if spent < gap:
+                time.sleep(gap - spent)
+            cycle = time.time() - cycle0
+            rows.append({"gap": gap, "cycle": round(cycle, 1), "active": round(act, 1),
+                         "idle": round(max(0.0, cycle - act), 1), "wait": 0, "kind":
+                         "ebook" if got else ("opened" if rec else "FAILED"),
+                         "blocked": blocked, "captcha": cap})
+            note(f"    #{len(rows):>2} gap={gap:>4.0f}s cycle={cycle:>5.1f}s (open+doc {act:>5.1f}s) "
+                 f"{'ebook' if got else ('opened' if rec else 'FAILED'):7} "
+                 f"opens/min={60/cycle:.2f}"
+                 + (f"  *** {why or 'CAPTCHA'}" if (blocked or cap) else ""))
+            if blocked or cap or (rec and (rec.get("ebook") or {}).get("refused")):
+                stop = gap
+                break
+        if stop:
+            break
+    return _report(rows, stop, a)
+
+
+def ctx_of(page):
+    return page.context
+
+
+def _report(rows, stop, a):
+    note("")
+    if stop:
+        note(f"TRIPPED at causa gap {stop:.0f}s after {len(rows)} opens")
+        safe = [r for r in rows if r["gap"] > stop]
+        if safe:
+            f = min(r["gap"] for r in safe)
+            cyc = [r["cycle"] for r in safe if r["gap"] == f]
+            note(f"FASTEST CLEAN: gap {f:.0f}s, cycle {sum(cyc)/len(cyc):.1f}s "
+                 f"= {60*len(cyc)/sum(cyc):.2f} opens/min")
+    else:
+        note(f"never tripped across {len(rows)} causa opens")
+    out = a.out or str(Path(__file__).parent.parent / "data" / "speed_probe_detail.json")
+    Path(out).write_text(json.dumps(rows, indent=1), encoding="utf-8")
+    note(f"wrote {out}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=9352)
@@ -76,6 +165,9 @@ def main():
             "#fecTribunal option",
             "e=>e.filter(o=>o.value&&o.value!=='0').map(o=>({v:o.value,t:(o.textContent||'').trim()}))")
         note(f"{len(tl)} tribunales | ramping {'CAUSA OPENS' if a.detail else 'SEARCHES'}: {levels}")
+
+        if a.detail:
+            return ramp_detail(p, S, tl, levels, a)
 
         rows, ti, stop = [], 0, None
         for gap in levels:

@@ -86,13 +86,17 @@ GAP_JITTER = 0.15      # ±15% on every inter-request gap
 # IP across the afternoon). Detail is the binding constraint and the operator's standing rule is
 # "i'd rather wait a few seconds more, than to get blocked", so the gap is doubled. Searches are
 # untouched: 60 s is the one number with real evidence behind it (208 searches, one evening).
-# ⚠️ NOT yet re-measured with human keystrokes + scrolling. The search pace turned out to be 3x
-# too conservative once the behaviour was fixed, so this number is probably wrong too — but a
-# causa open costs more than a search and guessing in the fast direction is the expensive mistake.
-# Left conservative until speed_probe.py --detail says otherwise.
-CAUSA_GAP = 90.0       # between causa opens — the scarce resource
-EBOOK_GAP = 8.0        # after the modal renders, before asking for the pdf
-POST_CAUSA = 30.0      # after closing a causa, before anything else
+# 2026-08-10, MEASURED (speed_probe.py --detail, 18 opens on a virgin profile): ramped the gap
+# 90 -> 60 -> 40 -> 25 -> 15 -> 8 s. Never tripped, 18/18 ebooks, no block, no CAPTCHA. Below 15 s
+# the cycle stops shrinking at ~17.5 s because that IS the work — open the modal, read it, fetch
+# the document, close. Same shape as searches: our own floor, not the site's limit.
+#
+# 90 s gave 0.67 opens/min; the floor is 3.4. Set to 25 s (~2 opens/min, 3x the old rate) rather
+# than to the floor: the ramp proves a short burst is safe, it does NOT prove endurance over
+# hours, and detail is still the costliest thing we do. Earn the rest with a long run.
+CAUSA_GAP = 25.0       # between causa opens
+EBOOK_GAP = 4.0        # after the modal renders, before asking for the pdf
+POST_CAUSA = 10.0      # after closing a causa, before anything else
 # A block is a RATE verdict, so the one thing that must not happen after one is walking straight
 # back in at the same pace. Multiplied by the recovery number, so repeat blocks wait ever longer.
 COOL_OFF = 180.0
