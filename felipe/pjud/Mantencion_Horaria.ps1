@@ -92,15 +92,29 @@ try {
     }
 
     # ── 1. ingest ───────────────────────────────────────────────────────────────────────────
-    Say "ingest start"
-    $out = & $py -u (Join-Path $root "scraper\ingest_worker_a.py") 2>&1
-    $out | Out-File -FilePath $log -Append -Encoding utf8
+    # ⚠️ THE INGEST MUST NOT BE ABLE TO SILENCE SUPERVISION. On 2026-08-10 it threw a
+    # PermissionError, the exception unwound past the supervise block, and a dead sweep sat
+    # unrestarted for two hours while this log dutifully recorded "maintenance ERROR" each hour.
+    # Two jobs, two failure domains: the ingest gets its own try, and whatever it does, the sweep
+    # still gets checked below.
     $causas = ""
-    if ($LASTEXITCODE -ne 0) {
-        Say "ingest FAILED (exit $LASTEXITCODE)"
-    } else {
-        $causas = ($out | Select-String "upserted Causas\s+(\d+)").Matches.Groups[1].Value
-        $eb     = ($out | Select-String "ebooks on disk (\d+)").Matches.Groups[1].Value
+    try {
+        Say "ingest start"
+        $out = & $py -u (Join-Path $root "scraper\ingest_worker_a.py") 2>&1
+        $out | Out-File -FilePath $log -Append -Encoding utf8
+        if ($LASTEXITCODE -ne 0) { Say "ingest FAILED (exit $LASTEXITCODE) — supervising anyway" }
+    } catch {
+        Say "ingest THREW: $($_.Exception.Message -replace "`r?`n", ' | ') — supervising anyway"
+    }
+    # Pull the counters out only if the ingest actually produced them. A failed ingest simply
+    # leaves $causas empty, which the stall detector below reads as "no reading this hour" rather
+    # than as "no progress" — the two must not be confused, or a broken ingest would masquerade
+    # as a dead sweep and trigger pointless restarts.
+    $m = $out | Select-String "upserted Causas\s+(\d+)"
+    if ($m) {
+        $causas = $m.Matches.Groups[1].Value
+        $ebm    = $out | Select-String "ebooks on disk (\d+)"
+        $eb     = if ($ebm) { $ebm.Matches.Groups[1].Value } else { "?" }
         Say "ingest ok — causas=$causas ebooks_on_disk=$eb"
     }
 

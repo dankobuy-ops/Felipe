@@ -115,8 +115,15 @@ def main():
                 rec["_ebook_url"] = dbstore.direct_link(hit)
                 known += 1
                 continue
-            f = PDFS / ((rec.get("ebook") or {}).get("file") or "")
-            if f.name and f.exists():
+            # ⚠️ Guard the EMPTY filename. A causa whose ebook was skipped or missing has no
+            # "file", and PDFS / "" resolves to the pdfs DIRECTORY — whose .name is truthy and
+            # .exists() is True, so this read a folder as bytes and threw PermissionError. That
+            # killed the hourly job for hours, and with it the supervision that shares its run.
+            fname = ((rec.get("ebook") or {}).get("file") or "").strip()
+            if not fname:
+                continue
+            f = PDFS / fname
+            if f.is_file():
                 body = f.read_bytes()
                 if body[:4] != b"%PDF":         # never publish a challenge page as a document
                     print(f"  [warn] {f.name} is not a pdf — skipped")
