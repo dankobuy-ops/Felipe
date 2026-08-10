@@ -431,6 +431,12 @@ def main():
                     help="stop AFTER this tribunal index (0 = to the end). With --start this "
                          "carves a disjoint slice, which is how several workers share one sweep "
                          "without ever searching the same tribunal twice.")
+    ap.add_argument("--causa-gap", type=float, default=0.0,
+                    help="override CAUSA_GAP. Concurrent DETAIL workers must each go SLOWER: the "
+                         "budget looks like ~1.4 request-equivalents/min per IP and a causa open "
+                         "costs two (the open plus its document), so two workers at the "
+                         "single-worker pace spend about double the ceiling.")
+    ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
     ap.add_argument("--offset", type=float, default=0.0,
                     help="seconds to wait before the FIRST request. Give each concurrent worker "
                          "a different offset (e.g. 0 and 30 with a 60 s gap) so their requests "
@@ -463,13 +469,19 @@ def main():
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
             raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy — refusing to search with it")
 
-    global DATA, PDFS
+    global DATA, PDFS, CAUSA_GAP, POST_CAUSA
+    if a.causa_gap:
+        CAUSA_GAP = a.causa_gap
+    if a.post_causa:
+        POST_CAUSA = a.post_causa
     if a.slot:
         DATA = HERE.parent / "data" / f"worker_a{a.slot}"
         PDFS = DATA / "pdfs"
     PDFS.mkdir(parents=True, exist_ok=True)
     STATE = DATA / "state.json"
     note(f"slot {a.slot or 0}: state -> {STATE}")
+    note(f"pacing: search {SEARCH_GAP:.0f}s  causa {CAUSA_GAP:.0f}s  post {POST_CAUSA:.0f}s"
+         f"  offset {a.offset:.0f}s  jitter ±{GAP_JITTER*100:.0f}%")
     st = {"meta": {}, "tribunales": {}, "causas": {}}
     if STATE.exists() and STATE.stat().st_size:
         try:
@@ -526,6 +538,14 @@ def main():
         for attempt in (1, 2, 3):
             p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
             if p is not None:
+                # A form with no tribunales means we are LOOKING at the page but something is
+                # covering it — a CAPTCHA frame, typically. Retrying cannot help.
+                if len(tl or []) < 50:
+                    for q in ctx.pages:
+                        if ojv.captcha_frame(q):
+                            raise SystemExit(
+                                "TIER-3 IMAGE CAPTCHA on screen — a human must clear it. "
+                                "Not attempting to bypass.")
                 break
             note(f"entry attempt {attempt}/3 failed")
             if not ojv.internet_up() and not ojv.wait_for_internet()[0]:

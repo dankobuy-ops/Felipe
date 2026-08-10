@@ -139,9 +139,34 @@ def rej_frames(p):
             t = fr.evaluate("()=>document.body?document.body.innerText:''") or ""
         except Exception:
             continue
-        if "soporte" in t.lower() or "requested url was rejected" in t.lower():
+        low = t.lower()
+        # ⚠️ Match the ENGLISH forms too. The tier-3 CAPTCHA frame says "Your support ID is",
+        # which neither "soporte" nor "requested url was rejected" catches — so on 2026-08-10 two
+        # workers sat behind a full-page CAPTCHA while every detector reported health. Third time
+        # this same shape has bitten: one wording, one language, one frame we were not reading.
+        if ("soporte" in low or "requested url was rejected" in low
+                or "support id" in low or "code is in the image" in low):
             n += 1
     return n
+
+
+def captcha_frame(p):
+    """True if a tier-3 image CAPTCHA is on screen, in ANY frame.
+
+    ⚠️ It is served INSIDE A CHILD FRAME — 183 characters of it — so reading the main document's
+    innerText, which is what walk_in used to do, sees nothing at all. This must be its own check
+    rather than folded into blocked(): a CAPTCHA is not a rate verdict. Cooling off will not clear
+    it, re-entry will not clear it, and rotating the profile only earns a fresh one. It needs a
+    human, and the only correct response is to stop and say so.
+    """
+    for fr in p.frames:
+        try:
+            t = fr.evaluate("()=>document.body?document.body.innerText:''") or ""
+        except Exception:
+            continue
+        if "code is in the image" in t.lower():
+            return True
+    return False
 
 
 def hard_rejections(net):
@@ -364,7 +389,7 @@ def walk_in(ctx):
         body = page.evaluate("()=>document.body?document.body.innerText.slice(0,300):''") or ""
     except Exception:
         body = ""
-    if "code is in the image" in body.lower():
+    if "code is in the image" in body.lower() or captcha_frame(page):
         note("*** TIER-3 IMAGE CAPTCHA — needs the operator. Not attempting to bypass. ***")
         return None
     _dismiss_aviso(page)
