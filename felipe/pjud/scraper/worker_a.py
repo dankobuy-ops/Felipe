@@ -235,8 +235,16 @@ def _grab(p, causa_id, label, js, arg):
     try:
         res = p.evaluate(js, arg)
     except Exception as e:
-        note(f"      {label}: fetch threw — {str(e)[:70]}")
-        return {"bytes": 0, "failed": True}
+        msg = str(e)
+        # ⚠️ "TypeError: Failed to fetch" is the request being REFUSED at the network layer, not a
+        # bug in the page. There is no rejection frame and no challenge iframe, so blocked() sees
+        # nothing and the worker keeps paying for causa opens whose documents are all being
+        # denied — 2026-08-10, slot 1 ran on for two more opens that way while its sibling had
+        # already taken a visible block. Flag it as a refusal so it counts toward the throttle.
+        refused = "Failed to fetch" in msg or "ERR_" in msg
+        note(f"      {label}: fetch {'REFUSED at network level' if refused else 'threw'} — "
+             f"{msg[:70]}")
+        return {"bytes": 0, "failed": True, "refused": refused}
     el = round(time.time() - t0, 1)
     if res.get("err"):
         note(f"      {label}: {res['err']}")
@@ -717,6 +725,20 @@ def main():
                             tally_line("TALLY at block:")
                             blocked_here = True
                             break
+                        # A document refused at the network layer is a refusal even though no
+                        # rejection page exists. Count it, or the run keeps buying causa opens it
+                        # can no longer use.
+                        if rec is not None and (rec.get("ebook") or {}).get("refused"):
+                            consec_fail += 1
+                            note(f"      [!] document refused ({consec_fail}/"
+                                 f"{MODAL_FAIL_LIMIT}) — session may be going")
+                            if consec_fail >= MODAL_FAIL_LIMIT:
+                                note("  *** documents being refused with no rejection page — "
+                                     "treating as a block")
+                                st["causas"][rec["causa_id"]] = rec
+                                save()
+                                blocked_here = True
+                                break
                         if rec is None:
                             # Not a block by the usual tells (just checked). A stuck modal
                             # poisons every LATER open, so clear it — one hiccup used to look
