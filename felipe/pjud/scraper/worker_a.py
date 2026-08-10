@@ -63,7 +63,17 @@ PDFS = DATA / "pdfs"
 # requests in 46 s. With two workers paginating at once the IP saw a request every ~10 s and F5
 # refused (2026-08-09, rejF=6). The single-worker sweep never showed it because pagination
 # averages 1.28 pages per tribunal, so the bursts were rare and never overlapped.
-SEARCH_GAP = 60.0      # between result requests of ANY kind — searches AND page advances
+# 2026-08-10, MEASURED not guessed (speed_probe.py, 51 requests across a human-warmed session
+# AND a virgin profile): ramped the gap 45 -> 22 -> 10 -> 6 -> 4 s and never tripped once. At a 4 s
+# gap the cycle is still 17-23 s because the SITE's own response time (12-26 s) dominates — we
+# cannot go meaningfully faster than PJUD answers. Sustained ~3 req/min against the 1 req/min the
+# 60 s gap allowed.
+#
+# The 60 s was never a real rate limit. It was compensation for input that did not look human:
+# a metronome keyboard and no scrolling at all. Fix the behaviour and the budget largely
+# disappears. 20 s is deliberately above the fastest CLEAN level rather than at it — margin for a
+# slow day, and still 3x the old throughput.
+SEARCH_GAP = 20.0      # between result requests of ANY kind — searches AND page advances
 # ⚠️ KEEP CONCURRENT WORKERS OUT OF LOCKSTEP. Two workers started together pace from the same
 # instant and stay synchronised for ever: observed 2026-08-10, both logging every step at the
 # IDENTICAL second, right down to three failed entry attempts. To a rate limiter that is not two
@@ -76,6 +86,10 @@ GAP_JITTER = 0.15      # ±15% on every inter-request gap
 # IP across the afternoon). Detail is the binding constraint and the operator's standing rule is
 # "i'd rather wait a few seconds more, than to get blocked", so the gap is doubled. Searches are
 # untouched: 60 s is the one number with real evidence behind it (208 searches, one evening).
+# ⚠️ NOT yet re-measured with human keystrokes + scrolling. The search pace turned out to be 3x
+# too conservative once the behaviour was fixed, so this number is probably wrong too — but a
+# causa open costs more than a search and guessing in the fast direction is the expensive mistake.
+# Left conservative until speed_probe.py --detail says otherwise.
 CAUSA_GAP = 90.0       # between causa opens — the scarce resource
 EBOOK_GAP = 8.0        # after the modal renders, before asking for the pdf
 POST_CAUSA = 30.0      # after closing a causa, before anything else
