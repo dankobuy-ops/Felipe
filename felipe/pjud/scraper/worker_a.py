@@ -161,6 +161,38 @@ async (frag) => {
 """
 
 
+FETCH_ROW_DOC_JS = r"""
+async (frag) => {
+  const rows = [...document.querySelectorAll('#historiaCiv table tbody tr')];
+  const row = rows.find(tr => (tr.innerText || '').toLowerCase().includes(frag)
+                              && tr.querySelector('form'));
+  if (!row) return {err: 'no historia row matching ' + frag};
+  const f = row.querySelector('form');
+  const inp = f.querySelector('input');
+  if (!inp) return {err: 'row form has no input'};
+  const url = new URL(f.getAttribute('action'), location.href).href
+            + '?' + encodeURIComponent(inp.name) + '=' + encodeURIComponent(inp.value);
+  const r = await fetch(url, {credentials: 'include'});
+  const buf = new Uint8Array(await r.arrayBuffer());
+  let s = '', CH = 8192;
+  for (let i = 0; i < buf.length; i += CH)
+    s += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+  return {status: r.status, ct: r.headers.get('content-type'), n: buf.length, b64: btoa(s)};
+}
+"""
+
+
+def grab_row_doc(p, causa_id, label, desc_frag):
+    """Fetch the document attached to a HISTORIA row, found by its description text.
+
+    Same in-page fetch as grab_doc — the row's own form carries the action and the JWT, so the
+    document is one request with no click and no popup. Matching on the description rather than a
+    row index matters: the historia is ordered by folio and a causa with an extra trámite would
+    silently hand back a different document.
+    """
+    return _grab(p, causa_id, label, FETCH_ROW_DOC_JS, desc_frag)
+
+
 def grab_doc(p, causa_id, label, frag):
     """Fetch one document and write it verified. Returns a record — never raises.
 
@@ -179,9 +211,14 @@ def grab_doc(p, causa_id, label, frag):
     outside the browser with copied cookies, which is the thing that looks nothing like a user.
     This runs inside the page that is already holding the session.
     """
+    return _grab(p, causa_id, label, FETCH_DOC_JS, frag)
+
+
+def _grab(p, causa_id, label, js, arg):
+    """Shared body of grab_doc / grab_row_doc: run the fetch, verify %PDF, write it down."""
     t0 = time.time()
     try:
-        res = p.evaluate(FETCH_DOC_JS, frag)
+        res = p.evaluate(js, arg)
     except Exception as e:
         note(f"      {label}: fetch threw — {str(e)[:70]}")
         return {"bytes": 0, "failed": True}
@@ -362,6 +399,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=9337)
     ap.add_argument("--start", type=int, default=0, help="tribunal index to resume at")
+    ap.add_argument("--end", type=int, default=0,
+                    help="stop AFTER this tribunal index (0 = to the end). With --start this "
+                         "carves a disjoint slice, which is how several workers share one sweep "
+                         "without ever searching the same tribunal twice.")
+    ap.add_argument("--slot", type=int, default=0,
+                    help="worker number. Each slot gets its OWN state.json and pdfs/ under "
+                         "data/worker_a<N>. Two workers sharing one state file would interleave "
+                         "non-atomic writes and shred it - the file is rewritten whole after "
+                         "every causa.")
     ap.add_argument("--desde", default="15/07/2026")
     ap.add_argument("--hasta", default="07/08/2026")
     ap.add_argument("--max-causas", type=int, default=0,
@@ -385,8 +431,13 @@ def main():
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
             raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy — refusing to search with it")
 
+    global DATA, PDFS
+    if a.slot:
+        DATA = HERE.parent / "data" / f"worker_a{a.slot}"
+        PDFS = DATA / "pdfs"
     PDFS.mkdir(parents=True, exist_ok=True)
     STATE = DATA / "state.json"
+    note(f"slot {a.slot or 0}: state -> {STATE}")
     st = {"meta": {}, "tribunales": {}, "causas": {}}
     if STATE.exists() and STATE.stat().st_size:
         try:
@@ -473,7 +524,7 @@ def main():
         idx = a.start - 1
         while True:
             idx += 1
-            if idx >= len(tl):
+            if idx >= len(tl) or (a.end and idx > a.end):
                 break
             tgt = tl[idx]
             done = st["tribunales"].get(tgt["v"])

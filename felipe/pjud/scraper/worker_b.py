@@ -1,4 +1,4 @@
-"""WORKER B — backfill ebooks for causas ALREADY IN NEON. Built for the second PC.
+"""WORKER B — backfill the REMAINING documents for causas already in Neon. For the second PC.
 
 Worker A discovers causas by sweeping tribunales. Worker B does the opposite: it asks Neon which
 causas are missing a document, and goes and gets exactly those. Nothing is discovered here, so it
@@ -7,11 +7,22 @@ never competes with A for the same work.
     python worker_b.py --port 9350 --desde 01/01/2026 --hasta 28/02/2026 --dry
     python worker_b.py --port 9350 --desde 01/01/2026 --hasta 28/02/2026
 
-SELECTION IS THE POINT. Every Jan/Feb causa without an ebook is 3,779 opens — about five days of
-continuous running, most of it on causas nobody asked for. So B fetches a SELECTION, and defaults
-to `causas.fill = true`: the manual "I want this one" checkbox that already exists and is set from
-AppSheet. `--select where "<sql>"` and `--select ids <file>` cover a filter made anywhere else;
-`--select all` is the unfiltered sweep. Always `--dry` first — it prints the work-list, the
+WHAT IT FETCHES (worker A takes only the ebook, deliberately):
+    texto_demanda        header form, docu.php                  -> causas.texto_demanda
+    certificado          header form, docCertificadoDemanda.php -> causas.certificado
+    ingreso_demanda_c1   cuaderno-1 historia row                -> documentos
+    mandamiento_c2       cuaderno-2 historia row                -> documentos  (--cuaderno2)
+
+The work-list is causas that HAVE an ebook but are missing a header document — i.e. the ones
+worker A already paid a causa open for. Four documents now cost ONE open instead of four, because
+they are all reachable from the same modal.
+
+⚠️ Cuaderno 2 is opt-in (`--cuaderno2`). Switching cuaderno fires a server request per causa,
+which is a real cost against the binding constraint; the other three are free of that.
+
+SELECTION IS STILL AVAILABLE. `--select fill` (default) honours the causas.fill checkbox,
+`--select where "<sql>"` and `--select ids <file>` take a filter made anywhere else, and
+`--select all` does every eligible causa. Always `--dry` first — it prints the work-list, the
 tribunal spread and an ETA, and stops.
 
 WHY IT IS SAFE TO RUN AT THE SAME TIME AS WORKER A
@@ -57,6 +68,9 @@ def work_list(desde, hasta, selector, where="", ids_file="", limit=0):
     every Jan/Feb causa without an ebook would be 3,779 opens, about five days of continuous
     running, most of it on causas nobody asked for. So the work-list is a SELECTION:
 
+        (every mode also requires: HAS an ebook, MISSING a header document — so a re-run never
+         re-buys a document already stored, and causas worker A has not reached yet are skipped)
+
         fill    (default) causas.fill = true — the manual "I want this one" checkbox that
                 already exists for exactly this purpose and is set from AppSheet
         where   an arbitrary SQL predicate, for a filter expressed in the query itself
@@ -72,7 +86,9 @@ def work_list(desde, hasta, selector, where="", ids_file="", limit=0):
     h = f"{hasta[6:]}-{hasta[3:5]}-{hasta[:2]}"
     sql = ["SELECT tribunal_id, rol, causa_id, fill_status FROM causas "
            "WHERE f_ingreso >= %s::date AND f_ingreso <= %s::date "
-           "AND (ebook IS NULL OR ebook='') AND rol LIKE 'C-%%'"]
+           "AND ebook <> '' "
+           "AND (COALESCE(texto_demanda,'')='' OR COALESCE(certificado,'')='') "
+           "AND rol LIKE 'C-%%'"]
     args = [d, h]
     if selector == "fill":
         sql.append("AND fill = true")
