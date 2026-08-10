@@ -109,6 +109,29 @@ def page_busy(page):
         return False
 
 
+def clear_stuck_spinner(page):
+    """Empty the site's own #loadPre* spinner when it has been abandoned. Returns what it cleared.
+
+    ⚠️ ONLY call this with nothing in flight. The spinner is how the site says "I am working", so
+    clearing it while a request really is running would fake readiness — the exact mistake this
+    codebase has made in three other forms. `ojv.wait_results` guards it on S.inflight == 0 plus a
+    dwell, so by the time we get here the div is orphaned, not busy.
+
+    Observed 2026-08-09: #loadPreFecha left visible with 67 bytes of spinner markup after a search
+    that never completed. page_busy stayed True for ever, every search burned the full 3x hard cap
+    and came back STALE, and six recoveries were spent on a session that was in fact fine.
+    """
+    try:
+        return page.evaluate(
+            "()=>{const ids=['loadPre','loadPreFecha','loadPreNombre','loadPreJuridica'];"
+            " const hit=[];"
+            " ids.forEach(id=>{const e=document.getElementById(id);"
+            "   if(e && e.innerHTML.trim().length){hit.push(id); e.innerHTML='';}});"
+            " return hit;}") or []
+    except Exception:
+        return []
+
+
 def wait_idle(page, secs=20):
     """Block until the site stops loading. Acting while it is busy is what got workers 2 and 3
     F5-blocked on 2026-07-22: under three-worker latency the script clicked before the page was

@@ -411,13 +411,24 @@ def main():
              f"apm_challenged={tally['apm']} pdf_bytes={tally['bytes']:,}")
 
     with sync_playwright() as pw:
-        try:
-            b = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{a.port}", timeout=60000)
-        except Exception as e:
-            # The wedge seen three times on 2026-08-06: the socket listens but the handshake
-            # never completes, always after heavy document traffic. Restarting Chrome on the SAME
-            # profile dir fixes it — cookies and TSPD_101_DID survive, nothing is burned.
-            raise SystemExit(f"CDP handshake failed on {a.port}: {str(e)[:80]}\n"
+        # The wedge seen repeatedly since 2026-08-06: the socket listens but the handshake never
+        # completes, always after heavy document traffic. Restarting Chrome on the SAME profile
+        # dir fixes it — cookies and TSPD_101_DID survive, nothing is burned.
+        # ⚠️ RETRY, do not exit on the first failure. Chrome needs a few seconds after a restart
+        # before it will complete a handshake, and the supervisor relaunches Chrome immediately
+        # before relaunching this — so a single attempt raced it and the run died on arrival
+        # (2026-08-09, sweep.log left at 0 bytes with only a handshake error beside it).
+        b = None
+        for attempt in (1, 2, 3, 4):
+            try:
+                b = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{a.port}", timeout=45000)
+                break
+            except Exception as e:
+                note(f"CDP handshake attempt {attempt}/4 failed: {str(e)[:70]}")
+                if attempt < 4:
+                    time.sleep(15)
+        if b is None:
+            raise SystemExit(f"CDP never completed a handshake on {a.port}. "
                              f"Restart Chrome on the SAME --user-data-dir and retry.")
         ctx = b.contexts[0]
 

@@ -133,25 +133,38 @@ try {
         # re-entry. But if restarting has not helped, the session itself is the problem, and the
         # operator's rule (2026-08-08) is that resetting the profile is fine. Nothing is lost:
         # no login, no history worth keeping, and a virgin profile walks in first try.
-        if ($restarts -ge 2 -and (Test-Path $Profile)) {
-            Say "    $restarts restarts have not helped — retiring this profile and starting fresh"
+        # ⚠️ MOVE TO A NEW DIRECTORY; never rename the old one. The first version retired the
+        # profile with Rename-Item and failed both times it ran — "Access to the path is denied",
+        # because Chrome still holds the folder. Killing the browser process first does not help
+        # reliably either: its children keep handles open for a while. So the current profile path
+        # is recorded in a file, and rotating simply picks a NEW path. Nothing has to be unlocked
+        # for that to work.
+        $profFile = Join-Path $data ".profile"
+        $curProf  = if (Test-Path $profFile) { (Get-Content $profFile -First 1).Trim() } else { $Profile }
+        if (-not $curProf) { $curProf = $Profile }
+        if ($restarts -ge 2) {
+            $curProf = "$Profile-$(Get-Date -Format 'yyyyMMdd-HHmm')"
+            $curProf | Out-File $profFile -Encoding ascii
+            Say "    $restarts restarts have not helped — starting a FRESH profile:"
+            Say "      $(Split-Path $curProf -Leaf)"
             Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
-                Where-Object { $_.CommandLine -like "*--user-data-dir=$Profile*" } |
+                # ⚠️ Match the PATH, not "--user-data-dir=<path>". Chrome quotes the value
+                # (--user-data-dir="C:\...") so the prefixed form matches nothing — this filter
+                # silently returned 0 processes every time it ran.
+                Where-Object { $_.CommandLine -like "*$Profile*" } |
                 ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-            Start-Sleep -Seconds 5
-            $spent = "$Profile.spent-$(Get-Date -Format 'yyyyMMdd\-HHmm')"
-            try {
-                Rename-Item $Profile $spent -ErrorAction Stop
-                Say "    profile retired to $(Split-Path $spent -Leaf)"
-            } catch {
-                Say "    could not rename the profile ($($_.Exception.Message)) — continuing"
-            }
-            # Dead profiles are ~1 GB each and 3.58 GB of them had accumulated by 2026-08-05.
-            Get-ChildItem "$(Split-Path $Profile -Parent)" -Directory -Filter "$(Split-Path $Profile -Leaf).spent-*" |
+            Start-Sleep -Seconds 6
+            $cdpOk = $false
+            # Old profiles are ~400 MB each and 3.58 GB had accumulated by 2026-08-05. Best-effort:
+            # a directory still locked by a lingering Chrome is simply skipped and caught next hour.
+            Get-ChildItem (Split-Path $Profile -Parent) -Directory `
+                -Filter "$(Split-Path $Profile -Leaf)-*" -ErrorAction SilentlyContinue |
                 Sort-Object Name -Descending | Select-Object -Skip 2 |
-                ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                                 Say "    pruned old profile $($_.Name)" }
+                ForEach-Object {
+                    Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                    if (-not (Test-Path $_.FullName)) { Say "    pruned old profile $($_.Name)" } }
         }
+        $Profile = $curProf
 
         # Chrome: the worker cannot walk in without it, and restarting Chrome on the SAME
         # profile dir is the documented, safe recovery — cookies and TSPD_101_DID survive, so

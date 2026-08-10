@@ -25,6 +25,10 @@ import unattended_worker as uw
 EMPTY_MIN_S = 25.0      # never call a search empty before this many seconds
 EMPTY_QUIET = 10000     # ms of DOM silence required
 HARD_CAP = 75.0         # give up... unless the site's own spinner says it is still working
+# How long the site's loading sheet may sit there with NOTHING in flight before we call it
+# orphaned and remove it. Short: a real request that is still running keeps S.inflight non-zero,
+# so this timer only ever counts an overlay that has been abandoned.
+STUCK_OVERLAY_S = 25.0
 
 SHAPE_RE = re.compile(r"/[0-9a-f]{24,40}(\?|$)")
 
@@ -98,6 +102,25 @@ def blocked(p, net):
     try:
         if p.query_selector("iframe[id*='TSBrPFrame'], iframe[id*='cs_chlg']"):
             return True, "challenge iframe present"
+    except Exception:
+        pass
+    # ⚠️ THE FOURTH TELL, and the one that cost two days. Buscar left `disabled` while the page is
+    # NOT busy means the form will never fire another search: every click lands on a dead button,
+    # no request goes out, and wait_results returns STALE for ever. There is no rejection page and
+    # no challenge iframe, so every other check here says "healthy" — which is precisely how a
+    # spent session ran all night producing nothing (2026-08-08/09). HANDOFF_CDP has called this
+    # the instant block tell since July; we simply never asked.
+    # Sampled twice: during a legitimate search the button is disabled AND page_busy is true, so
+    # the guard is "disabled while idle", confirmed over a short dwell to avoid catching the
+    # instant between the click and the spinner appearing.
+    try:
+        def dead():
+            return bool(p.eval_on_selector("#btnConConsultaFec", "e=>!!e && e.disabled")) \
+                and not C.page_busy(p)
+        if dead():
+            time.sleep(2.0)
+            if dead():
+                return True, "Buscar stuck disabled while idle (spent session)"
     except Exception:
         pass
     return False, ""
@@ -298,10 +321,30 @@ def wait_results(p, S, net):
     """
     t0 = time.time()
     S.arm_observer()
+    busy_since = None
     while True:
         el = time.time() - t0
         got_resp = [r for r in net if "consultaFechaCivil" in r["u"] and r["n"] is not None]
-        idle = (not C.page_busy(p)) and S.inflight == 0 and S.dom_quiet_ms() >= EMPTY_QUIET
+        busy = C.page_busy(p)
+        # ⚠️ A STUCK overlay is not a busy page. page_busy now counts the site's
+        # .jquery-loading-modal sheet (it must — while that is up every click is refused), but a
+        # sheet that never goes away then pins page_busy True and we burn the whole 3x hard cap,
+        # 225 s per tribunal, before calling a perfectly good court STALE. That is what happened
+        # overnight on 2026-08-09: six recoveries spent on nothing but this. If the overlay is up
+        # while NOTHING is in flight, it is orphaned — clear it and carry on.
+        if busy and S.inflight == 0:
+            busy_since = busy_since or time.time()
+            if time.time() - busy_since > STUCK_OVERLAY_S:
+                C.clear_stuck_modal(p)                 # the .jquery-loading-modal sheet
+                got = C.clear_stuck_spinner(p)         # and the site's own #loadPre* spinner
+                if got:
+                    note(f"      [fix] cleared abandoned spinner {got} after "
+                         f"{STUCK_OVERLAY_S:.0f}s idle")
+                busy_since = None
+                busy = C.page_busy(p)
+        else:
+            busy_since = None
+        idle = (not busy) and S.inflight == 0 and S.dom_quiet_ms() >= EMPTY_QUIET
         if got_resp and idle and el >= 2.0:
             if "total de registros" in results_sig(p).lower():
                 return "results", el
@@ -313,7 +356,7 @@ def wait_results(p, S, net):
             # Buscar disabled-because-searching, and page_busy TRUE — a request genuinely in
             # flight. The site had simply slowed from 11-35 s to over 75 s, and we were throwing
             # away valid slow searches (including Los Angeles, 11 causas).
-            if C.page_busy(p) and el < HARD_CAP * 3:
+            if busy and el < HARD_CAP * 3:
                 p.wait_for_timeout(500)
                 continue
             return ("stale" if not got_resp else "timeout"), el
