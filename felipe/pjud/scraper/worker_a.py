@@ -288,6 +288,7 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=True):
         note(f"    modal did not open after {time.time()-t0:.0f}s")
         return None
     p.wait_for_timeout(1500)                  # let the tabs inside the modal finish rendering
+    C.human_scroll(p, notches=random.randint(2, 5))   # the modal is long; nobody reads it static
 
     # ---- free harvest: all of this is already in the DOM, none of it costs a request ----
     rec = {"causa_id": causa_id, "tribunal_id": trib_id, "tribunal": trib_name,
@@ -705,6 +706,9 @@ def main():
             # ---- walk the result pages, harvesting detail from each BEFORE advancing ----
             page, seen, stuck, blocked_here = 1, 0, False, False
             while True:
+                # Read the table the way a person does. We parse the DOM directly, so without
+                # this the session produces no wheel telemetry at all while "reading" 100+ rows.
+                C.human_scroll(p)
                 try:
                     rows = C.page_rows(p)
                 except Exception as e:

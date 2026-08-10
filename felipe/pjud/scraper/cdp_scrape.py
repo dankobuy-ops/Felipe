@@ -144,6 +144,33 @@ def wait_idle(page, secs=20):
     return False
 
 
+def human_scroll(page, notches=None, down=True, settle=True):
+    """Scroll the page the way a person reads it: a few wheel notches, uneven, with pauses.
+
+    ⚠️ WE NEVER SCROLLED. Not once, in any worker. The DOM is read directly, so a results table of
+    179 rows was parsed without a single wheel event — and F5 Shape collects wheel telemetry
+    exactly as it collects pointer motion and keystroke timing. Uniform input is suspicious;
+    input that is entirely ABSENT is worse, because no human can read a long table without it.
+    Operator's observation 2026-08-10, and the same class of gap as the metronome keyboard.
+
+    Deltas vary, the gaps vary, and roughly a third of the time there is a small correction
+    upwards — the overshoot people make when they scroll past what they wanted.
+    """
+    try:
+        n = notches if notches is not None else random.randint(3, 7)
+        for i in range(n):
+            dy = random.uniform(90, 340) * (1 if down else -1)
+            page.mouse.wheel(0, dy)
+            page.wait_for_timeout(random.uniform(70, 260))
+            if random.random() < 0.3:                 # overshoot, then correct
+                page.mouse.wheel(0, -dy * random.uniform(0.15, 0.4))
+                page.wait_for_timeout(random.uniform(90, 300))
+        if settle:
+            page.wait_for_timeout(random.uniform(150, 500))
+    except Exception:
+        pass                                          # scrolling must never break a run
+
+
 def human_click(page, target, timeout=8000):
     """THE click. `target` is a selector, Locator or ElementHandle.
 

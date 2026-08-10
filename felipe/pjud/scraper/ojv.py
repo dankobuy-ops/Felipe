@@ -413,6 +413,7 @@ def walk_in(ctx):
         # element, and one that actually hit-tests.
         page.bring_to_front()          # real mouse coords hit the VISIBLE tab, not this object
         page.wait_for_timeout(800)
+        C.human_scroll(page, notches=2)   # a person looks around /home/ before clicking
         cov = page.evaluate("""(s)=>{
           return [...document.querySelectorAll(s)]
             .map((e,i)=>({e:e,r:e.getBoundingClientRect(),i:i}))
