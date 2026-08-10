@@ -19,6 +19,11 @@ param(
     # date reached the search form on 2026-08-08, the window went nonsense, and a live tribunal
     # was recorded as EMPTY before anything noticed.
     [string] $Hasta  = (Get-Date -Format "dd\/MM\/yyyy"),
+    # ⚠️ Must be forwarded by anything that restarts the worker. The hourly supervisor relaunches
+    # through this script, so a filter passed only on the command line would be silently dropped
+    # the first time the sweep was restarted — and the run would quietly go back to storing every
+    # procedimiento again.
+    [string] $OnlyProc = "obligaci.*dar",
     [switch] $NoEbook,                      # metadata only, request no documents
     [switch] $NoDetail                      # census only, open nothing
 )
@@ -48,6 +53,7 @@ if ($alive.Count -gt 0) {
 }
 
 $args = @("-u", "worker_a.py", "--port", $Port, "--desde", $Desde, "--hasta", $Hasta)
+if ($OnlyProc) { $args += @("--only-proc", $OnlyProc) }
 if ($NoEbook)  { $args += "--no-ebook" }
 if ($NoDetail) { $args += "--no-detail" }
 
@@ -60,6 +66,7 @@ $proc.Id | Out-File (Join-Path $data "sweep.pid") -Encoding ascii
 
 Write-Host "worker A detached — PID $($proc.Id)"
 Write-Host "  window : $Desde .. $Hasta"
+Write-Host "  filter : procedimiento ~ '$OnlyProc'"
 Write-Host "  log    : $log"
 Write-Host "  follow : Get-Content `"$log`" -Wait -Tail 20"
 Write-Host "  stop   : Stop-Process -Id $($proc.Id)"
