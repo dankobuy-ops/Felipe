@@ -11,7 +11,7 @@ Callers tune the timing knobs by assigning to the module attributes (they are re
     import ojv
     ojv.EMPTY_MIN_S = 30.0
 """
-import time, re
+import time, re, socket
 import cdp_scrape as C
 import unattended_worker as uw
 
@@ -66,6 +66,67 @@ def make_tap(net):
             pass
         net.append({"u": r.url.split("/")[-1].split("?")[0], "n": n, "rej": rej})
     return on_resp
+
+
+# ── connectivity ─────────────────────────────────────────────────────────────
+
+def internet_up(timeout=4.0):
+    """Is there general internet, independent of pjud.cl?
+
+    ⚠️ Deliberately NOT a request to pjud.cl. The whole point is to tell an OUTAGE apart from a
+    BLOCK, and asking the site that might be refusing us cannot distinguish those. These are
+    neutral third parties: if none of them answer, the machine is offline.
+
+    Checked with raw sockets rather than the browser, because the browser may itself be wedged —
+    and because a page that fails to load offline looks exactly like a page the WAF is refusing.
+    """
+    for host, port in (("1.1.1.1", 443), ("8.8.8.8", 53), ("www.google.com", 443)):
+        try:
+            socket.create_connection((host, port), timeout=timeout).close()
+            return True
+        except OSError:
+            continue
+    return False
+
+
+def wait_for_internet(max_wait=14400, poll=20.0):
+    """Block until connectivity returns. (came_back, seconds_waited).
+
+    An outage must NEVER be charged to the block budget: it is not a rate verdict, no cool-off
+    helps it, and rotating the profile over it would throw away a warm session for a problem that
+    has nothing to do with the site. Callers use the elapsed time to decide whether the session
+    is likely still alive on the other side.
+
+    max_wait defaults to four hours — long enough to ride out a modem reset, an ISP blip or a
+    switch between connections, and short enough that a machine left offline overnight stops
+    rather than sits in a loop forever.
+    """
+    t0 = time.time()
+    if internet_up():
+        return True, 0.0
+    note("*** NO INTERNET — pausing. This is NOT a block: no cool-off, no recovery spent.")
+    while time.time() - t0 < max_wait:
+        time.sleep(poll)
+        if internet_up():
+            el = time.time() - t0
+            note(f"*** internet is back after {el / 60:.1f} min — resuming")
+            return True, el
+    note(f"*** still offline after {max_wait / 60:.0f} min — stopping")
+    return False, time.time() - t0
+
+
+def public_ip(timeout=6.0):
+    """Our WAN address, or None. Neutral third parties only — never pjud.cl."""
+    import urllib.request
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                ip = r.read().decode("utf-8", "replace").strip()
+            if ip and len(ip) < 46:
+                return ip
+        except Exception:
+            continue
+    return None
 
 
 def rej_frames(p):
@@ -174,6 +235,61 @@ def find_form(ctx):
     return None
 
 
+OJV_HOST = "oficinajudicialvirtual.pjud.cl"
+
+
+def _reach_ojv(ctx, start, wait=60.0):
+    """Click through from www.pjud.cl to the OJV, FOCUSING the tab it opens.
+
+    ⚠️ THE TAB MUST BE BROUGHT TO THE FRONT. F5's challenge script checks
+    document.visibilityState — we found that check by hand in the APM payload — so a tab opened
+    in the BACKGROUND never runs it. The page then stays blank and its URL never even resolves,
+    which the old helper read as "no OJV tab appeared". Three attempts in a row failed that way
+    on a freshly changed IP (2026-08-09), and the whole worker exited, while a direct navigation
+    with the tab focused cleared the same challenge in six seconds.
+
+    So: click, take whatever tab appears, focus it, THEN wait for the entry button.
+    """
+    cands = start.eval_on_selector_all(
+        "a", "els=>els.map(a=>({t:(a.textContent||'').trim().slice(0,60),"
+             " h:a.getAttribute('href')||''}))")
+    hits = [c for c in cands if OJV_HOST in (c["h"] or "").lower()]
+    if not hits:
+        note(f"    no <a href*='{OJV_HOST}'> on {start.url[:50]}")
+        return None
+    hits.sort(key=lambda c: 0 if "/home" in c["h"].lower() else 1)
+    best = hits[0]
+    note(f"    click -> {best['t'][:44]!r}")
+    before = set(ctx.pages)
+    C.human_click(start, start.locator(f"a[href='{best['h']}']").first)
+
+    deadline = time.time() + wait
+    focused = set()
+    while time.time() < deadline:
+        for q in [x for x in ctx.pages if x not in before]:
+            if q not in focused:            # focus every new tab once, blank ones included:
+                try:                        # a blank tab is precisely the un-run challenge
+                    q.bring_to_front()
+                    focused.add(q)
+                except Exception:
+                    pass
+            try:
+                if OJV_HOST in (q.url or "") and q.query_selector(
+                        "[onclick*='accesoConsultaCausas'], [onclick*='accesoInvitado'], "
+                        "#no-disponible"):
+                    return q
+            except Exception:
+                pass
+        start.wait_for_timeout(700)
+    # Last resort: some builds navigate the SAME tab instead of opening one.
+    try:
+        if OJV_HOST in (start.url or ""):
+            return start
+    except Exception:
+        pass
+    return None
+
+
 def walk_in(ctx):
     """www.pjud.cl -> OJV /home/ -> dismiss AVISO -> Consulta causas -> form. Fully scripted.
 
@@ -204,10 +320,44 @@ def walk_in(ctx):
         pass
     start.bring_to_front()
     start.wait_for_timeout(4000)
-    page = uw.reach_ojv(ctx, start, wait=25.0)
+    page = None
+    for attempt in (1, 2, 3):
+        page = _reach_ojv(ctx, start, wait=60.0)
+        if page is not None:
+            break
+        note(f"could not reach the OJV (attempt {attempt}/3)")
+        if not internet_up():
+            if not wait_for_internet()[0]:
+                return None
+        time.sleep(8)
+        try:
+            start.goto("https://www.pjud.cl/", wait_until="domcontentloaded")
+            start.wait_for_timeout(4000)
+        except Exception:
+            pass
     if page is None:
-        note("could not reach the OJV")
-        return None
+        # FALLBACK: go straight there. The click-through from www.pjud.cl is preferred because it
+        # is what a person does, but on 2026-08-09 it stopped producing a usable tab on a changed
+        # IP — three attempts, every one blank — while a direct navigation in a focused tab
+        # cleared F5's challenge in six seconds. Typing a public URL is ordinary browsing; a
+        # preference for the prettier path is not worth losing the run over.
+        note("click-through failed 3x — navigating to the OJV directly")
+        try:
+            page = next((q for q in ctx.pages if OJV_HOST in (q.url or "")), None) or ctx.new_page()
+            page.bring_to_front()
+            page.goto(f"https://{OJV_HOST}/home/", wait_until="domcontentloaded", timeout=60000)
+            for _ in range(20):                   # the challenge needs the tab VISIBLE to run
+                page.wait_for_timeout(3000)
+                if page.query_selector("[onclick*='accesoConsultaCausas'], "
+                                       "[onclick*='accesoInvitado'], #no-disponible"):
+                    note("  direct navigation reached the OJV")
+                    break
+            else:
+                note("could not reach the OJV directly either")
+                return None
+        except Exception as e:
+            note(f"direct navigation failed: {str(e)[:70]}")
+            return None
     page.bring_to_front()
     page.wait_for_timeout(4000)
     try:

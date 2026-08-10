@@ -55,8 +55,14 @@ PDFS = DATA / "pdfs"
 # behind it — it is what let a single profile run 208 searches in an evening. The detail numbers
 # are deliberately far more generous than the 20 s that preceded three-to-ten-open deaths, and
 # this run is the experiment that will tell us whether spacing was ever the variable.
-SEARCH_GAP = 60.0      # from one search CLICK to the next
-PAGE_GAP = 20.0        # between paginator clicks (same request class as a search)
+# ⚠️ SEARCH_GAP governs EVERY result request, pages included. A paginator click hits
+# consultaFechaCivil.php and returns a result set — it is a search in all but name. Pacing it
+# separately (PAGE_GAP was 20 s) meant any tribunal over 100 rows quietly fired at three times
+# the rate we believed we were using: Taltal has 270 registros, so one worker alone produced 3
+# requests in 46 s. With two workers paginating at once the IP saw a request every ~10 s and F5
+# refused (2026-08-09, rejF=6). The single-worker sweep never showed it because pagination
+# averages 1.28 pages per tribunal, so the bursts were rare and never overlapped.
+SEARCH_GAP = 60.0      # between result requests of ANY kind — searches AND page advances
 # 2026-08-07: at 45 s the run reached 11 causa opens before a tier-2 block (~24 opens on this
 # IP across the afternoon). Detail is the binding constraint and the operator's standing rule is
 # "i'd rather wait a few seconds more, than to get blocked", so the gap is doubled. Searches are
@@ -324,7 +330,6 @@ def advance(p, page):
     """
     if C.sig_disabled(p):
         return "done"
-    time.sleep(PAGE_GAP)
     why = C.next_page(p)
     if why == "last":
         return "done"
@@ -462,6 +467,11 @@ def main():
              f"apm_challenged={tally['apm']} pdf_bytes={tally['bytes']:,}")
 
     with sync_playwright() as pw:
+        # Do not even try to attach if the machine is offline: every symptom downstream would
+        # be misread as the site refusing us.
+        if not ojv.internet_up():
+            if not ojv.wait_for_internet()[0]:
+                raise SystemExit("offline at startup — nothing to do")
         # The wedge seen repeatedly since 2026-08-06: the socket listens but the handshake never
         # completes, always after heavy document traffic. Restarting Chrome on the SAME profile
         # dir fixes it — cookies and TSPD_101_DID survive, nothing is burned.
@@ -483,18 +493,61 @@ def main():
                              f"Restart Chrome on the SAME --user-data-dir and retry.")
         ctx = b.contexts[0]
 
-        p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
+        # Entry is retried too: a single failed walk-in used to end the run outright, which on a
+        # slow link means a whole sweep lost to one slow page load.
+        p = S = tl = None
+        for attempt in (1, 2, 3):
+            p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
+            if p is not None:
+                break
+            note(f"entry attempt {attempt}/3 failed")
+            if not ojv.internet_up() and not ojv.wait_for_internet()[0]:
+                raise SystemExit("offline — stopping")
+            time.sleep(20)
         if p is None:
-            raise SystemExit("could not reach the form")
+            raise SystemExit("could not reach the form after 3 attempts")
         if len(tl) < 50:
             raise SystemExit("not the national list — aborting")
 
         recoveries = 0
         clean_since_block = 0
+        start_ip = ojv.public_ip()
+        note(f"public IP at start: {start_ip}")
 
         def recover(idx):
             """Re-enter after a block. True if we may carry on from `idx`."""
             nonlocal p, S, tl, recoveries, last_search, clean_since_block
+            # ⚠️ CONNECTIVITY FIRST. An internet outage produces exactly the symptoms of a block —
+            # searches that never prove fresh, causas that never open — but none of the remedies
+            # apply: cooling off does nothing, and after enough of them the profile gets rotated
+            # for a fault that was never the site's. Check before charging anything to the budget.
+            if not ojv.internet_up():
+                back, waited = ojv.wait_for_internet()
+                if not back:
+                    note(f"  *** offline and not coming back — stopping. resume with --start {idx}")
+                    return False
+                # An IP change (modem reset, switching connection) usually costs the session, so
+                # re-enter — but do NOT count it as a recovery. Nothing was spent.
+                # ⚠️ DID THE ADDRESS MOVE? F5 binds its session to the IP it issued it to, so an
+                # old profile on a NEW address is refused on its very first search — observed
+                # 2026-08-09, rejF=2 on search #1 straight after switching to a mobile connection.
+                # Re-entry cannot fix that; only a fresh profile can, and the supervisor owns
+                # profiles. Exit 6 so it rotates rather than burning the recovery budget on a
+                # session that is already void.
+                now_ip = ojv.public_ip()
+                if start_ip and now_ip and now_ip != start_ip:
+                    note(f"  *** IP CHANGED during the outage ({start_ip} -> {now_ip}). The F5 "
+                         f"session is bound to the old address and is void.")
+                    note(f"  *** exiting 6 = needs a FRESH PROFILE. resume with --start {idx}")
+                    save()
+                    raise SystemExit(6)
+                p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
+                if p is None:
+                    note("  *** could not re-enter after the outage — stopping")
+                    return False
+                last_search = 0.0
+                note(f"  re-entered after a {waited / 60:.1f} min outage — budget untouched")
+                return True
             recoveries += 1
             clean_since_block = 0
             if recoveries > a.max_recover:
@@ -676,8 +729,13 @@ def main():
 
                 if blocked_here:
                     break
+                # A page advance draws on the same budget as a search — see SEARCH_GAP.
+                gap = SEARCH_GAP - (time.time() - last_search)
+                if gap > 0:
+                    time.sleep(gap)
                 try:
                     why = advance(p, page)
+                    last_search = time.time()
                 except Exception as e:
                     # A 10-hour sweep must not die on one unexpected exception. Treat it the way
                     # we treat a block: save, re-enter, retry the tribunal.

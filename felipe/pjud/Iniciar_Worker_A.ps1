@@ -36,6 +36,17 @@ if (-not (Test-Path $py)) { $py = (Get-Command python).Source }
 try   { $null = Invoke-RestMethod "http://127.0.0.1:$Port/json/version" -TimeoutSec 8 }
 catch { throw "No Chrome on CDP port $Port. Launch it first (--remote-debugging-port=$Port --user-data-dir=...)." }
 
+# ⚠️ REFUSE TO DOUBLE-START. Launching while another worker_a is alive puts two processes on the
+# same sweep.log and the same state.json: the log interleaves into nonsense (which hid a fix that
+# had in fact been applied, 2026-08-09) and the non-atomic state writes race each other.
+$alive = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+           Where-Object { $_.CommandLine -like "*worker_a.py*" })
+if ($alive.Count -gt 0) {
+    Write-Host "already running: PID $($alive.ProcessId -join ', ') — stopping it first"
+    $alive | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 4
+}
+
 $args = @("-u", "worker_a.py", "--port", $Port, "--desde", $Desde, "--hasta", $Hasta)
 if ($NoEbook)  { $args += "--no-ebook" }
 if ($NoDetail) { $args += "--no-detail" }

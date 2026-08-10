@@ -77,6 +77,20 @@ try {
     $py = "C:\Users\Danko\AppData\Local\Programs\Python\Python312\python.exe"
     if (-not (Test-Path $py)) { $py = (Get-Command python).Source }
 
+    # ⚠️ OFFLINE IS NOT A FAILING SWEEP. Without this, an internet outage looks exactly like a
+    # dead worker: the ingest errors, sweep.log stops, and the supervisor spends its restart
+    # budget relaunching into a network that is not there — arriving at "4 restarts have not
+    # helped, a human is needed" for a modem reboot. Neutral hosts, never pjud.cl: asking the
+    # site that might be refusing us cannot tell an outage from a block.
+    $online = $false
+    foreach ($h in @('1.1.1.1', '8.8.8.8')) {
+        if (Test-Connection -ComputerName $h -Count 1 -Quiet -ErrorAction SilentlyContinue) { $online = $true; break }
+    }
+    if (-not $online) {
+        Say "no internet — skipping this run entirely (no ingest, no restart, no budget spent)"
+        return
+    }
+
     # ── 1. ingest ───────────────────────────────────────────────────────────────────────────
     Say "ingest start"
     $out = & $py -u (Join-Path $root "scraper\ingest_worker_a.py") 2>&1
@@ -142,7 +156,18 @@ try {
         $profFile = Join-Path $data ".profile"
         $curProf  = if (Test-Path $profFile) { (Get-Content $profFile -First 1).Trim() } else { $Profile }
         if (-not $curProf) { $curProf = $Profile }
-        if ($restarts -ge 2) {
+        # Exit 6 from the worker = "the IP moved, this profile's F5 session is void". Rotate at
+        # once instead of spending two restarts proving what the worker already established.
+        $ipMoved = $false
+        $errFile = Join-Path $data "sweep.err"
+        $logFile = Join-Path $data "sweep.log"
+        foreach ($f in @($logFile, $errFile)) {
+            if ((Test-Path $f) -and (Get-Content $f -Tail 25 -ErrorAction SilentlyContinue |
+                                     Select-String "needs a FRESH PROFILE")) { $ipMoved = $true }
+        }
+        if ($ipMoved) { Say "    worker reported an IP change — rotating the profile now" }
+
+        if ($restarts -ge 2 -or $ipMoved) {
             $curProf = "$Profile-$(Get-Date -Format 'yyyyMMdd-HHmm')"
             $curProf | Out-File $profFile -Encoding ascii
             Say "    $restarts restarts have not helped — starting a FRESH profile:"

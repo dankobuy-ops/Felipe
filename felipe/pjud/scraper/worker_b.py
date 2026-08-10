@@ -206,6 +206,11 @@ def main():
     done = failed = 0
 
     with sync_playwright() as pw:
+        # Do not even try to attach if the machine is offline: every symptom downstream would
+        # be misread as the site refusing us.
+        if not ojv.internet_up():
+            if not ojv.wait_for_internet()[0]:
+                raise SystemExit("offline at startup — nothing to do")
         try:
             b = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{a.port}", timeout=60000)
         except Exception as e:
@@ -304,8 +309,12 @@ def main():
                     time.sleep(A.POST_CAUSA)
                 if consec_fail >= A.MODAL_FAIL_LIMIT:
                     break
+                gap = A.SEARCH_GAP - (time.time() - last_search)   # pages share the budget
+                if gap > 0:
+                    time.sleep(gap)
                 try:
                     why = A.advance(p, page)
+                    last_search = time.time()
                 except Exception as e:
                     note(f"    [warn] paginator threw: {str(e)[:80]}"); break
                 if why != "more":
