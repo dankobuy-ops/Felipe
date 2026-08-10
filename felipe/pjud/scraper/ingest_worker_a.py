@@ -31,6 +31,9 @@ from pathlib import Path
 import psycopg2.extras
 
 sys.path.insert(0, str(Path(__file__).parent))
+import re
+import unicodedata
+
 import run
 import dbstore
 import ingest_cdp
@@ -80,6 +83,9 @@ def as_causa(rec):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--only-proc", default="obligaci.*dar",
+                    help="regex on procedimiento; non-matching causas are not stored. Judged "
+                         "from the harvested header, NOT from a flag in state.json.")
     ap.add_argument("--dry", action="store_true")
     # Uploading is ON by default. It was opt-in at first, on the reasoning that a long network
     # job should not fire as a side effect — but that left PDFs sitting on disk with causas.ebook
@@ -139,8 +145,30 @@ def main():
             print(f"  {len(links)} link(s) returned")
 
     merged, tribs, ids = {}, {}, []
+    def wanted(rec):
+        """⚠️ Judge the PROCEDIMIENTO ITSELF, never a flag written into state.json.
+
+        The flag alone was not enough: state.json is held in memory by the running worker and
+        rewritten whole after every causa, so marks edited into the file from outside were
+        silently overwritten on the next save — 49 of them, 2026-08-10 — and the ingest happily
+        put 35 non-matching causas straight back into Neon after they had just been deleted. A
+        rule evaluated from the data cannot be lost that way.
+        """
+        if rec.get("skipped_proc"):
+            return False
+        if not a.only_proc:
+            return True
+        pr = (rec.get("header") or {}).get("procedimiento", "")
+        if not pr:
+            return True                  # no header yet — let the shell through, judge it later
+        flat = "".join(ch for ch in unicodedata.normalize("NFD", pr)
+                       if unicodedata.category(ch) != "Mn")
+        return re.search(a.only_proc, flat, re.I) is not None
+
+    skipped_proc = 0
     for cid, rec in sorted(causas.items()):
-        if rec.get("skipped_proc"):      # opened, procedimiento did not match — deliberately not stored
+        if not wanted(rec):
+            skipped_proc += 1
             continue
         if not (rec.get("header") or {}):
             print(f"  skip {cid}: no header (metadata never harvested)")
@@ -154,7 +182,8 @@ def main():
             merged.setdefault(tab, []).extend(rows)
         ids.append(cid)
 
-    print(f"worker A state: {len(causas)} causas, {len(ids)} with detail")
+    print(f"worker A state: {len(causas)} causas, {len(ids)} with detail "
+          f"({skipped_proc} skipped: procedimiento does not match {a.only_proc!r})")
     for tab in ORDER:
         print(f"  {tab:14} {len(merged.get(tab, [])):6} rows")
     print(f"  {'Tribunales':14} {len(tribs):6} (insert-if-absent only)")
