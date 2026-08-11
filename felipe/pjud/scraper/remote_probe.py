@@ -75,14 +75,28 @@ def main():
         # HEADED, under whatever DISPLAY the workflow set up. Headless is both a strong
         # fingerprint and — more importantly — never "visible", which is the condition F5's
         # challenge script tests before it will run.
+        # ⚠️ --no-sandbox is required on a CI runner: Chrome cannot set up its sandbox in that
+        # container and dies instantly without it, which reads as "never opened its CDP port".
+        # --disable-dev-shm-usage for the same class of reason: /dev/shm is tiny there and Chrome
+        # crashes under it. And keep stderr — throwing it away is why the first run told us
+        # nothing at all about WHY it did not start.
+        err_log = Path("chrome_stderr.log")
         proc = subprocess.Popen(
             [exe, f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}",
+             "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
              "--no-first-run", "--no-default-browser-check", "--window-size=1440,900",
              "https://www.pjud.cl/"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL, stderr=err_log.open("wb"),
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":99")})
         try:
             if not wait_cdp(PORT):
                 note("chrome never opened its CDP port")
+                try:
+                    tail = err_log.read_text(errors="replace")[-1200:]
+                    note(f"chrome stderr tail: {tail}")
+                except Exception:
+                    note("(no chrome stderr captured)")
+                note(f"DISPLAY={os.environ.get('DISPLAY')!r}  exit={proc.poll()}")
                 return finish(2)
             note("chrome up, attaching over CDP (same path as local)")
 
