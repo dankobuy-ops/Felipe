@@ -208,11 +208,20 @@ jobs:
         if: always()
         working-directory: felipe/pjud/scraper
         run: |
+          # ⚠️ --slot IS NOT OPTIONAL. Without it ingest defaults to slot 0 and reads
+          # data/worker_a/state.json, while the worker wrote data/worker_a<slot>/state.json — so
+          # it exits with "could not read a consistent state.json" having ingested nothing. That
+          # is not theoretical: run 31501974530 harvested 226 causas, 211 ebooks and 431 MB of
+          # PDFs over four and a half hours and wrote NONE of it to Neon or Drive, because of
+          # this one missing flag. The local supervisor always passed it; this step never did.
+          # ⚠️ AND DO NOT SWALLOW THE FAILURE. `|| echo` made the step green, so the run looked
+          # like it had ingested when it had not. A failed ingest must be loud — the PDFs live
+          # only on the runner and die with it.
           # --shells matters for a census run: it discovers causas without opening them, so
           # without this the whole shard would write nothing at all.
           UP=""
           if [ "${{ inputs.detail }}" != "true" ]; then UP="--no-upload"; fi
-          python -u ingest_worker_a.py --shells $UP || echo "ingest failed — state is in the artifact"
+          python -u ingest_worker_a.py --slot ${{ matrix.slot }} --shells $UP
 
       - name: Summary
         if: always()
