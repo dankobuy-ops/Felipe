@@ -22,7 +22,8 @@ param(
     [string] $Desde  = "01/07/2026",
     [string] $Hasta  = "14/07/2026",
     [string] $OnlyProc = "obligaci.*dar",
-    [int]    $StaleMin = 30
+    [int]    $StaleMin = 30,
+    [int]    $LiveMin  = 12      # a log written within this many minutes proves the worker lives
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,17 +76,44 @@ try {
         if ($m) { Say "slot $s ingest ok — causas=$($m.Matches.Groups[1].Value)" }
         else    { Say "slot $s ingest produced no count (see log)" }
 
-        # ---- is its worker alive? The SCAN is authoritative, not the pid file ----
-        $alive = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
-                   Where-Object { $_.CommandLine -like "*worker_a.py*" -and $_.CommandLine -like "*--slot $s *" })
+        # ---- is its worker alive? ----
+        # ⚠️ "THE SCAN IS AUTHORITATIVE" WAS WRONG, AND IT COST FOUR DUPLICATE WORKERS.
+        # Win32_Process.CommandLine is only readable when the querying process has rights over the
+        # target. Run by hand from the operator's shell this lists every worker; run from Task
+        # Scheduler — different session, different elevation — it comes back EMPTY. So at 09:55 on
+        # 2026-08-11 all four slots looked dead, and the supervisor started a second worker for
+        # each: two processes per Chrome, two writing one state file, on overlapping ranges.
+        #
+        # AN UNREADABLE COMMAND LINE IS IGNORANCE, NOT DEATH. Evidence of LIFE now wins, and a
+        # restart needs every source to agree the worker is gone:
+        #   * the log advanced recently   -> alive. The worker is its only writer.
+        #   * the recorded pid is a live python -> alive.
+        #   * the scan found it           -> alive.
         $swp = Join-Path $d "sweep.log"
-        $age = if (Test-Path $swp) { [int]((Get-Date) - (Get-Item $swp).LastWriteTime).TotalMinutes } else { 9999 }
+        $age = if (Test-Path $swp) { ((Get-Date) - (Get-Item $swp).LastWriteTime).TotalMinutes } else { 9999 }
+        # -notlike ingest_worker_a.py: that script is ALSO called with --slot $s, so the obvious
+        # pattern matches this supervisor's own ingest child and would report a dead slot alive.
+        $scan = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+                  Where-Object { $_.CommandLine -like "*worker_a.py*" -and
+                                 $_.CommandLine -notlike "*ingest_worker_a.py*" -and
+                                 $_.CommandLine -like "*--slot $s *" })
+        $pidLive = $false
+        $pidF = Join-Path $d "sweep.pid"
+        if (Test-Path $pidF) {
+            $wpid = (Get-Content $pidF -First 1 -ErrorAction SilentlyContinue).Trim()
+            $pr0 = Get-Process -Id $wpid -ErrorAction SilentlyContinue
+            if ($pr0 -and $pr0.ProcessName -like "python*") { $pidLive = $true }
+        }
+        # A worker is legitimately quiet during a throttle recovery (180 s cool-off, then a full
+        # re-entry), so LiveMin must sit comfortably above that. It is not the stale warning.
+        $logLive = $age -lt $LiveMin
 
-        if ($alive.Count -gt 0) {
-            Say "slot $s alive (PID $($alive[0].ProcessId)), log $age min old"
-            if ($age -gt $StaleMin) { Say "  [!] slot $s running but silent for $age min — worth a look" }
+        if ($scan.Count -gt 0 -or $pidLive -or $logLive) {
+            Say ("slot {0} alive (scan={1} pid={2} log={3}m)" -f $s, $scan.Count, $pidLive, [int]$age)
+            if ($age -gt $StaleMin) { Say "  [!] slot $s running but silent for $([int]$age) min — worth a look" }
             continue
         }
+        Say "slot $s looks dead (scan=0, pid not running, log $([int]$age) min old)"
         if ((Test-Path $swp) -and (Get-Content $swp -Tail 3 -ErrorAction SilentlyContinue | Select-String "DONE\.")) {
             Say "slot $s finished (DONE) — nothing to restart"
             continue
@@ -102,10 +130,19 @@ try {
         $cdpOk = $false
         try { $null = Invoke-RestMethod "http://127.0.0.1:$port/json/version" -TimeoutSec 8; $cdpOk = $true } catch {}
 
-        # The range comes from the slot's own state, so a restart never silently changes scope.
-        $rng = & $py -c "import json,sys;t=json.load(open(r'$d\state.json',encoding='utf-8'))['tribunales'];i=sorted(v['idx'] for v in t.values());print(f'{i[0]} {i[-1]}')" 2>$null
+        # ⚠️ THE RANGE COMES FROM meta, NOT from the tribunal indices. Inferring it from min/max
+        # of what state contains looks equivalent and is not: state ACCUMULATES across runs with
+        # different shard boundaries, so on 2026-08-11 that inference restarted the slots as
+        # 39-120, 78-171 and 117-229 — overlapping, each redoing its neighbour's courts. meta
+        # holds what the slot was actually told to sweep. Only fall back to the old guess when
+        # meta predates this change.
+        $rng = & $py -c "import json;m=json.load(open(r'$d\state.json',encoding='utf-8'))['meta'];print(f\"{m['start']} {m['end']}\") if 'start' in m else print('')" 2>$null
+        if (-not $rng) {
+            Say "slot $s : no range in meta — falling back to the min/max guess (check the scope!)"
+            $rng = & $py -c "import json,sys;t=json.load(open(r'$d\state.json',encoding='utf-8'))['tribunales'];i=sorted(v['idx'] for v in t.values());print(f'{i[0]} {i[-1]}')" 2>$null
+        }
         if (-not $rng) { Say "slot $s : no state, cannot infer range — skipping"; continue }
-        $a, $b = $rng.Split(" ")
+        $a, $b = $rng.Trim().Split(" ")
         $wargs = @("-u","worker_a.py","--port",$port,"--slot",$s,"--start",$a,"--end",$b,
                    "--only-proc",$OnlyProc,"--desde",$Desde,"--hasta",$Hasta)
 

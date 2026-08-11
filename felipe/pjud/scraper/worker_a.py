@@ -622,7 +622,12 @@ def main():
             f"{a.desde}..{a.hasta}. Completion is recorded per tribunal with no window, so "
             f"resuming would skip tribunales never searched for these dates. "
             f"Use --slot N for a separate state, or move {STATE} aside first.")
+    # ⚠️ RECORD THE ASSIGNED RANGE. The supervisor used to infer it from min/max of the tribunal
+    # indices in state — but state accumulates across runs with different shard boundaries, so on
+    # 2026-08-11 it restarted the slots as 39-120, 78-171 and 117-229: overlapping, each redoing
+    # its neighbour's courts. What this slot was TOLD to sweep is a fact only this process knows.
     st["meta"].update({"desde": a.desde, "hasta": a.hasta, "port": a.port,
+                       "start": a.start, "end": a.end,
                        "last_run": time.strftime("%Y-%m-%d %H:%M:%S")})
 
     def save():
