@@ -542,6 +542,17 @@ def main():
             bad = STATE.with_suffix(f".bad.{int(time.time())}.json")
             STATE.rename(bad)
             note(f"[!] unreadable state ({str(e)[:50]}) — moved to {bad.name}, starting fresh")
+    # ⚠️ A state file belongs to ONE date window. Tribunal completion is recorded per tribunal
+    # with no window attached, so resuming a 15/07 state against a 01/07 window would skip every
+    # tribunal marked complete — silently reporting a finished sweep that never searched these
+    # dates at all. Refuse, and say what to do about it.
+    prev_w = (st["meta"].get("desde"), st["meta"].get("hasta"))
+    if st.get("tribunales") and prev_w != (None, None) and prev_w != (a.desde, a.hasta):
+        raise SystemExit(
+            f"state.json holds the window {prev_w[0]}..{prev_w[1]}, you asked for "
+            f"{a.desde}..{a.hasta}. Completion is recorded per tribunal with no window, so "
+            f"resuming would skip tribunales never searched for these dates. "
+            f"Use --slot N for a separate state, or move {STATE} aside first.")
     st["meta"].update({"desde": a.desde, "hasta": a.hasta, "port": a.port,
                        "last_run": time.strftime("%Y-%m-%d %H:%M:%S")})
 
