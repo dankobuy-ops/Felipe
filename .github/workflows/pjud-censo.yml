@@ -14,7 +14,13 @@ name: PJUD — censo remoto (por demanda)
 # surface, so the challenge never completes. That single flag is the entire reason the old
 # workflow failed every day for a fortnight. `headless_check.py` re-verifies it in one command.
 #
-# Each runner gets its own IP, so shards do not share a rate budget the way local workers do.
+# ⚠️ SHARDS DO NOT HELP. This file used to say "each runner gets its own IP, so shards do not
+# share a rate budget the way local workers do" — false, and measured false on 2026-08-11. Three
+# shards on 128.24.160.226, 132.196.32.71 and 48.217.108.208 all took their first block within
+# fourteen seconds of each other while the residential workers sweeping that same minute were
+# untouched, and the three together produced 214 causa opens against 226 for one shard alone.
+# The budget belongs to the datacenter RANGE. Remote means ONE worker, chained with a cool-off;
+# the parallelism that works is local.
 #
 # A census alone is ~3.3 h for 230 tribunales on one worker; WITH detail (open every bank causa
 # and fetch its ebook) it is far longer — locally that runs at roughly one causa a minute. So a
