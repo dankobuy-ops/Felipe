@@ -205,7 +205,17 @@ jobs:
       - name: Censo shard ${{ matrix.slot }} (tribunales ${{ matrix.start }}-${{ matrix.end }})
         working-directory: felipe/pjud/scraper
         run: |
-          ARGS=()
+          # ⚠️ --max-recover 1 HERE, against the default of 6. The recovery ladder assumes a
+          # block that clears — which is what happens locally, where it worked 14 times out of 14
+          # on 2026-08-11. On a runner it does not clear. Run 31501974530 spent SEVENTY MINUTES
+          # on six recoveries: each one re-entered cleanly (tab closed, walked back in from
+          # www.pjud.cl, form rebuilt, 230 tribunales loaded) and each one was refused again
+          # within ~80 s. The session was never the problem — the ADDRESS is flagged, and no
+          # amount of re-entry changes a runner's IP.
+          # So take one cheap retry for a genuine hiccup, then stop and let the job end: the
+          # ingest and the state artifact still run, and the real reset is the NEXT dispatch,
+          # which lands on a different runner with a different IP.
+          ARGS=(--max-recover 1)
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
           python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \
