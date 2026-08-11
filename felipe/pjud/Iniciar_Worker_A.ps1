@@ -24,6 +24,8 @@ param(
     # the first time the sweep was restarted — and the run would quietly go back to storing every
     # procedimiento again.
     [string] $OnlyProc = "obligaci.*dar",
+    [int]    $Start = 0,                    # tribunal index to resume at
+    [int]    $End   = 0,                    # stop after this index (0 = to the end)
     [switch] $NoEbook,                      # metadata only, request no documents
     [switch] $NoDetail                      # census only, open nothing
 )
@@ -54,6 +56,8 @@ if ($alive.Count -gt 0) {
 
 $args = @("-u", "worker_a.py", "--port", $Port, "--desde", $Desde, "--hasta", $Hasta)
 if ($OnlyProc) { $args += @("--only-proc", $OnlyProc) }
+if ($Start)    { $args += @("--start", $Start) }
+if ($End)      { $args += @("--end",   $End) }
 if ($NoEbook)  { $args += "--no-ebook" }
 if ($NoDetail) { $args += "--no-detail" }
 

@@ -11,7 +11,7 @@ Callers tune the timing knobs by assigning to the module attributes (they are re
     import ojv
     ojv.EMPTY_MIN_S = 30.0
 """
-import time, re, socket, random
+import time, re, socket, random, os, atexit
 import cdp_scrape as C
 import unattended_worker as uw
 
@@ -315,6 +315,128 @@ def _reach_ojv(ctx, start, wait=60.0):
     return None
 
 
+class EntryLock:
+    """Only ONE worker may be walking in at a time. Condition, not a timer.
+
+    ⚠️ Fixed offsets do not work here and 2026-08-10 proved it twice. Entry takes about three
+    minutes (three click-through attempts, then the direct-navigation fallback), so staggering
+    starts by 8 s — or even 50 s on the runners — leaves every worker inside the entry sequence
+    simultaneously anyway. Four launched that way all sat in the retry loop together, logging the
+    same failures within twelve seconds of each other, and none of them got in.
+
+    A burst of brand-new sessions is itself the trigger. So the gate is: acquire, launch Chrome,
+    walk in, and hold until THIS worker's first search has actually come back. The next worker
+    starts from a world where the previous one is already inside AND working, which is the state
+    the site is happy with.
+
+    ⚠️ THE RELEASE CONDITION IS A CONFIRMED SEARCH, NOT THE FORM (operator, 2026-08-11). Reaching
+    the form proves very little: on 2026-08-10 all four workers reached a page and none of them
+    could search, so a form-based release would have opened the gate four times over on the
+    strength of nothing. `touch()` exists for exactly this reason — the hold is now long enough
+    that the stale timer would otherwise expire on a worker that is alive and fine.
+
+    A lock older than `stale` is broken rather than obeyed — a worker that dies holding it must
+    not strand every other worker behind it for the rest of the night.
+    """
+
+    def __init__(self, path, stale=420.0, timeout=1800.0):
+        self.path, self.stale, self.timeout = str(path), stale, timeout
+        self.held = False
+
+    def acquire(self):
+        t0 = time.time()
+        waited = False
+        while time.time() - t0 < self.timeout:
+            try:
+                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(os.getpid()).encode())
+                os.close(fd)
+                self.held = True
+                # Held across Chrome launch, entry AND the first search now, so there is a lot
+                # more run between acquire and release that can die. Whatever kills us — a raise,
+                # a SystemExit, an exit code — the queue must not stay shut for `stale` seconds.
+                atexit.register(self.release)
+                if waited:
+                    note(f"entry lock acquired after {time.time()-t0:.0f}s")
+                return True
+            except FileExistsError:
+                try:
+                    age = time.time() - os.path.getmtime(self.path)
+                except OSError:
+                    continue
+                if age > self.stale:
+                    note(f"entry lock is {age:.0f}s old — breaking it (holder is gone)")
+                    try:
+                        os.unlink(self.path)
+                    except OSError:
+                        pass
+                    continue
+                if not waited:
+                    note("another worker is walking in — waiting my turn")
+                    waited = True
+                time.sleep(5)
+        note("entry lock timed out — proceeding anyway rather than stalling for ever")
+        return False
+
+    def touch(self):
+        """Restart the stale clock: this holder is alive and still working.
+
+        The hold now spans Chrome launch + walk-in + first search, which on a slow night can
+        outlast `stale` honestly. Without this the other three workers would break a perfectly
+        good lock and pile in — the exact burst the lock exists to prevent.
+        """
+        if self.held:
+            try:
+                os.utime(self.path, None)
+            except OSError:
+                pass
+
+    def release(self):
+        if not self.held:
+            return
+        self.held = False
+        try:
+            # Only remove a lock we still own. If we were slow enough to be broken as stale, the
+            # file sitting there now belongs to the worker that broke us, and unlinking it would
+            # let a third worker in alongside them.
+            with open(self.path) as f:
+                mine = f.read().strip() == str(os.getpid())
+            if mine:
+                os.unlink(self.path)
+        except OSError:
+            pass
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *a):
+        self.release()
+
+
+def _only_tab(ctx, keep):
+    """Leave exactly one pjud tab open, and make sure it is the one in FRONT.
+
+    human_click drives real mouse coordinates, so a leftover tab does not merely clutter the
+    window — it silently swallows every click aimed at the page underneath it. Only pjud/blank
+    tabs are touched; anything else in the browser is none of our business.
+    """
+    for q in list(ctx.pages):
+        if q is keep:
+            continue
+        u = q.url or ""
+        if "pjud.cl" in u or u in ("", "about:blank"):
+            try:
+                q.close()
+            except Exception:
+                pass
+    try:
+        keep.bring_to_front()
+    except Exception:
+        pass
+    time.sleep(1.0)
+
+
 def walk_in(ctx):
     """www.pjud.cl -> OJV /home/ -> dismiss AVISO -> Consulta causas -> form. Fully scripted.
 
@@ -325,20 +447,14 @@ def walk_in(ctx):
     p = find_form(ctx)
     if p:
         return p
-    # ★ Close stale OJV tabs FIRST. Each failed walk-in used to leave another /home/ behind, and
-    # human_click drives REAL MOUSE COORDINATES — which land on whatever tab is actually visible.
-    # With two /home/ tabs open, retries clicked those coordinates on the WRONG tab, so three
-    # "attempts" could fail without the button ever being touched (operator: "you have 2 homes
-    # opened. what's wrong"). That also undermines the "gate 1 refuses us" reading: the clicks may
-    # simply never have arrived.
-    for q in list(ctx.pages):
-        if "oficinajudicialvirtual" in (q.url or ""):
-            try:
-                q.close()
-            except Exception:
-                pass
-    time.sleep(1.5)
+    # ★ ONE TAB, IN FRONT, BEFORE EVERY ATTEMPT. This used to close stale /home/ tabs only, which
+    # missed the case that actually bites: a failed click-through leaves a stale WWW.PJUD.CL tab,
+    # `_reach_ojv` has already brought it to the front, and no 'oficinajudicialvirtual' test
+    # matches it. Measured on slot 3, 2026-08-11 — attempts 2 and 3 opened no tab and fired no
+    # navigation at all, through 150 s of CDP listening. The clicks were landing on the leftover
+    # tab, so "3 attempts" was really one attempt and two minutes of nothing.
     start = next((q for q in ctx.pages if "pjud.cl" in (q.url or "")), None) or ctx.new_page()
+    _only_tab(ctx, start)
     try:
         start.goto("https://www.pjud.cl/", wait_until="domcontentloaded")
     except Exception:
@@ -346,17 +462,25 @@ def walk_in(ctx):
     start.bring_to_front()
     start.wait_for_timeout(4000)
     page = None
-    for attempt in (1, 2, 3):
+    # ⚠️ ONE click-through attempt, then go direct. It was three, but the 2nd and 3rd were never
+    # real clicks at all (see the tab note above), so all they ever bought was two minutes.
+    # Measured 2026-08-11 across four profiles: the click-through succeeded on its first attempt
+    # 1 time in 3 — it is NOT broken, just unreliable — while direct navigation went 2/2 in about
+    # four seconds. Since this is held under the entry lock, every wasted minute is a minute the
+    # other three workers spend queued, so one honest try and then the reliable path.
+    for attempt in (1,):
         page = _reach_ojv(ctx, start, wait=60.0)
         if page is not None:
             break
-        note(f"could not reach the OJV (attempt {attempt}/3)")
+        note(f"could not reach the OJV by click-through (attempt {attempt}/1)")
         if not internet_up():
             if not wait_for_internet()[0]:
                 return None
+        _only_tab(ctx, start)
         time.sleep(8)
         try:
             start.goto("https://www.pjud.cl/", wait_until="domcontentloaded")
+            start.bring_to_front()
             start.wait_for_timeout(4000)
         except Exception:
             pass
@@ -366,9 +490,10 @@ def walk_in(ctx):
         # IP — three attempts, every one blank — while a direct navigation in a focused tab
         # cleared F5's challenge in six seconds. Typing a public URL is ordinary browsing; a
         # preference for the prettier path is not worth losing the run over.
-        note("click-through failed 3x — navigating to the OJV directly")
+        note("click-through failed — navigating to the OJV directly")
         try:
             page = next((q for q in ctx.pages if OJV_HOST in (q.url or "")), None) or ctx.new_page()
+            _only_tab(ctx, page)      # the challenge needs THIS tab in front, not a leftover
             page.bring_to_front()
             page.goto(f"https://{OJV_HOST}/home/", wait_until="domcontentloaded", timeout=60000)
             for _ in range(20):                   # the challenge needs the tab VISIBLE to run
@@ -419,23 +544,40 @@ def walk_in(ctx):
         # a point outside the viewport, and the coverage test read that as "covered" — refusing to
         # click a button that was merely off-screen. A hit-test is only meaningful on something
         # actually in view.
-        try:
-            page.eval_on_selector(sel, "e=>e.scrollIntoView({block:'center'})")
-            page.wait_for_timeout(random.uniform(250, 600))
-        except Exception:
-            pass
+        # ⚠️ SCROLL THE CANDIDATE WE ARE ABOUT TO TEST — the previous version scrolled `sel` with
+        # eval_on_selector, which centres querySelector's FIRST match. /home/ has two
+        # accesoConsultaCausas nodes and the first one has a zero-size box, so that centred the
+        # INVISIBLE one and left the real button off-screen, where elementFromPoint returns null
+        # and the coverage test calls it "covered". Slot 2 refused to click a perfectly clickable
+        # button three times that way on 2026-08-11. A 440px-tall tiled window makes it near
+        # certain; it was survivable only while the windows were maximised.
         cov = page.evaluate("""(s)=>{
-          return [...document.querySelectorAll(s)]
-            .map((e,i)=>({e:e,r:e.getBoundingClientRect(),i:i}))
-            .filter(o=>o.r.width>0&&o.r.height>0)
-            .map(o=>{const t=document.elementFromPoint(o.r.x+o.r.width/2,o.r.y+o.r.height/2);
-                     return {i:o.i, hit: !!t && (t===o.e||o.e.contains(t))};});
+          const els=[...document.querySelectorAll(s)]
+            .map((e,i)=>({e:e,i:i,r:e.getBoundingClientRect()}))
+            .filter(o=>o.r.width>0&&o.r.height>0);
+          const out=[];
+          for (const o of els) {
+            o.e.scrollIntoView({block:'center'});
+            const r=o.e.getBoundingClientRect();          // re-measure AFTER scrolling
+            const t=document.elementFromPoint(r.x+r.width/2, r.y+r.height/2);
+            out.push({i:o.i, hit: !!t && (t===o.e||o.e.contains(t)),
+                      top: t ? (t.id || t.className || t.tagName) : 'off-screen'});
+          }
+          return out;
         }""", sel)
         pick = next((c["i"] for c in cov if c["hit"]), None)
         if pick is None:
+            # Say WHAT is on top. This line has meant three different things on three different
+            # days, and "covered" alone sent the diagnosis to the WAF every time.
             note(f"  entry button covered ({cov}) — not clicking")
             page.wait_for_timeout(5000)
             continue
+        # Re-centre the one we picked: the loop above left the LAST candidate scrolled into view.
+        try:
+            page.locator(sel).nth(pick).scroll_into_view_if_needed(timeout=5000)
+            page.wait_for_timeout(random.uniform(250, 600))
+        except Exception:
+            pass
         note(f"human_click guest entry {sel} nth({pick}) (attempt {attempt}/3)")
         ok = C.human_click(page, page.locator(sel).nth(pick), timeout=8000)
         note(f"  click delivered: {ok}")

@@ -34,6 +34,7 @@ Usage
     python worker_a.py --port 9337 --start 42         # resume at tribunal index 42
     python worker_a.py --port 9337 --max-causas 12    # bounded probe of the detail budget
 """
+import os
 import sys, json, time, base64, argparse
 import random
 import re
@@ -407,7 +408,53 @@ def advance(p, page):
     return "more"
 
 
-def enter_and_setup(ctx, net, desde, hasta):
+def launch_chrome(port, profile, slot=1):
+    """Start this worker's OWN Chrome and wait for its CDP port.
+
+    ⚠️ THE BROWSER IS PART OF THE ENTRY, which is the operator's point and it is right: four
+    fresh Chromes all loading pjud.cl is itself the burst, regardless of when the Python
+    processes started. Gating only the worker still let four brand-new sessions appear at once.
+    So Chrome is launched INSIDE the entry lock, and the next worker does not even open a window
+    until the previous one is on the form.
+    """
+    import subprocess, urllib.request
+    exe = (r"C:\Program Files\Google\Chrome\Application\chrome.exe")
+    if not Path(exe).exists():
+        exe = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+    Path(profile).mkdir(parents=True, exist_ok=True)
+    note(f"launching Chrome on {port} ({Path(profile).name})")
+    # The occlusion flags are BELT AND BRACES, not a fix for anything measured.
+    # ⚠️ Do not let the earlier note here mislead you again: it claimed a covered window reports
+    # document.visibilityState = "hidden" and therefore cannot clear F5's challenge. That was
+    # tested on 2026-08-10 with two Chromes stacked at the same coordinates, and it is FALSE —
+    # the fully covered window read "visible" both with the flags and without them. So occlusion
+    # was never the cause of the "3 minutes and a blank site"; that was entry landing on the OJV
+    # home instead of the search form, while the site was having problems.
+    # The flags are kept because they cost nothing and do stop Chrome throttling a background
+    # tab's timers, which the challenge script does need. Windows are TILED rather than maximised
+    # so all four stay watchable.
+    x, y = (slot % 2) * 780, ((slot // 2) % 2) * 470
+    subprocess.Popen([exe, f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+                      "--no-first-run", "--no-default-browser-check",
+                      "--disable-features=CalculateNativeWinOcclusion",
+                      "--disable-backgrounding-occluded-windows",
+                      "--disable-renderer-backgrounding",
+                      "--disable-background-timer-throttling",
+                      f"--window-size=760,440", f"--window-position={x},{y}",
+                      "https://www.pjud.cl/"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(45):
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=2).read()
+            note(f"Chrome up on {port}")
+            return True
+        except Exception:
+            time.sleep(1)
+    note(f"Chrome never opened CDP on {port}")
+    return False
+
+
+def enter_and_setup(ctx, net, desde, hasta, lock=None):
     """Walk in and build the search form. Returns (page, Settler, tribunal list).
 
     Module level and parameterised so worker B shares it verbatim. Entry, the Competencia
@@ -429,7 +476,24 @@ def enter_and_setup(ctx, net, desde, hasta):
                 C.clear_stuck_modal(q)
         except Exception:
             pass
-    pg = ojv.walk_in(ctx)
+    # ⚠️ ONE WORKER WALKS IN AT A TIME. Fixed offsets do not work: entry takes about three
+    # minutes, so an 8 s (or even 50 s) stagger still leaves every worker inside the entry
+    # sequence at once — four of them logged the identical steps within two seconds of each
+    # other and none got in. Operator's call, and the right one: a condition, not a timer.
+    # If the caller already holds the lock (it launched Chrome under it) do NOT take it again,
+    # and do not release it either — the caller holds it until its first search comes back.
+    # Recovery re-entries take their own lock and release it here, since a worker that is
+    # already established is not a new arrival and has nothing to prove to the queue.
+    own = lock is None
+    if own:
+        lock = ojv.EntryLock(DATA.parent / "entry.lock")
+        lock.acquire()
+    try:
+        pg = ojv.walk_in(ctx)
+    finally:
+        if own:
+            lock.release()            # released whether we got in or not — never strand the queue
+    lock.touch()                      # alive and on the form: do not let the stale timer fire
     if pg is None:
         return None, None, None
     note(f"in: {pg.url[:60]}")
@@ -487,6 +551,11 @@ def main():
                          "costs two (the open plus its document), so two workers at the "
                          "single-worker pace spend about double the ceiling.")
     ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
+    ap.add_argument("--launch-chrome", action="store_true",
+                    help="this worker starts its OWN Chrome, inside the entry lock, so no two "
+                         "brand-new sessions ever appear at the same moment.")
+    ap.add_argument("--chrome-profile", default="",
+                    help=r"profile dir for --launch-chrome (default: %LOCALAPPDATA%\pjud_wA<slot>)")
     ap.add_argument("--offset", type=float, default=0.0,
                     help="seconds to wait before the FIRST request. Give each concurrent worker "
                          "a different offset (e.g. 0 and 30 with a 60 s gap) so their requests "
@@ -579,6 +648,24 @@ def main():
         # before it will complete a handshake, and the supervisor relaunches Chrome immediately
         # before relaunching this — so a single attempt raced it and the run died on arrival
         # (2026-08-09, sweep.log left at 0 bytes with only a handshake error beside it).
+        # ⚠️ HOLD THE ENTRY LOCK ACROSS THE WHOLE ARRIVAL: launching Chrome, loading pjud.cl,
+        # walking in, and the first search. Four fresh browsers appearing together IS the burst,
+        # so gating only the Python process — which is what the first version did — changed
+        # nothing at all.
+        # ⚠️ TAKEN UNCONDITIONALLY, not only under --launch-chrome. An arrival is an arrival
+        # whether or not this process opened the window: the supervisor restarts a worker onto an
+        # ALREADY-RUNNING Chrome, and that worker still walks in and still searches. Gating only
+        # the launch left exactly that path — the one that fires unattended at 3 a.m. — ungated,
+        # and released on the form instead of on a confirmed search.
+        boot_lock = ojv.EntryLock(DATA.parent / "entry.lock")
+        boot_lock.acquire()
+        if a.launch_chrome:
+            prof = a.chrome_profile or str(
+                Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / f"pjud_wA{a.slot or 0}")
+            if not launch_chrome(a.port, prof, a.slot or 1):
+                boot_lock.release()
+                raise SystemExit(f"could not start Chrome on {a.port}")
+
         b = None
         for attempt in (1, 2, 3, 4):
             try:
@@ -597,7 +684,7 @@ def main():
         # slow link means a whole sweep lost to one slow page load.
         p = S = tl = None
         for attempt in (1, 2, 3):
-            p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
+            p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta, lock=boot_lock)
             if p is not None:
                 # A form with no tribunales means we are LOOKING at the page but something is
                 # covering it — a CAPTCHA frame, typically. Retrying cannot help.
@@ -612,8 +699,17 @@ def main():
             if not ojv.internet_up() and not ojv.wait_for_internet()[0]:
                 raise SystemExit("offline — stopping")
             time.sleep(20)
+        # ⚠️ THE LOCK STAYS SHUT HERE. Being on the form is not the condition — a confirmed
+        # search is (see EntryLock). It is released down in the sweep loop, the moment this
+        # worker's first search returns a verdict. The one exception is failing to get in at
+        # all: then there is nothing to confirm and holding the gate would strand the fleet.
         if p is None:
+            if boot_lock:
+                boot_lock.release()
             raise SystemExit("could not reach the form after 3 attempts")
+        if boot_lock:
+            boot_lock.touch()
+            note("on the form — holding the entry lock until my first search comes back")
         if len(tl) < 50:
             raise SystemExit("not the national list — aborting")
 
@@ -677,8 +773,15 @@ def main():
             return True
 
         if a.offset:
-            note(f"offset: waiting {a.offset:.0f}s so this worker interleaves with the others")
-            time.sleep(a.offset)
+            # The offset is a timer whose whole purpose is to keep workers apart, and we are
+            # currently holding the gate that does that properly. Sleeping here would stall the
+            # other three for no benefit at all, so spend it only when we are not the holder.
+            if boot_lock and boot_lock.held:
+                note(f"skipping the {a.offset:.0f}s offset — the entry lock already spaces us, "
+                     f"and sleeping under it would stall the queue")
+            else:
+                note(f"offset: waiting {a.offset:.0f}s so this worker interleaves with the others")
+                time.sleep(a.offset)
         last_search = 0.0
         select_fails = 0
         # ⚠️ Run-level, NOT per-tribunal. Scoped to the tribunal it never reached the
@@ -722,12 +825,27 @@ def main():
                     time.sleep(gap)
 
             net.clear()
+            if boot_lock and boot_lock.held:
+                boot_lock.touch()     # about to search: the stale clock restarts from here
             C.human_click(p, "#btnConConsultaFec")
             last_search = time.time()
             tally["searches"] += 1
             kind, el = ojv.wait_results(p, S, net)
 
             hit, why = ojv.blocked(p, net)
+            # ⚠️ THE GATE OPENS HERE — one confirmed search, then the next worker may start
+            # (operator, 2026-08-11). Reaching a form proves nothing: on 2026-08-10 all four
+            # workers reached a page and not one of them could search, so releasing on the form
+            # would have opened the gate four times over on the strength of nothing.
+            # Released on ANY verdict, good or bad. A worker that cannot search must not hold
+            # three others behind it all night, and if the site is refusing us the queue needs to
+            # find that out rather than sit still.
+            if boot_lock and boot_lock.held:
+                ok = kind == "results" and not hit
+                note(f"first search {'CONFIRMED' if ok else 'did NOT confirm'} "
+                     f"({kind}{', blocked: ' + why if hit else ''}, {el:.0f}s) "
+                     f"— releasing the entry lock, next worker may come in")
+                boot_lock.release()
             if hit:
                 note(f"  *** BLOCKED at idx {idx} ({tgt['v']} {tgt['t'][:28]}) {why}")
                 save()

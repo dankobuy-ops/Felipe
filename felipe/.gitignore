@@ -16,6 +16,7 @@ Screenshots/
 screenshots/
 Logs/
 logs/
+*.log
 
 # PJUD network-probe dumps — local experiment artifacts (may hold request internals)
 netprobe_*.jsonl
