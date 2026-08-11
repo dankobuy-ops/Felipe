@@ -103,6 +103,18 @@ jobs:
           printf '%s' "$GOOGLE_CLIENT_SECRET" > client_secret.json
           printf '%s' "$GOOGLE_TOKEN_JSON"    > token.json
 
+      - name: Stagger + identify this runner
+        run: |
+          # ⚠️ DO NOT let the shards arrive together. Six launched simultaneously and only ONE
+          # got in; the other five never reached the OJV at all. The same thing happens locally
+          # when two fresh browsers load pjud.cl in the same second — a burst of brand-new
+          # sessions is itself the trigger, independently of request rate. So each shard waits
+          # its turn before it so much as opens Chrome.
+          WAIT=$(( (${{ matrix.slot }} - 1) * 50 ))
+          echo "shard ${{ matrix.slot }}: waiting ${WAIT}s so the shards do not arrive together"
+          sleep "$WAIT"
+          echo "runner public IP: $(curl -s --max-time 10 https://api.ipify.org || echo unknown)"
+
       - name: Launch Chrome (headed, own profile)
         working-directory: felipe/pjud/scraper
         run: |
