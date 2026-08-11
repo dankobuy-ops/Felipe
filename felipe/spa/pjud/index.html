@@ -4,18 +4,112 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Poder Judicial Virtual</title>
-  <link rel="stylesheet" href="../home.css?v=1" />
+  <link rel="stylesheet" href="style.css?v=1" />
 </head>
 <body>
-  <main class="home-card">
-    <h1>Poder Judicial Virtual</h1>
-    <p class="sub">En construcción 🚧</p>
-    <nav class="tools">
-      <a class="tool" href="../">
-        <span class="tool-name">← Volver</span>
-        <span class="tool-desc">Inicio</span>
-      </a>
-    </nav>
-  </main>
+
+  <!-- ── First run: the GitHub token, once per device ───────────────────────── -->
+  <div id="screen-setup" class="screen hidden">
+    <div class="card">
+      <h1>Configuración inicial</h1>
+      <p class="hint">
+        Pega tu GitHub Personal Access Token con permiso <code>workflow</code>.
+        Se guarda solo en este dispositivo y se pide una vez.
+      </p>
+      <form id="setup-form">
+        <label>
+          GitHub Personal Access Token
+          <input type="password" id="pat-input" required placeholder="ghp_…" autocomplete="off" />
+        </label>
+        <button type="submit">Guardar y continuar</button>
+      </form>
+      <p id="setup-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- ── Main ───────────────────────────────────────────────────────────────── -->
+  <div id="screen-main" class="screen hidden">
+    <div class="card wide">
+
+      <div class="top-bar">
+        <a class="icon-btn" href="../" title="Volver">←</a>
+        <h1>Poder Judicial Virtual</h1>
+        <button id="btn-forget" class="icon-btn" title="Olvidar el token de este dispositivo">⚙</button>
+      </div>
+
+      <!-- Dates -->
+      <div class="field-row">
+        <label>
+          Desde
+          <input type="date" id="desde" required />
+        </label>
+        <label>
+          Hasta
+          <input type="date" id="hasta" required />
+        </label>
+      </div>
+      <p id="date-error" class="error hidden"></p>
+
+      <!-- What kind of pass -->
+      <h2 class="section-title">Tipo de búsqueda</h2>
+      <div class="mode-grid" id="mode-grid"><!-- filled by app.js --></div>
+      <p id="mode-note" class="hint"></p>
+
+      <!-- Options -->
+      <details class="adv">
+        <summary>Opciones avanzadas</summary>
+        <div class="adv-body">
+          <label>
+            Procedimiento (regex; vacío = todos)
+            <input type="text" id="only-proc" value="obligaci.*dar" spellcheck="false" />
+          </label>
+          <label>
+            Runners en paralelo
+            <select id="shards">
+              <option value="1" selected>1 — uno solo, de punta a punta</option>
+              <option value="3">3 — tres IP distintas</option>
+              <option value="6">6 — seis IP distintas</option>
+            </select>
+          </label>
+          <label class="check">
+            <input type="checkbox" id="resume" checked />
+            <span>Continuar la corrida anterior de esta misma ventana de fechas</span>
+          </label>
+          <p class="hint-small">
+            Cada runner tiene su propia IP. El bloqueo del sitio es un límite de
+            <em>ritmo por IP</em>, así que más runners rinden más — pero llegan todos a la vez,
+            que es justo lo que el sitio castiga. Empieza con 1.
+          </p>
+        </div>
+      </details>
+
+      <button id="run-btn" type="button">▶️ Iniciar</button>
+      <p id="run-error" class="error hidden"></p>
+
+      <!-- Live progress -->
+      <div id="progress-card" class="progress-card hidden">
+        <div class="results-header">
+          <div class="spinner" id="prog-spinner"></div>
+          <strong id="prog-title">—</strong>
+          <span class="badge" id="prog-badge">—</span>
+          <a id="prog-link" class="pdf-link" href="#" target="_blank" rel="noopener">ver en GitHub ↗</a>
+        </div>
+        <div class="job-meta" id="prog-meta">—</div>
+        <ol class="steps" id="prog-steps"></ol>
+      </div>
+
+      <!-- Past runs -->
+      <div class="history-block">
+        <div class="history-head">
+          <h2>Corridas recientes</h2>
+          <button id="btn-refresh" class="link-btn" title="Actualizar">⟳</button>
+        </div>
+        <ul class="history-list" id="history"></ul>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="app.js?v=1"></script>
 </body>
 </html>
