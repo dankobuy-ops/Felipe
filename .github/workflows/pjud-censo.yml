@@ -1,0 +1,166 @@
+name: PJUD — censo remoto (por demanda)
+
+# Sharded national census across N runners, on demand. Each shard takes a disjoint slice of the
+# ~230 civil tribunales, sweeps it, and writes what it finds straight to Neon.
+#
+# ON DEMAND ONLY, deliberately. The previous PJUD workflow carried a cron and spent ~13 days
+# firing 17 failing jobs a day at the OJV. If this is ever wanted on a schedule, that is a
+# decision to take explicitly, after it has proven itself by hand.
+#
+# ⚠️ HEADED UNDER XVFB, NEVER HEADLESS. Measured 2026-08-11, same code both ways:
+#     headed under Xvfb   entered, 232 tribunales, search returned results
+#     --headless=new      entry failed after 102 s, form never appeared
+# F5's challenge script tests document.visibilityState, and a headless browser has no visible
+# surface, so the challenge never completes. That single flag is the entire reason the old
+# workflow failed every day for a fortnight. `headless_check.py` re-verifies it in one command.
+#
+# Each runner gets its own IP, so shards do not share a rate budget the way local workers do.
+# A census of 230 tribunales takes ~3.3 h on one worker, so keep shards small enough to finish
+# inside the 55-minute job cap: 6 shards is ~35 min each, 8 is ~25.
+
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Desde (dd/mm/aaaa)"
+        required: true
+        default: "01/07/2026"
+      hasta:
+        description: "Hasta (dd/mm/aaaa)"
+        required: true
+        default: "14/07/2026"
+      shards:
+        description: "Cuántos runners en paralelo (6 = ~35 min c/u)"
+        required: false
+        default: "6"
+      detail:
+        description: "false = solo censo | true = además abre cada causa y baja el ebook"
+        required: false
+        default: "false"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - id: gen
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, math, os
+          n = max(1, min(12, int("${{ inputs.shards }}" or 6)))
+          total = 230
+          step = math.ceil(total / n)
+          shards = [{"slot": i + 1, "start": i * step,
+                     "end": min(total - 1, (i + 1) * step - 1)}
+                    for i in range(n) if i * step <= total - 1]
+          print("matrix=" + json.dumps({"include": shards}))
+          PY
+
+  censo:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false          # one shard blocked must not cancel the others
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install playwright psycopg2-binary requests \
+                      google-auth google-auth-oauthlib google-api-python-client
+          playwright install chromium --with-deps
+
+      - name: Xvfb (headed, never headless — see header)
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb >/dev/null 2>&1 || true
+          Xvfb :99 -screen 0 1440x900x24 >/dev/null 2>&1 &
+          sleep 2
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Restore config (Neon + Drive ids)
+        working-directory: felipe/pjud/scraper
+        env:
+          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
+        run: |
+          printf '%s' "$PJUD_CONFIG" > pjud_config.json
+          python -c "import json;d=json.load(open('pjud_config.json'));print('config keys:',sorted(d))"
+
+      - name: Google credentials (only needed when detail=true)
+        if: ${{ inputs.detail == 'true' }}
+        working-directory: felipe/pjud/scraper
+        env:
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_TOKEN_JSON:    ${{ secrets.GOOGLE_TOKEN_JSON }}
+        run: |
+          printf '%s' "$GOOGLE_CLIENT_SECRET" > client_secret.json
+          printf '%s' "$GOOGLE_TOKEN_JSON"    > token.json
+
+      - name: Launch Chrome (headed, own profile)
+        working-directory: felipe/pjud/scraper
+        run: |
+          # --no-sandbox is mandatory in a CI container; without it Chrome dies before it ever
+          # opens the debugging port, which reads as a WAF refusal and is nothing of the kind.
+          CHROME=$(python -c "from playwright.sync_api import sync_playwright;\
+            p=sync_playwright().start();print(p.chromium.executable_path)")
+          "$CHROME" --remote-debugging-port=9222 --user-data-dir="$HOME/pjud_p${{ matrix.slot }}" \
+            --no-sandbox --disable-dev-shm-usage --disable-gpu \
+            --no-first-run --no-default-browser-check --window-size=1440,900 \
+            https://www.pjud.cl/ >/dev/null 2>chrome.err &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:9222/json/version >/dev/null && break || sleep 1
+          done
+          curl -sf http://127.0.0.1:9222/json/version | head -c 120 || (echo "CDP DOWN"; tail -20 chrome.err; exit 1)
+
+      - name: Censo shard ${{ matrix.slot }} (tribunales ${{ matrix.start }}-${{ matrix.end }})
+        working-directory: felipe/pjud/scraper
+        run: |
+          ARGS=""
+          if [ "${{ inputs.detail }}" != "true" ]; then ARGS="--no-detail"; fi
+          python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \
+            --start ${{ matrix.start }} --end ${{ matrix.end }} \
+            --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}" $ARGS
+
+      - name: Ingest to Neon
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          # --shells matters for a census run: it discovers causas without opening them, so
+          # without this the whole shard would write nothing at all.
+          UP=""
+          if [ "${{ inputs.detail }}" != "true" ]; then UP="--no-upload"; fi
+          python -u ingest_worker_a.py --shells $UP || echo "ingest failed — state is in the artifact"
+
+      - name: Summary
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          f = pathlib.Path("../data/worker_a${{ matrix.slot }}/state.json")
+          print(f"### shard ${{ matrix.slot }} — tribunales ${{ matrix.start }}-${{ matrix.end }}\n")
+          if f.exists():
+              st = json.loads(f.read_text(encoding="utf-8"))
+              t = st["tribunales"]
+              print(f"- tribunales barridos: **{len(t)}**")
+              print(f"- causas de banco: **{sum(v['banks'] for v in t.values())}**")
+              print(f"- incompletos: {[v['name'] for v in t.values() if not v.get('complete')] or 'ninguno'}")
+          else:
+              print("- sin estado (el shard no llegó a barrer)")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: censo-shard-${{ matrix.slot }}
+          path: |
+            felipe/pjud/data/worker_a${{ matrix.slot }}/state.json
+            felipe/pjud/scraper/chrome.err
+          if-no-files-found: ignore

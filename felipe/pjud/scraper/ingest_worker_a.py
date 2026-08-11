@@ -86,6 +86,10 @@ def main():
     ap.add_argument("--only-proc", default="obligaci.*dar",
                     help="regex on procedimiento; non-matching causas are not stored. Judged "
                          "from the harvested header, NOT from a flag in state.json.")
+    ap.add_argument("--shells", action="store_true",
+                    help="also register census-discovered causas that have no detail yet, as "
+                         "SHELLS (rol + date + tribunal). Without this a census-only run writes "
+                         "nothing to Neon at all, because every causa it found lacks a header.")
     ap.add_argument("--dry", action="store_true")
     # Uploading is ON by default. It was opt-in at first, on the reasoning that a long network
     # job should not fire as a side effect — but that left PDFs sitting on disk with causas.ebook
@@ -190,8 +194,32 @@ def main():
     eb = sum(1 for r in causas.values() if (r.get('ebook') or {}).get('bytes'))
     print(f"  ebooks on disk {eb} — "
           f"{'uploaded to Drive' if a.upload_pdfs else 'NOT uploaded; causas.ebook left empty'}")
+    shells = {}
+    if a.shells:
+        # A census run discovers causas but opens none, so they live in
+        # tribunales[tid]["causas"] and never reach st["causas"]. They are still the work-list a
+        # detail pass needs: rol, date, tribunal.
+        for tid, ent in (st.get("tribunales") or {}).items():
+            for x in ent.get("causas", []):
+                cid = f"{tid}-{x['rol']}"
+                if cid in causas:            # already harvested with detail — leave it alone
+                    continue
+                f = run._first_date(x.get("fecha", ""))
+                shells[cid] = (cid, x["rol"], f or None, str(tid), "Civil", run._now())
+        print(f"  census shells    {len(shells):6} (rol + date + tribunal, no detail)")
+
     if a.dry:
         return print("[DRY] no writes.")
+
+    # INSERT ... ON CONFLICT DO NOTHING: a shell must NEVER overwrite a causa that already has
+    # real detail, and a re-run must be free.
+    if shells:
+        with store.conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur, 'INSERT INTO "causas" ("causa_id","rol","f_ingreso","tribunal_id",'
+                     '"competencia","updated_at") VALUES %s '
+                     'ON CONFLICT ("causa_id") DO NOTHING', list(shells.values()))
+            print(f"  inserted {cur.rowcount} new shells (existing causas untouched)")
 
     # ⚠️ Tribunales must NOT go through upsert. Worker A sweeps with Corte='Todos' and so has no
     # corte value; upsert writes every column from EXCLUDED, which would overwrite the corte of
