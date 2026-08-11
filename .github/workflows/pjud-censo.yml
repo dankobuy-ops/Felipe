@@ -173,7 +173,15 @@ jobs:
           # when two fresh browsers load pjud.cl in the same second — a burst of brand-new
           # sessions is itself the trigger, independently of request rate. So each shard waits
           # its turn before it so much as opens Chrome.
-          WAIT=$(( (${{ matrix.slot }} - 1) * 50 ))
+          # ⚠️ 50 s WAS NOT ENOUGH, and it could not have been: entry takes up to ~100 s on the
+          # slow path (one click-through attempt at 60 s, then the direct navigation and the
+          # guest-entry click), so at 50 s spacing shard N+1 begins walking in while shard N is
+          # still inside its own walk-in. That is the burst — six shards staggered this way and
+          # only ONE got in. Locally the same problem is solved properly, with a lock released
+          # only once a worker's first search comes back; runners cannot share a lock file, so
+          # this is a timer with enough headroom to cover the slow path twice over.
+          # 180 s costs 6 minutes on a three-shard start, against a 350-minute job.
+          WAIT=$(( (${{ matrix.slot }} - 1) * 180 ))
           echo "shard ${{ matrix.slot }}: waiting ${WAIT}s so the shards do not arrive together"
           sleep "$WAIT"
           echo "runner public IP: $(curl -s --max-time 10 https://api.ipify.org || echo unknown)"
