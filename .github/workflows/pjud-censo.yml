@@ -15,8 +15,13 @@ name: PJUD — censo remoto (por demanda)
 # workflow failed every day for a fortnight. `headless_check.py` re-verifies it in one command.
 #
 # Each runner gets its own IP, so shards do not share a rate budget the way local workers do.
-# A census of 230 tribunales takes ~3.3 h on one worker, so keep shards small enough to finish
-# inside the 55-minute job cap: 6 shards is ~35 min each, 8 is ~25.
+#
+# A census alone is ~3.3 h for 230 tribunales on one worker; WITH detail (open every bank causa
+# and fetch its ebook) it is far longer — locally that runs at roughly one causa a minute. So a
+# detail pass is not expected to finish in one dispatch, and does not need to: state is carried
+# forward in an artifact keyed to the date window, and re-dispatching resumes where the last run
+# stopped. Completed tribunales are skipped instantly and causas already banked are never
+# re-opened, so the second dispatch spends its budget only on what is actually left.
 
 on:
   workflow_dispatch:
@@ -30,13 +35,25 @@ on:
         required: true
         default: "14/07/2026"
       shards:
-        description: "Cuántos runners en paralelo (6 = ~35 min c/u)"
+        description: "Cuántos runners en paralelo (1 = un solo worker de punta a punta)"
         required: false
-        default: "6"
+        default: "1"
       detail:
         description: "false = solo censo | true = además abre cada causa y baja el ebook"
         required: false
-        default: "false"
+        default: "true"
+      only_proc:
+        description: "Regex de procedimiento a conservar (vacío = todos)"
+        required: false
+        default: "obligaci.*dar"
+      resume:
+        description: "true = continuar el state de la corrida anterior de esta MISMA ventana"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+  actions: read            # required to pull the previous run's state artifact
 
 jobs:
   plan:
@@ -60,7 +77,12 @@ jobs:
   censo:
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    # ⚠️ 55 was NEVER GitHub's limit — a hosted job may run for 6 hours. That number came from
+    # sizing six parallel shards and was then inherited by single-shard runs, which simply died
+    # at 55 min with the country half-swept: runs 31450801310 and 31452354704 both ended at
+    # 55m36s, and the second one was a single shard over all 230 tribunales. 350 leaves a margin
+    # under the 360-minute ceiling for the ingest and artifact steps to finish.
+    timeout-minutes: 350
     strategy:
       fail-fast: false          # one shard blocked must not cancel the others
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -84,6 +106,47 @@ jobs:
           Xvfb :99 -screen 0 1440x900x24 >/dev/null 2>&1 &
           sleep 2
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Name this window's state artifact
+        id: art
+        run: |
+          # The artifact carries the WINDOW in its name on purpose. worker_a.py refuses to resume
+          # a state whose meta window differs from the one asked for — correctly, since tribunal
+          # completion is recorded with no window attached — so restoring a July state into a June
+          # run would abort the job. Naming them apart makes that mistake impossible.
+          D=$(echo "${{ inputs.desde }}" | tr '/' '-')
+          H=$(echo "${{ inputs.hasta }}" | tr '/' '-')
+          echo "name=state-${D}_${H}-s${{ matrix.slot }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous state (resume)
+        if: ${{ inputs.resume == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # ⚠️ WITHOUT THIS A RUNNER STARTS FROM ZERO EVERY TIME. needs_visit() reads only the
+          # local state.json, so a fresh runner re-opens every causa it already harvested — and a
+          # causa open is the scarcest thing we spend. The workflow was already uploading state as
+          # an artifact and never reading one back, so each dispatch redid the same first courts.
+          NAME="${{ steps.art.outputs.name }}"
+          mkdir -p felipe/pjud/data/worker_a${{ matrix.slot }}
+          for id in $(gh run list --workflow=pjud-censo.yml -R "$GITHUB_REPOSITORY" \
+                        --limit 40 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$id" -R "$GITHUB_REPOSITORY" -n "$NAME" -D /tmp/prev 2>/dev/null; then
+              if [ -f /tmp/prev/state.json ]; then
+                cp /tmp/prev/state.json felipe/pjud/data/worker_a${{ matrix.slot }}/state.json
+                # jq, not an inline python heredoc: unindented python lines terminate the YAML
+                # block scalar and the whole workflow stops parsing.
+                DONE=$(jq '[.tribunales[] | select(.complete)] | length' /tmp/prev/state.json)
+                ALL=$(jq '.tribunales | length' /tmp/prev/state.json)
+                CAU=$(jq '.causas | length' /tmp/prev/state.json)
+                WIN=$(jq -r '.meta.desde + " .. " + .meta.hasta' /tmp/prev/state.json)
+                echo "resumed from run $id — $DONE/$ALL tribunales complete, $CAU causas banked"
+                echo "state window: $WIN  (this run asks for ${{ inputs.desde }} .. ${{ inputs.hasta }})"
+                exit 0
+              fi
+            fi
+          done
+          echo "no previous '$NAME' artifact found — starting this window from scratch"
 
       - name: Restore config (Neon + Drive ids)
         working-directory: felipe/pjud/scraper
@@ -134,11 +197,12 @@ jobs:
       - name: Censo shard ${{ matrix.slot }} (tribunales ${{ matrix.start }}-${{ matrix.end }})
         working-directory: felipe/pjud/scraper
         run: |
-          ARGS=""
-          if [ "${{ inputs.detail }}" != "true" ]; then ARGS="--no-detail"; fi
+          ARGS=()
+          if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
+          if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
           python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \
             --start ${{ matrix.start }} --end ${{ matrix.end }} \
-            --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}" $ARGS
+            --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}" "${ARGS[@]}"
 
       - name: Ingest to Neon
         if: always()
@@ -168,11 +232,22 @@ jobs:
               print("- sin estado (el shard no llegó a barrer)")
           PY
 
+      # ⚠️ STATE GOES IN AN ARTIFACT OF ITS OWN, one file, nothing else. upload-artifact strips the
+      # common ancestor of the paths it is given, so bundling chrome.err with it moved state.json
+      # down to data/worker_aN/state.json inside the zip — and the restore step above, which looks
+      # for state.json at the root, would silently find nothing and start from zero every time.
+      # Uploaded on `always()` so a job killed by the timeout still hands its progress to the next
+      # dispatch; that path is proven — run 31452354704 finalized its artifact after being killed.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: censo-shard-${{ matrix.slot }}
-          path: |
-            felipe/pjud/data/worker_a${{ matrix.slot }}/state.json
-            felipe/pjud/scraper/chrome.err
+          name: ${{ steps.art.outputs.name }}
+          path: felipe/pjud/data/worker_a${{ matrix.slot }}/state.json
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debug-s${{ matrix.slot }}-${{ github.run_attempt }}
+          path: felipe/pjud/scraper/chrome.err
           if-no-files-found: ignore
