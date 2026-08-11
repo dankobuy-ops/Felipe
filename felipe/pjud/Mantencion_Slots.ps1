@@ -108,7 +108,17 @@ try {
         # re-entry), so LiveMin must sit comfortably above that. It is not the stale warning.
         $logLive = $age -lt $LiveMin
 
-        if ($scan.Count -gt 0 -or $pidLive -or $logLive) {
+        # ...but a FRESH log does not prove life when the last thing it said was "I am stopping".
+        # A worker that exits on form-loss or a spent recovery budget leaves a log seconds old,
+        # and waiting out LiveMin before restarting it wastes up to 12 min of the run. Only the
+        # log check is overridden — if the process is genuinely visible, believe that instead.
+        $terminal = $false
+        if (Test-Path $swp) {
+            $tail2 = Get-Content $swp -Tail 2 -ErrorAction SilentlyContinue
+            if ($tail2 -match "TALLY at form-loss:|resume with --start|DONE\.") { $terminal = $true }
+        }
+
+        if ($scan.Count -gt 0 -or $pidLive -or ($logLive -and -not $terminal)) {
             Say ("slot {0} alive (scan={1} pid={2} log={3}m)" -f $s, $scan.Count, $pidLive, [int]$age)
             if ($age -gt $StaleMin) { Say "  [!] slot $s running but silent for $([int]$age) min — worth a look" }
             continue
@@ -136,15 +146,42 @@ try {
         # 39-120, 78-171 and 117-229 — overlapping, each redoing its neighbour's courts. meta
         # holds what the slot was actually told to sweep. Only fall back to the old guess when
         # meta predates this change.
-        $rng = & $py -c "import json;m=json.load(open(r'$d\state.json',encoding='utf-8'))['meta'];print(f\"{m['start']} {m['end']}\") if 'start' in m else print('')" 2>$null
+        # ⚠️ NO \" ESCAPES IN A POWERSHELL STRING. PowerShell escapes with a BACKTICK; a backslash
+        # is literal, so `print(f\"...\")` ends the string early and PowerShell then parses
+        # {m['start']} as a ScriptBlock — "ScriptBlock should only be specified as a value of the
+        # Command parameter", which is exactly how this died at 10:55 on 2026-08-11, after
+        # correctly deciding slot 2 needed restarting and before restarting it. Keep the python
+        # free of double quotes entirely.
+        $rng = & $py -c "import json;m=json.load(open(r'$d\state.json',encoding='utf-8'))['meta'];print(str(m['start'])+' '+str(m['end'])) if 'start' in m else print('')" 2>$null
         if (-not $rng) {
-            Say "slot $s : no range in meta — falling back to the min/max guess (check the scope!)"
-            $rng = & $py -c "import json,sys;t=json.load(open(r'$d\state.json',encoding='utf-8'))['tribunales'];i=sorted(v['idx'] for v in t.values());print(f'{i[0]} {i[-1]}')" 2>$null
+            # Fall back to THIS SUPERVISOR'S OWN EVEN SPLIT, never to min/max of what state
+            # happens to hold: state accumulates across runs with different shard boundaries, and
+            # that guess produced the overlapping 39-120 / 78-171 / 117-229 ranges. The even split
+            # is what the slots were launched with, so it is right by construction.
+            $n = $Slots.Count
+            $i = [array]::IndexOf($Slots, $s)
+            $a0 = [int][math]::Round($i * 230.0 / $n)
+            $b0 = [int][math]::Round(($i + 1) * 230.0 / $n) - 1
+            $rng = "$a0 $b0"
+            Say "slot $s : no range in meta (state predates it) — using the even split $a0-$b0"
         }
         if (-not $rng) { Say "slot $s : no state, cannot infer range — skipping"; continue }
         $a, $b = $rng.Trim().Split(" ")
         $wargs = @("-u","worker_a.py","--port",$port,"--slot",$s,"--start",$a,"--end",$b,
                    "--only-proc",$OnlyProc,"--desde",$Desde,"--hasta",$Hasta)
+
+        # ⚠️ FORM-LOSS NEEDS A FRESH BROWSER, NOT A FRESH PROCESS. A worker that stopped with
+        # "the form is not usable" is telling us its PAGE is wedged, not that it crashed — so
+        # restarting it onto the same live Chrome just reproduces the fault. Measured twice on
+        # 2026-08-11: slot 2 died of form-loss at 10:36, was restarted onto its existing Chrome at
+        # 11:00, and was dead again by 11:02 having managed one search and zero causas.
+        $lastLog = Get-ChildItem (Join-Path $d "sweep.log*") -ErrorAction SilentlyContinue |
+                   Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($lastLog -and (Get-Content $lastLog.FullName -Tail 6 -ErrorAction SilentlyContinue |
+                           Select-String "form is not usable")) {
+            Say "slot $s : last exit was FORM-LOSS — replacing its Chrome instead of reusing it"
+            $cdpOk = $false
+        }
 
         if (-not $cdpOk) {
             # A wedged Chrome still owns the profile directory, and --launch-chrome would then
