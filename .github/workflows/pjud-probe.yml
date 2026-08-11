@@ -1,0 +1,81 @@
+name: PJUD — probe (¿llega un runner a la OJV?)
+
+# ON DEMAND ONLY. Deliberately no schedule: the last PJUD workflow had a cron and spent
+# ~13 days firing 17 failing jobs a day at the OJV for nothing.
+#
+# One question, cheaply: can a GitHub runner reach the Oficina Judicial Virtual, and if not,
+# WHERE does it stop? Everything we know about this WAF was measured from a residential Chilean
+# address; a runner is an Azure datacenter range, and that difference is independent of every bug
+# fixed locally. So this reports the GATE reached rather than pass/fail — each gate means
+# something different and points at a different answer.
+#
+# Runs Chrome HEADED under Xvfb, not headless. That is not cosmetic: F5's challenge script tests
+# document.visibilityState, and a tab that is never visible never runs it — which is a very
+# plausible reading of the old "could not establish the date search form" that ran for 13 days.
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Nota opcional para identificar esta corrida"
+        required: false
+        default: ""
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: felipe/pjud/scraper/requirements.txt
+
+      - name: Install deps
+        run: |
+          pip install playwright
+          playwright install chromium --with-deps
+
+      - name: Xvfb
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb >/dev/null
+          Xvfb :99 -screen 0 1440x900x24 >/dev/null 2>&1 &
+          sleep 2
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Probe
+        env:
+          PROBE_PORT: "9222"
+        run: |
+          cd felipe/pjud/scraper
+          # The probe never exits non-zero for a WAF verdict — being refused is a RESULT, not a
+          # broken job, and a red X would hide which gate we reached.
+          python remote_probe.py || true
+          echo "--- result ---"
+          cat remote_probe_result.json 2>/dev/null || echo "no result file"
+
+      - name: Summary
+        if: always()
+        run: |
+          cd felipe/pjud/scraper
+          if [ -f remote_probe_result.json ]; then
+            {
+              echo "### PJUD remote probe"
+              echo ""
+              echo '```json'
+              cat remote_probe_result.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-result
+          path: felipe/pjud/scraper/remote_probe_result.json
+          if-no-files-found: ignore
