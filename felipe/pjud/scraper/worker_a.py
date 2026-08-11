@@ -35,7 +35,7 @@ Usage
     python worker_a.py --port 9337 --max-causas 12    # bounded probe of the detail budget
 """
 import os
-import sys, json, time, base64, argparse
+import sys, json, time, base64, argparse, atexit, subprocess
 import random
 import re
 from pathlib import Path
@@ -408,6 +408,26 @@ def advance(p, page):
     return "more"
 
 
+def close_chrome(proc):
+    """Kill the Chrome WE launched, and its children.
+
+    ⚠️ terminate() is not enough on Windows: the window goes but the renderer and crashpad
+    children survive, so the port stays bound and the profile stays locked. taskkill /T takes
+    the whole tree.
+    """
+    try:
+        if proc is None or proc.poll() is not None:
+            return
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=25)
+        else:
+            proc.terminate()
+        note("closed the Chrome this worker opened")
+    except Exception:
+        pass
+
+
 def launch_chrome(port, profile, slot=1):
     """Start this worker's OWN Chrome and wait for its CDP port.
 
@@ -417,7 +437,7 @@ def launch_chrome(port, profile, slot=1):
     So Chrome is launched INSIDE the entry lock, and the next worker does not even open a window
     until the previous one is on the form.
     """
-    import subprocess, urllib.request
+    import urllib.request
     exe = (r"C:\Program Files\Google\Chrome\Application\chrome.exe")
     if not Path(exe).exists():
         exe = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
@@ -434,7 +454,7 @@ def launch_chrome(port, profile, slot=1):
     # tab's timers, which the challenge script does need. Windows are TILED rather than maximised
     # so all four stay watchable.
     x, y = (slot % 2) * 780, ((slot // 2) % 2) * 470
-    subprocess.Popen([exe, f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+    proc = subprocess.Popen([exe, f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
                       "--no-first-run", "--no-default-browser-check",
                       "--disable-features=CalculateNativeWinOcclusion",
                       "--disable-backgrounding-occluded-windows",
@@ -443,6 +463,13 @@ def launch_chrome(port, profile, slot=1):
                       f"--window-size=760,440", f"--window-position={x},{y}",
                       "https://www.pjud.cl/"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # ⚠️ A WORKER THAT ENDS ITS JOB TAKES ITS BROWSER WITH IT (operator, 2026-08-11). We opened
+    # this window, so we own it: slot 3 finished its 70 tribunales at 16:34 and left a Chrome
+    # sitting on the desktop with nothing driving it. Left alone overnight that is four dead
+    # browsers holding four profiles and four debugging ports — and a listening port is exactly
+    # how the supervisor decides whether a slot still has a usable browser, so an abandoned one
+    # actively misleads it. atexit covers every way out: DONE, block, form-loss, or a raise.
+    atexit.register(close_chrome, proc)
     for _ in range(45):
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=2).read()
