@@ -86,6 +86,9 @@ def main():
     ap.add_argument("--only-proc", default="obligaci.*dar",
                     help="regex on procedimiento; non-matching causas are not stored. Judged "
                          "from the harvested header, NOT from a flag in state.json.")
+    ap.add_argument("--slot", type=int, default=0,
+                    help="read data/worker_a<N> instead of data/worker_a. Sharded runs keep "
+                         "their state per slot, so without this their census is invisible here.")
     ap.add_argument("--shells", action="store_true",
                     help="also register census-discovered causas that have no detail yet, as "
                          "SHELLS (rol + date + tribunal). Without this a census-only run writes "
@@ -100,10 +103,22 @@ def main():
                     help="skip pushing ebooks to Drive (leaves causas.ebook untouched)")
     a = ap.parse_args()
 
+    global DATA, STATE, PDFS
+    if a.slot:
+        DATA = Path(__file__).parent.parent / "data" / f"worker_a{a.slot}"
+        STATE, PDFS = DATA / "state.json", DATA / "pdfs"
+    print(f"reading {STATE}")
     st = snapshot(STATE)
     causas = st.get("causas") or {}
+    # ⚠️ A CENSUS-only state has causas == {} — nothing was opened — while everything it found
+    # sits in tribunales[tid]["causas"]. Bailing on `not causas` therefore threw away an entire
+    # sharded census silently, reporting "no causas yet" for four slots that had swept 230
+    # tribunales between them.
+    found = sum(len(v.get("causas", [])) for v in (st.get("tribunales") or {}).values())
+    if not causas and not found:
+        return print("nothing in state.json yet (no detail, no census)")
     if not causas:
-        return print("no causas in state.json yet")
+        print(f"census-only state: 0 opened, {found} causas discovered")
 
     store = None if a.dry else dbstore.Store()
 
@@ -204,8 +219,12 @@ def main():
                 cid = f"{tid}-{x['rol']}"
                 if cid in causas:            # already harvested with detail — leave it alone
                     continue
-                f = run._first_date(x.get("fecha", ""))
-                shells[cid] = (cid, x["rol"], f or None, str(tid), "Civil", run._now())
+                # ⚠️ Route the date through dbstore._to_db like every other write. f_ingreso is
+                # a real DATE since the 2026-08-07 migration, and a raw INSERT of "14/07/2026"
+                # is rejected outright — the conversion to ISO lives in _to_db precisely so no
+                # caller has to remember, and this one bypassed it.
+                f = dbstore._to_db("Causas", "f_ingreso", run._first_date(x.get("fecha", "")))
+                shells[cid] = (cid, x["rol"], f, str(tid), "Civil", run._now())
         print(f"  census shells    {len(shells):6} (rol + date + tribunal, no detail)")
 
     if a.dry:
