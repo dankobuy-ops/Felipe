@@ -121,6 +121,17 @@ try {
             $wargs += "--launch-chrome"
         }
 
+        # ⚠️ ROTATE THE LOG, NEVER OVERWRITE IT. -RedirectStandardOutput truncates, so restarting
+        # a dead worker used to destroy the very lines that said WHY it died — which is the only
+        # reason anyone reads this file. Cost us the diagnosis of slot 1 on 2026-08-11 at 09:55:
+        # it exited during a throttle recovery and the restart wiped the evidence 4 min later.
+        # Truncation also leaves NUL bytes behind, which makes `grep` call the stream binary and
+        # go silent, so any monitor tailing it stops reporting too.
+        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        foreach ($f in @("sweep.log", "sweep.err")) {
+            $src = Join-Path $d $f
+            if (Test-Path $src) { Move-Item $src (Join-Path $d "$f.$stamp") -Force -ErrorAction SilentlyContinue }
+        }
         $pr = Start-Process $py -ArgumentList $wargs -WorkingDirectory (Join-Path $root "scraper") `
               -RedirectStandardOutput $swp -RedirectStandardError (Join-Path $d "sweep.err") `
               -WindowStyle Hidden -PassThru
