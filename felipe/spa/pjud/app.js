@@ -144,6 +144,7 @@ document.getElementById("run-btn").addEventListener("click", async () => {
     only_proc: document.getElementById("only-proc").value.trim(),
     resume: document.getElementById("resume").checked ? "true" : "false",
     chain: document.getElementById("chain").value,
+    cooloff_min: (document.getElementById("cooloff").value.trim() || "100"),
   };
 
   try {

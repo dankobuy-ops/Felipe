@@ -84,10 +84,16 @@
               <option value="25">Hasta 25 veces</option>
             </select>
           </label>
+          <label>
+            Espera antes de relanzarse (minutos)
+            <input type="text" id="cooloff" value="100" inputmode="numeric" />
+          </label>
           <p class="hint-small">
-            Un runner bloqueado no se recupera desde adentro: la IP es la que queda marcada, y
-            reentrar no la cambia. Al relanzarse cae en otra máquina con otra IP y sigue desde
-            donde quedó. Cancelar una corrida detiene la cadena.
+            Un runner bloqueado no se recupera desde adentro: reentrar no cambia su dirección.
+            Y la IP nueva vive en el mismo rango de datacenter, que es lo que el sitio marca —
+            el 11/08 tres runners con IP distinta se bloquearon con 14 segundos de diferencia,
+            mientras los workers locales seguían sin problema. Por eso espera antes de relanzarse.
+            Cancelar una corrida detiene la cadena.
           </p>
           <p class="hint-small">
             Cada runner tiene su propia IP. El bloqueo del sitio es un límite de

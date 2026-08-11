@@ -54,6 +54,10 @@ on:
         description: "Cuántas veces puede relanzarse sola al bloquearse (0 = ninguna)"
         required: false
         default: "0"
+      cooloff_min:
+        description: "Minutos de espera antes de relanzarse (la IP nueva vive en el mismo rango)"
+        required: false
+        default: "100"
 
 # ⚠️ ONE RUN AT A TIME, ALWAYS. Without this a chained run could overlap the one that spawned it,
 # or a hand dispatch could start a second chain beside the first — and every extra run is another
@@ -327,6 +331,22 @@ jobs:
             echo "::error::DISPATCH_PAT is empty — cannot hand over. Re-dispatch by hand."
             exit 1
           fi
+          # ⚠️ WAIT BEFORE HANDING OVER. "A fresh runner means a fresh IP" is true and useless:
+          # the new IP lives in the SAME datacenter range, and the range is what carries the
+          # verdict. Measured 2026-08-11 on run 31535761823 — three shards on 128.24.160.226,
+          # 132.196.32.71 and 48.217.108.208 all took their first block within FOURTEEN SECONDS
+          # of each other (22:07:04 / :17 / :18), while the residential workers sweeping through
+          # that same minute saw nothing at all. Three machines also produced what one produces:
+          # 214 causa opens against 226 for a single shard alone.
+          # So handing over immediately just burns a hop against a range that is still hot. The
+          # single-shard block at 19:07 and a clean start at 21:00 put the recovery near two
+          # hours; 100 minutes is the default and it is an input, because one measurement is not
+          # a curve. Actions minutes are free on a public repo, so the wait costs nothing but time.
+          COOL=$(( ${{ inputs.cooloff_min }} * 60 ))
+          if [ "$COOL" -gt 0 ]; then
+            echo "waiting ${{ inputs.cooloff_min }} min for the address range to cool before handing over"
+            sleep "$COOL"
+          fi
           gh workflow run pjud-censo.yml -R "$GITHUB_REPOSITORY" --ref main \
             -f desde="${{ inputs.desde }}" \
             -f hasta="${{ inputs.hasta }}" \
@@ -334,7 +354,8 @@ jobs:
             -f detail="${{ inputs.detail }}" \
             -f only_proc="${{ inputs.only_proc }}" \
             -f resume="true" \
-            -f chain="$LEFT"
+            -f chain="$LEFT" \
+            -f cooloff_min="${{ inputs.cooloff_min }}"
           echo "handed over — the new run resumes from this window's state artifact on a new IP"
           {
             echo "### Relanzado automáticamente"
