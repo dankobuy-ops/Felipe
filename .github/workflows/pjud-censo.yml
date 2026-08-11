@@ -50,6 +50,18 @@ on:
         description: "true = continuar el state de la corrida anterior de esta MISMA ventana"
         required: false
         default: "true"
+      chain:
+        description: "Cuántas veces puede relanzarse sola al bloquearse (0 = ninguna)"
+        required: false
+        default: "0"
+
+# ⚠️ ONE RUN AT A TIME, ALWAYS. Without this a chained run could overlap the one that spawned it,
+# or a hand dispatch could start a second chain beside the first — and every extra run is another
+# set of live browsers hitting the site outside the arrival protocol. cancel-in-progress is FALSE
+# on purpose: a queued run waits its turn, it does not kill a sweep that is working.
+concurrency:
+  group: pjud-censo
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -278,3 +290,56 @@ jobs:
           name: debug-s${{ matrix.slot }}-${{ github.run_attempt }}
           path: felipe/pjud/scraper/chrome.err
           if-no-files-found: ignore
+
+  # ── Continue on a fresh runner ────────────────────────────────────────────────
+  # A blocked runner cannot be rescued from inside: run 31501974530 re-entered cleanly six times
+  # over seventy minutes and was refused within ~80 s every time, because the IP is what carries
+  # the verdict. The only real reset is a different machine. So when a sweep stops short, this
+  # hands the baton on — same window, resume=true, one fewer hop allowed.
+  #
+  # ⚠️ IT IS A SEPARATE JOB, NOT A STEP IN `censo`, AND THAT IS THE WHOLE POINT. `censo` is a
+  # MATRIX: with three shards, a per-shard dispatch would fire three continuations, each of three
+  # shards — nine runs, then twenty-seven. `needs: censo` runs this exactly once, after every
+  # shard has finished, so the baton is passed by one hand.
+  #
+  # The stop conditions, all of which must hold to continue:
+  #   * !cancelled()  — you cancelled the run, so cancelling means STOP. (It also means a job
+  #     killed by timeout-minutes does not chain; re-dispatch by hand for that. Stopping when
+  #     unsure beats a loop nobody asked for.)
+  #   * censo did not succeed — success means every shard reached DONE and there is nothing left.
+  #   * chain > 0 — a hard, decrementing bound. Even a run that achieves nothing at all can only
+  #     repeat `chain` times, so no progress check can turn into an infinite loop.
+  chain:
+    needs: censo
+    if: ${{ !cancelled() && needs.censo.result != 'success' && inputs.chain != '0' && inputs.chain != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hand over to a fresh runner
+        env:
+          # GITHUB_TOKEN deliberately cannot trigger workflow_dispatch — that is GitHub's own
+          # loop guard — so the chain needs a real PAT.
+          GH_TOKEN: ${{ secrets.DISPATCH_PAT }}
+        run: |
+          set -euo pipefail
+          LEFT=$(( ${{ inputs.chain }} - 1 ))
+          echo "censo finished as '${{ needs.censo.result }}' — work remains, ${LEFT} hop(s) left after this"
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::DISPATCH_PAT is empty — cannot hand over. Re-dispatch by hand."
+            exit 1
+          fi
+          gh workflow run pjud-censo.yml -R "$GITHUB_REPOSITORY" --ref main \
+            -f desde="${{ inputs.desde }}" \
+            -f hasta="${{ inputs.hasta }}" \
+            -f shards="${{ inputs.shards }}" \
+            -f detail="${{ inputs.detail }}" \
+            -f only_proc="${{ inputs.only_proc }}" \
+            -f resume="true" \
+            -f chain="$LEFT"
+          echo "handed over — the new run resumes from this window's state artifact on a new IP"
+          {
+            echo "### Relanzado automáticamente"
+            echo ""
+            echo "- censo terminó como \`${{ needs.censo.result }}\`"
+            echo "- quedan **${LEFT}** relanzamientos"
+            echo "- la nueva corrida continúa desde el artefacto de esta ventana, en otra IP"
+          } >> "$GITHUB_STEP_SUMMARY"

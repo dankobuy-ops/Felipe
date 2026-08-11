@@ -75,6 +75,20 @@
             <input type="checkbox" id="resume" checked />
             <span>Continuar la corrida anterior de esta misma ventana de fechas</span>
           </label>
+          <label>
+            Relanzarse solo al bloquearse
+            <select id="chain">
+              <option value="0" selected>No — una sola corrida</option>
+              <option value="5">Hasta 5 veces</option>
+              <option value="10">Hasta 10 veces</option>
+              <option value="25">Hasta 25 veces</option>
+            </select>
+          </label>
+          <p class="hint-small">
+            Un runner bloqueado no se recupera desde adentro: la IP es la que queda marcada, y
+            reentrar no la cambia. Al relanzarse cae en otra máquina con otra IP y sigue desde
+            donde quedó. Cancelar una corrida detiene la cadena.
+          </p>
           <p class="hint-small">
             Cada runner tiene su propia IP. El bloqueo del sitio es un límite de
             <em>ritmo por IP</em>, así que más runners rinden más — pero llegan todos a la vez,

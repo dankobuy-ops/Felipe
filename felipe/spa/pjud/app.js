@@ -143,6 +143,7 @@ document.getElementById("run-btn").addEventListener("click", async () => {
     shards: document.getElementById("shards").value,
     only_proc: document.getElementById("only-proc").value.trim(),
     resume: document.getElementById("resume").checked ? "true" : "false",
+    chain: document.getElementById("chain").value,
   };
 
   try {
