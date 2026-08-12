@@ -1,8 +1,20 @@
 # felipe — working rules
 
+## ⚠️ Where things go
+
+**Sessions are launched from `C:\Claude\felipe`, and everything belongs here.** New files, docs
+and notes go under `felipe/`, never at the repo root and never in a sibling project.
+
+The git repository root is one level up at `C:\Claude`, so `git status` will show unrelated
+modifications from other projects (`sga/`, `cias/`, `Apps/`). That is normal and **none of it is
+yours to commit** — always stage explicit paths, never `git add -A` or `git commit -a`.
+
+**One deliberate exception:** `../SCRAPERS_HANDBOOK.md` lives at the repo root, because it is
+drawn from four scrapers and one of them is `cias/HDI-Ruts-Scraper/`. Leave it there; do not
+"tidy" it into `felipe/`.
+
 This project is **scrapers**. Before building or substantially changing one, read
-**[`SCRAPERS_HANDBOOK.md`](../SCRAPERS_HANDBOOK.md)** (at the repo root — it also covers the
-scraper in `cias/`, which is why it lives a level up rather than in here).
+**[`SCRAPERS_HANDBOOK.md`](../SCRAPERS_HANDBOOK.md)**.
 
 ## The one rule
 
