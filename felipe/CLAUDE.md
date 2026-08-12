@@ -1,7 +1,8 @@
-# C:\Claude — working rules
+# felipe — working rules
 
-This repo is mostly **scrapers**. Before building or substantially changing one, read
-**[`SCRAPERS_HANDBOOK.md`](SCRAPERS_HANDBOOK.md)**.
+This project is **scrapers**. Before building or substantially changing one, read
+**[`SCRAPERS_HANDBOOK.md`](../SCRAPERS_HANDBOOK.md)** (at the repo root — it also covers the
+scraper in `cias/`, which is why it lives a level up rather than in here).
 
 ## The one rule
 
