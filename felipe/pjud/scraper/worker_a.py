@@ -469,9 +469,26 @@ def launch_chrome(port, profile, slot=1):
     until the previous one is on the form.
     """
     import urllib.request
-    exe = (r"C:\Program Files\Google\Chrome\Application\chrome.exe")
-    if not Path(exe).exists():
-        exe = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+    # ⚠️ CROSS-PLATFORM ON PURPOSE. This used to hard-code the Windows Chrome path, which meant a
+    # LINUX RUNNER COULD NEVER OPEN ITS OWN BROWSER — so fresh_browser(), the only thing that
+    # fixes a wedged form, was silently unavailable in exactly the environment that cannot be
+    # rescued by hand. On a runner there is no installed Chrome anyway; Playwright's bundled
+    # chromium is the browser the workflow already launches.
+    exe = None
+    if os.name == "nt":
+        for cand in (r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"):
+            if Path(cand).exists():
+                exe = cand
+                break
+    if exe is None:
+        try:
+            from playwright.sync_api import sync_playwright as _sp
+            with _sp() as _pw:
+                exe = _pw.chromium.executable_path
+        except Exception as e:
+            note(f"no Chrome and no Playwright chromium: {str(e)[:60]}")
+            return None
     Path(profile).mkdir(parents=True, exist_ok=True)
     note(f"launching Chrome on {port} ({Path(profile).name})")
     # The occlusion flags are BELT AND BRACES, not a fix for anything measured.
@@ -484,16 +501,33 @@ def launch_chrome(port, profile, slot=1):
     # The flags are kept because they cost nothing and do stop Chrome throttling a background
     # tab's timers, which the challenge script does need. Windows are TILED rather than maximised
     # so all four stay watchable.
-    x, y = (slot % 2) * 780, ((slot // 2) % 2) * 470
-    proc = subprocess.Popen([exe, f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
-                      "--no-first-run", "--no-default-browser-check",
-                      "--disable-features=CalculateNativeWinOcclusion",
-                      "--disable-backgrounding-occluded-windows",
-                      "--disable-renderer-backgrounding",
-                      "--disable-background-timer-throttling",
-                      f"--window-size=760,440", f"--window-position={x},{y}",
-                      "https://www.pjud.cl/"],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    argv = [exe, f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+            "--no-first-run", "--no-default-browser-check",
+            "--disable-features=CalculateNativeWinOcclusion",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-background-timer-throttling"]
+    if os.name == "nt":
+        # Windows are TILED rather than maximised so all four stay watchable.
+        x, y = (slot % 2) * 780, ((slot // 2) % 2) * 470
+        argv += [f"--window-size=760,440", f"--window-position={x},{y}"]
+    else:
+        # ⚠️ --no-sandbox IS MANDATORY IN A CI CONTAINER. Without it Chrome dies before it ever
+        # opens the debugging port, which reads as a WAF refusal and is nothing of the kind
+        # (commit 19c48d3). And NEVER --headless: F5's challenge tests document.visibilityState,
+        # so a headless browser never completes it — headed under Xvfb entered and swept, the
+        # same code with --headless=new failed entry after 102 s. The workflow provides DISPLAY.
+        argv += ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+                 "--window-size=1440,900"]
+    argv.append("https://www.pjud.cl/")
+    # Keep Chrome's stderr. Throwing it away is how "CDP never opened" stayed undiagnosable on a
+    # runner, where nobody can look at the screen (commit 19c48d3).
+    err = Path(profile).parent / f"chrome_{port}.err"
+    try:
+        errf = open(err, "ab")
+    except OSError:
+        errf = subprocess.DEVNULL
+    proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=errf)
     # ⚠️ A WORKER THAT ENDS ITS JOB TAKES ITS BROWSER WITH IT (operator, 2026-08-11). We opened
     # this window, so we own it: slot 3 finished its 70 tribunales at 16:34 and left a Chrome
     # sitting on the desktop with nothing driving it. Left alone overnight that is four dead
@@ -595,6 +629,16 @@ def enter_and_setup(ctx, net, desde, hasta, lock=None):
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
+    # ⚠️ FORCE UTF-8 OUT. Python takes its stdout encoding from the Windows locale, which is
+    # cp1252 here, so anything outside Latin-1 raises UnicodeEncodeError mid-print and anything
+    # outside ASCII lands mangled in the log — 'Obligaci?n de Dar', '2? Juzgado'. That has cost a
+    # crashed --help twice and makes tribunal names in sweep.log unsearchable. errors='replace'
+    # keeps the old guarantee that no log line can ever kill a ten-hour sweep.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=9337)
     ap.add_argument("--start", type=int, default=0, help="tribunal index to resume at")
@@ -607,6 +651,19 @@ def main():
                          "are recorded (so they are never re-opened) but get no document and are "
                          "not written to Neon. Only knowable after the open: the results table "
                          "has no procedimiento column.")
+    # ⚠️ ASCII ONLY IN argparse HELP. It is written straight to a cp1252 console, so one accented
+    # character or arrow makes --help itself raise UnicodeEncodeError. Comments like this one are
+    # fine; the help= strings are not. (Broken twice on 2026-08-12, once by %LOCALAPPDATA% and
+    # once by a warning sign added while documenting this very flag.)
+    ap.add_argument("--search-gap", type=float, default=0.0,
+                    help="override SEARCH_GAP (every result request: searches AND page "
+                         "advances). REQUIRED WHEN CONCURRENT WORKERS DO NOT SLOW EACH OTHER "
+                         "DOWN. Local workers share one connection, so adding a worker stretches "
+                         "everyone's cycle and the fleet self-damps - four measured 1.75 result "
+                         "req/min on 2026-08-12, about what one produces. Runners do NOT share a "
+                         "connection: N of them at the same gap really is N times the rate, into "
+                         "a budget that belongs to the whole datacenter range. Scale it by the "
+                         "shard count (gap x N) to hold the aggregate where one worker sits.")
     ap.add_argument("--causa-gap", type=float, default=0.0,
                     help="override CAUSA_GAP. Concurrent DETAIL workers must each go SLOWER: the "
                          "budget looks like ~1.4 request-equivalents/min per IP and a causa open "
@@ -653,7 +710,9 @@ def main():
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
             raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy — refusing to search with it")
 
-    global DATA, PDFS, CAUSA_GAP, POST_CAUSA
+    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA
+    if a.search_gap:
+        SEARCH_GAP = a.search_gap
     if a.causa_gap:
         CAUSA_GAP = a.causa_gap
     if a.post_causa:

@@ -14,13 +14,22 @@ name: PJUD — censo remoto (por demanda)
 # surface, so the challenge never completes. That single flag is the entire reason the old
 # workflow failed every day for a fortnight. `headless_check.py` re-verifies it in one command.
 #
-# ⚠️ SHARDS DO NOT HELP. This file used to say "each runner gets its own IP, so shards do not
-# share a rate budget the way local workers do" — false, and measured false on 2026-08-11. Three
-# shards on 128.24.160.226, 132.196.32.71 and 48.217.108.208 all took their first block within
-# fourteen seconds of each other while the residential workers sweeping that same minute were
-# untouched, and the three together produced 214 causa opens against 226 for one shard alone.
-# The budget belongs to the datacenter RANGE. Remote means ONE worker, chained with a cool-off;
-# the parallelism that works is local.
+# ⚠️ SHARDS SHARE ONE BUDGET — it belongs to the datacenter RANGE, not to an address. Measured
+# 2026-08-11: three shards on 128.24.160.226, 132.196.32.71 and 48.217.108.208 all took their
+# first block within fourteen seconds of each other while the residential workers sweeping that
+# same minute were untouched, and the three together produced 214 causa opens against 226 for one
+# shard alone. Whatever else is true, extra runners do NOT buy extra allowance.
+#
+# ⚠️ BUT THAT TRIAL CONFOUNDED CONCURRENCY WITH RATE, so "sharding is pointless" is not yet
+# earned. Each of those three shards ran at the SINGLE-worker gap of 20 s, and a runner has its
+# own machine and its own link — none of the mutual slowing that makes four LOCAL workers add up
+# to the traffic of one. Three shards at 20 s is ~9 result requests/min, about five times
+# anything measured safe. So the range may have been objecting to the RATE, not to the concurrent
+# sessions, and we could not tell which.
+# The `base_search_gap`/`base_causa_gap` inputs now scale per runner (gap x shards), holding the
+# AGGREGATE at one worker's rate whatever the shard count. Combined with `ramp_min`, which lets
+# each runner prove itself for half an hour before the next joins, a failure can finally be
+# attributed. Until that test has run, assume one worker and treat extra shards as the experiment.
 #
 # A census alone is ~3.3 h for 230 tribunales on one worker; WITH detail (open every bank causa
 # and fetch its ebook) it is far longer — locally that runs at roughly one causa a minute. So a
@@ -44,6 +53,18 @@ on:
         description: "Cuántos runners en paralelo (1 = un solo worker de punta a punta)"
         required: false
         default: "1"
+      ramp_min:
+        description: "Minutos entre la entrada de un runner y el siguiente (0 = todos juntos)"
+        required: false
+        default: "30"
+      base_search_gap:
+        description: "Segundos entre requests de resultados, POR RUNNER antes de escalar"
+        required: false
+        default: "20"
+      base_causa_gap:
+        description: "Segundos entre aperturas de causa, POR RUNNER antes de escalar"
+        required: false
+        default: "25"
       detail:
         description: "false = solo censo | true = además abre cada causa y baja el ebook"
         required: false
@@ -188,42 +209,38 @@ jobs:
           printf '%s' "$GOOGLE_CLIENT_SECRET" > client_secret.json
           printf '%s' "$GOOGLE_TOKEN_JSON"    > token.json
 
-      - name: Stagger + identify this runner
+      - name: Ramp + identify this runner
         run: |
           # ⚠️ DO NOT let the shards arrive together. Six launched simultaneously and only ONE
           # got in; the other five never reached the OJV at all. The same thing happens locally
           # when two fresh browsers load pjud.cl in the same second — a burst of brand-new
           # sessions is itself the trigger, independently of request rate. So each shard waits
           # its turn before it so much as opens Chrome.
-          # ⚠️ 50 s WAS NOT ENOUGH, and it could not have been: entry takes up to ~100 s on the
-          # slow path (one click-through attempt at 60 s, then the direct navigation and the
-          # guest-entry click), so at 50 s spacing shard N+1 begins walking in while shard N is
-          # still inside its own walk-in. That is the burst — six shards staggered this way and
-          # only ONE got in. Locally the same problem is solved properly, with a lock released
-          # only once a worker's first search comes back; runners cannot share a lock file, so
-          # this is a timer with enough headroom to cover the slow path twice over.
-          # 180 s costs 6 minutes on a three-shard start, against a 350-minute job.
-          WAIT=$(( (${{ matrix.slot }} - 1) * 180 ))
-          echo "shard ${{ matrix.slot }}: waiting ${WAIT}s so the shards do not arrive together"
+          #
+          # ⚠️ THIS IS NOW A RAMP, NOT A STAGGER, and the difference is the point. 180 s was only
+          # ever enough to keep two walk-ins from overlapping; it told us nothing about whether
+          # the ADDRESS RANGE tolerates a second worker, because by the time shard 2 was warm
+          # shard 1 had barely started. `ramp_min` (default 30 min) lets each runner prove itself
+          # for a real stretch before the next one joins, so a failure can be attributed to the
+          # worker that caused it. Set ramp_min=0 to go back to the old all-at-once behaviour.
+          #
+          # Actions minutes are free on a public repo, so a runner waiting its turn costs nothing
+          # but wall clock — and the job ceiling is 350 min, which bounds how far this can ramp:
+          # shard N idles N-1 ramps before it starts, so keep shards * ramp_min well under that.
+          WAIT=$(( (${{ matrix.slot }} - 1) * ${{ inputs.ramp_min }} * 60 ))
+          if [ "$WAIT" -gt 0 ]; then
+            echo "shard ${{ matrix.slot }}: holding ${WAIT}s (${{ inputs.ramp_min }} min x $(( ${{ matrix.slot }} - 1 ))) so the runner before me can prove itself first"
+          fi
           sleep "$WAIT"
           echo "runner public IP: $(curl -s --max-time 10 https://api.ipify.org || echo unknown)"
 
-      - name: Launch Chrome (headed, own profile)
-        working-directory: felipe/pjud/scraper
-        run: |
-          # --no-sandbox is mandatory in a CI container; without it Chrome dies before it ever
-          # opens the debugging port, which reads as a WAF refusal and is nothing of the kind.
-          CHROME=$(python -c "from playwright.sync_api import sync_playwright;\
-            p=sync_playwright().start();print(p.chromium.executable_path)")
-          "$CHROME" --remote-debugging-port=9222 --user-data-dir="$HOME/pjud_p${{ matrix.slot }}" \
-            --no-sandbox --disable-dev-shm-usage --disable-gpu \
-            --no-first-run --no-default-browser-check --window-size=1440,900 \
-            https://www.pjud.cl/ >/dev/null 2>chrome.err &
-          for i in $(seq 1 40); do
-            curl -sf http://127.0.0.1:9222/json/version >/dev/null && break || sleep 1
-          done
-          curl -sf http://127.0.0.1:9222/json/version | head -c 120 || (echo "CDP DOWN"; tail -20 chrome.err; exit 1)
-
+      # ⚠️ THE WORKER OPENS ITS OWN CHROME NOW — this step used to launch it here, and that is
+      # why a wedged runner could not save itself. fresh_browser() is the only thing that fixes a
+      # form whose tribunal select has stopped working (measured 4x on 2026-08-12, local), and it
+      # refuses to close a browser the worker did not open. So a shell-launched Chrome left every
+      # runner without the one repair it needs most — on the one machine nobody can reach by hand.
+      # launch_chrome() carries the same flags this step did, --no-sandbox included, and picks
+      # Playwright's chromium when no Chrome is installed.
       - name: Censo shard ${{ matrix.slot }} (tribunales ${{ matrix.start }}-${{ matrix.end }})
         working-directory: felipe/pjud/scraper
         run: |
@@ -237,10 +254,31 @@ jobs:
           # So take one cheap retry for a genuine hiccup, then stop and let the job end: the
           # ingest and the state artifact still run, and the real reset is the NEXT dispatch,
           # which lands on a different runner with a different IP.
-          ARGS=(--max-recover 1)
+          # ⚠️ SCALE THE PACING BY THE SHARD COUNT. This is the rate rule, translated for runners.
+          # Locally, adding a worker slows every other one down — they share one connection and
+          # one machine, so four workers measured 1.75 result requests/min on 2026-08-12, about
+          # what a single worker produces. THAT SELF-DAMPING DOES NOT EXIST HERE. Each runner has
+          # its own machine and its own link, so N shards at the same gap really is N times the
+          # rate — into a budget that belongs to the whole datacenter RANGE, not to one address.
+          #
+          # That is very likely what killed the 3-shard run on 2026-08-11: three shards at a 20 s
+          # gap is ~9 result requests/min, five times anything measured safe, and all three took
+          # their first block within FOURTEEN SECONDS of each other. It was read as "the range is
+          # flagged, sharding is pointless". Maybe — but it was never tested at a sane aggregate.
+          #
+          # gap x N holds the TOTAL where one worker sits: N shards each firing every base*N
+          # seconds is N/(base*N) = 1/base requests per second, whatever N is. So the aggregate
+          # is identical at 1, 2 or 6 shards, and this test measures what it means to measure:
+          # whether the range objects to CONCURRENT SESSIONS at all, with rate held constant.
+          N=${{ inputs.shards }}
+          SG=$(python -c "print(round(${{ inputs.base_search_gap }} * $N, 1))")
+          CG=$(python -c "print(round(${{ inputs.base_causa_gap }}  * $N, 1))")
+          echo "shards=$N -> search gap ${SG}s, causa gap ${CG}s per runner (aggregate = 1 worker)"
+          ARGS=(--max-recover 1 --launch-chrome --search-gap "$SG" --causa-gap "$CG")
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
           python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \
+            --chrome-profile "$HOME/pjud_p${{ matrix.slot }}" \
             --start ${{ matrix.start }} --end ${{ matrix.end }} \
             --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}" "${ARGS[@]}"
 
@@ -293,6 +331,14 @@ jobs:
           name: ${{ steps.art.outputs.name }}
           path: felipe/pjud/data/worker_a${{ matrix.slot }}/state.json
           if-no-files-found: warn
+
+      # ⚠️ Chrome's stderr moved when the worker took over the launch: launch_chrome() writes it
+      # beside the profile dir as chrome_<port>.err, i.e. $HOME, not the workspace. Collect it
+      # explicitly — upload-artifact does not expand ~, and pointing at the old path would leave
+      # every runner failure undiagnosable while looking like it was being captured.
+      - name: Collect Chrome stderr
+        if: always()
+        run: cp "$HOME/chrome_9222.err" felipe/pjud/scraper/chrome.err 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         if: always()
