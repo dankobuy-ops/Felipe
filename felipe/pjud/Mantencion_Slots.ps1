@@ -20,7 +20,12 @@ param(
     [switch] $Install,
     [int[]]  $Slots  = @(1, 2, 3, 4),
     [string] $Desde  = "01/07/2026",
-    [string] $Hasta  = "14/07/2026",
+    # ⚠️ KEEP THIS IN STEP WITH THE WINDOW THE SLOTS WERE SEEDED FOR. worker_a.py refuses to
+    # resume a state whose meta window differs from the one it is handed, so a restart carrying
+    # the old 14/07 against a 31/07 state does not run with the wrong dates — it does not run at
+    # all, and the slot stays dead until someone reads the log. Changed 2026-08-12 when the four
+    # slots were re-seeded for the whole of July.
+    [string] $Hasta  = "31/07/2026",
     [string] $OnlyProc = "obligaci.*dar",
     [int]    $StaleMin = 30,
     [int]    $LiveMin  = 12      # a log written within this many minutes proves the worker lives
