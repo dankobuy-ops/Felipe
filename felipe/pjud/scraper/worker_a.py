@@ -108,6 +108,11 @@ CLEAN_STREAK = 12      # clean causa opens that earn the recovery budget back
 # modal failures with a clean block-check ARE the tell, and nothing else reports them.
 MODAL_FAIL_LIMIT = 3
 SELECT_FAIL_LIMIT = 5   # consecutive un-selectable tribunales = the form is gone
+# How many times a worker may throw its browser away and open another. A wedged form is cured by
+# a replacement browser and by nothing else (measured 4x, 2026-08-12), but if the REPLACEMENTS
+# keep wedging then the browser was never the fault — and relaunching for ever would bury that
+# behind an endless restart loop, which is the same trap the supervisor's restart budget avoids.
+MAX_SWAPS = 3
 
 CIVIL = "3"
 net = []
@@ -408,22 +413,48 @@ def advance(p, page):
     return "more"
 
 
-def close_chrome(proc):
+def close_chrome(proc, profile=None):
     """Kill the Chrome WE launched, and its children.
 
     ⚠️ terminate() is not enough on Windows: the window goes but the renderer and crashpad
     children survive, so the port stays bound and the profile stays locked. taskkill /T takes
     the whole tree.
+
+    ⚠️ AND DO NOT TRUST proc.poll(). Chrome routinely re-launches itself into a fresh process and
+    lets the one we spawned exit at once, so poll() reports "already gone" while a complete
+    browser is still running — still holding the profile directory, still LISTENING ON THE
+    DEBUGGING PORT. The old early-return therefore closed nothing at all: on 2026-08-12 slots 2
+    and 3 each exited cleanly on form-loss and left ten live chrome.exe processes behind.
+    That is not untidiness. The supervisor decides whether a slot still has a usable browser by
+    asking whether CDP answers, so an orphan tells it "browser is fine" and it restarts the
+    worker onto the very session that just wedged — which is exactly what a form-loss restart is
+    supposed to avoid.
+    So: kill the tree we know about, THEN sweep for anything still holding our own profile dir.
     """
     try:
-        if proc is None or proc.poll() is not None:
-            return
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=25)
-        else:
-            proc.terminate()
-        note("closed the Chrome this worker opened")
+        if proc is not None and proc.poll() is None:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=25)
+            else:
+                proc.terminate()
+    except Exception:
+        pass
+    if not profile or os.name != "nt":
+        return
+    try:
+        # The profile path goes through the ENVIRONMENT, never inlined into the command string:
+        # it is a Windows path full of backslashes, and PowerShell escapes with a backtick, so
+        # embedding it would break the quoting the same way it broke the supervisor on 08-11.
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" "
+             "-ErrorAction SilentlyContinue | "
+             "Where-Object { $_.CommandLine -like $env:PJUD_PROF } | "
+             "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],
+            env={**os.environ, "PJUD_PROF": f"*{profile}*"},
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+        note(f"closed the Chrome this worker opened ({Path(profile).name})")
     except Exception:
         pass
 
@@ -469,16 +500,20 @@ def launch_chrome(port, profile, slot=1):
     # browsers holding four profiles and four debugging ports — and a listening port is exactly
     # how the supervisor decides whether a slot still has a usable browser, so an abandoned one
     # actively misleads it. atexit covers every way out: DONE, block, form-loss, or a raise.
-    atexit.register(close_chrome, proc)
+    atexit.register(close_chrome, proc, profile)
     for _ in range(45):
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=2).read()
             note(f"Chrome up on {port}")
-            return True
+            # Returns the PROCESS, not True, so a caller that needs to replace this browser later
+            # has the handle to close first. Still truthy, so `if not launch_chrome(...)` reads
+            # exactly as it did.
+            return proc
         except Exception:
             time.sleep(1)
     note(f"Chrome never opened CDP on {port}")
-    return False
+    close_chrome(proc, profile)      # never leave a half-started Chrome holding the profile
+    return None
 
 
 def enter_and_setup(ctx, net, desde, hasta, lock=None):
@@ -582,7 +617,10 @@ def main():
                     help="this worker starts its OWN Chrome, inside the entry lock, so no two "
                          "brand-new sessions ever appear at the same moment.")
     ap.add_argument("--chrome-profile", default="",
-                    help=r"profile dir for --launch-chrome (default: %LOCALAPPDATA%\pjud_wA<slot>)")
+                    # ⚠️ %% — argparse %-expands help strings, so a literal % here makes --help
+                    # itself raise "unsupported format character". It did, silently, until
+                    # 2026-08-12: nobody had run --help since the flag was added.
+                    help=r"profile dir for --launch-chrome (default: %%LOCALAPPDATA%%\pjud_wA<slot>)")
     ap.add_argument("--offset", type=float, default=0.0,
                     help="seconds to wait before the FIRST request. Give each concurrent worker "
                          "a different offset (e.g. 0 and 30 with a 60 s gap) so their requests "
@@ -691,10 +729,16 @@ def main():
         # and released on the form instead of on a confirmed search.
         boot_lock = ojv.EntryLock(DATA.parent / "entry.lock")
         boot_lock.acquire()
+        # Held so a wedged form can be answered with a REPLACEMENT browser later — see
+        # fresh_browser(). A worker that did not open its own Chrome has neither, and says so
+        # rather than killing a window the operator opened by hand.
+        chrome_prof = None
+        chrome_proc = None
         if a.launch_chrome:
-            prof = a.chrome_profile or str(
+            chrome_prof = a.chrome_profile or str(
                 Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / f"pjud_wA{a.slot or 0}")
-            if not launch_chrome(a.port, prof, a.slot or 1):
+            chrome_proc = launch_chrome(a.port, chrome_prof, a.slot or 1)
+            if not chrome_proc:
                 boot_lock.release()
                 raise SystemExit(f"could not start Chrome on {a.port}")
 
@@ -747,8 +791,76 @@ def main():
 
         recoveries = 0
         clean_since_block = 0
+        swaps = 0
         start_ip = ojv.public_ip()
         note(f"public IP at start: {start_ip}")
+
+        def fresh_browser():
+            """Throw this Chrome away, open another, and walk in. True if we are searching again.
+
+            ⚠️ A WEDGED FORM IS NOT A RATE VERDICT, AND RE-ENTRY CANNOT FIX IT. Measured four
+            times on 2026-08-12: slots 1, 2 and 3 each reached the point where every
+            select_tribunal_kbd failed — the option list gone or the value refusing to stick —
+            and in every case a REPLACEMENT browser was back on the form and searching within a
+            minute, while in-session re-entry was not. Slot 1 proved the negative directly: it
+            spent a full 180 s cool-off and a clean re-entry, still could not select a tribunal,
+            and died anyway; relaunched onto a new Chrome it pulled the very same court (Arica,
+            139 registros) on its first search.
+
+            So the recovery ladder needed a second rung. Cooling off answers a RATE verdict;
+            this answers a broken SESSION, and spending six cool-offs on the second is how a
+            worker loses twenty minutes and then stops anyway.
+
+            ⚠️ IT ARRIVES THROUGH THE ENTRY GATE, like any other new session. A replacement is a
+            brand-new browser loading pjud.cl, which is precisely the burst the lock exists to
+            prevent — and the lock is handed to `boot_lock` so the sweep loop releases it on the
+            next CONFIRMED SEARCH, not merely on reaching the form.
+            """
+            nonlocal b, ctx, p, S, tl, last_search, boot_lock, chrome_proc, swaps
+            if not chrome_prof:
+                note("  *** the form is unusable, but this worker did not open its own Chrome "
+                     "so it must not close one. Stopping for the supervisor to replace it.")
+                return False
+            swaps += 1
+            note(f"  browser swap {swaps}: replacing this Chrome and walking in again")
+            lock = ojv.EntryLock(DATA.parent / "entry.lock")
+            lock.acquire()
+            ok = False
+            try:
+                close_chrome(chrome_proc, chrome_prof)
+                time.sleep(6)                      # let the profile lock and the port go
+                chrome_proc = launch_chrome(a.port, chrome_prof, a.slot or 1)
+                if not chrome_proc:
+                    note("  *** the replacement Chrome never opened CDP")
+                    return False
+                lock.touch()
+                for attempt in (1, 2, 3):
+                    try:
+                        b = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{a.port}",
+                                                         timeout=45000)
+                        break
+                    except Exception as e:
+                        note(f"  CDP handshake {attempt}/3 after the swap: {str(e)[:60]}")
+                        time.sleep(12)
+                else:
+                    note("  *** the replacement Chrome never completed a CDP handshake")
+                    return False
+                ctx = b.contexts[0]
+                lock.touch()
+                p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta, lock=lock)
+                ok = p is not None and len(tl or []) >= 50
+                if not ok:
+                    note("  *** the replacement browser did not reach the national form")
+                return ok
+            finally:
+                if ok:
+                    # Hand the gate to the sweep loop, which releases it on the next confirmed
+                    # search. Releasing here would open the queue on the strength of a form,
+                    # which is exactly the mistake EntryLock's docstring warns about.
+                    boot_lock = lock
+                    last_search = 0.0
+                else:
+                    lock.release()
 
         def recover(idx):
             """Re-enter after a block. True if we may carry on from `idx`."""
@@ -797,7 +909,16 @@ def main():
             time.sleep(cool)
             p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
             if p is None:
-                note("  *** re-entry failed (tier-3 CAPTCHA needs a human?) — stopping. "
+                # ⚠️ SECOND RUNG BEFORE GIVING UP. Re-entry failing is not proof that a human is
+                # needed — it is equally what a wedged browser looks like, and the two were
+                # indistinguishable here until 2026-08-12. A tier-3 CAPTCHA is detected by
+                # walk_in() and reported explicitly, so an unexplained failure earns one
+                # replacement browser before the run stops.
+                note("  *** re-entry failed — trying a replacement browser before giving up")
+                if swaps < MAX_SWAPS and fresh_browser():
+                    note(f"  recovered onto a new browser — resuming at idx {idx}")
+                    return True
+                note("  *** could not recover (tier-3 CAPTCHA needs a human?) — stopping. "
                      f"resume with --start {idx}")
                 return False
             last_search = 0.0
@@ -844,9 +965,21 @@ def main():
                 # run's totals as if they were this one's. A form we cannot drive is a hard stop.
                 if select_fails >= SELECT_FAIL_LIMIT:
                     note(f"  *** {select_fails} tribunales in a row could not be selected — the "
-                         f"form is not usable (stale modal? collapsed panel?). Stopping.")
+                         f"form is not usable (stale modal? collapsed panel?).")
                     save()
                     tally_line("TALLY at form-loss:")
+                    # ⚠️ THIS IS THE ONE FAILURE A REPLACEMENT BROWSER RELIABLY FIXES, so try that
+                    # before handing the slot back. Until 2026-08-12 this returned 5 immediately
+                    # and the only cure lived in the hourly supervisor — so a worker that wedged
+                    # at 01:00 sat dead until 02:00, four times over on the day this was measured.
+                    # Bounded by MAX_SWAPS: if new browsers keep wedging, the fault is not the
+                    # browser and relaunching for ever would just hide it.
+                    if swaps < MAX_SWAPS and fresh_browser():
+                        select_fails = 0
+                        idx -= 1                  # retry the tribunal we could not select
+                        continue
+                    note(f"  *** a replacement browser did not help either — stopping. "
+                         f"resume with --start {idx}")
                     return 5
                 continue
             select_fails = 0
