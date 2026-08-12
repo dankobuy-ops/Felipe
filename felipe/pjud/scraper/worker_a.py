@@ -459,7 +459,36 @@ def close_chrome(proc, profile=None):
         pass
 
 
-def launch_chrome(port, profile, slot=1):
+def chrome_executable(pw=None):
+    """Path to a Chrome we may launch, or None.
+
+    ⚠️ `pw` MUST be the ALREADY-RUNNING Playwright instance when there is one. Resolving the
+    bundled chromium by opening a second `sync_playwright()` raises "It looks like you are using
+    Playwright Sync API inside the asyncio loop" — because every caller here is already inside
+    `with sync_playwright()`. Windows never hit it (the path is hard-coded), so it failed for the
+    first time on a runner, one second into the job.
+    """
+    if os.name == "nt":
+        for cand in (r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"):
+            if Path(cand).exists():
+                return cand
+    if pw is not None:
+        try:
+            return pw.chromium.executable_path
+        except Exception as e:
+            note(f"could not resolve Playwright's chromium: {str(e)[:60]}")
+            return None
+    try:                                   # standalone use, outside a Playwright context
+        from playwright.sync_api import sync_playwright as _sp
+        with _sp() as _pw:
+            return _pw.chromium.executable_path
+    except Exception as e:
+        note(f"no Chrome and no Playwright chromium: {str(e)[:60]}")
+        return None
+
+
+def launch_chrome(port, profile, slot=1, exe=None):
     """Start this worker's OWN Chrome and wait for its CDP port.
 
     ⚠️ THE BROWSER IS PART OF THE ENTRY, which is the operator's point and it is right: four
@@ -474,21 +503,10 @@ def launch_chrome(port, profile, slot=1):
     # fixes a wedged form, was silently unavailable in exactly the environment that cannot be
     # rescued by hand. On a runner there is no installed Chrome anyway; Playwright's bundled
     # chromium is the browser the workflow already launches.
-    exe = None
-    if os.name == "nt":
-        for cand in (r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"):
-            if Path(cand).exists():
-                exe = cand
-                break
+    # Callers inside a running Playwright pass `exe` in — see chrome_executable().
+    exe = exe or chrome_executable()
     if exe is None:
-        try:
-            from playwright.sync_api import sync_playwright as _sp
-            with _sp() as _pw:
-                exe = _pw.chromium.executable_path
-        except Exception as e:
-            note(f"no Chrome and no Playwright chromium: {str(e)[:60]}")
-            return None
+        return None
     Path(profile).mkdir(parents=True, exist_ok=True)
     note(f"launching Chrome on {port} ({Path(profile).name})")
     # The occlusion flags are BELT AND BRACES, not a fix for anything measured.
@@ -793,10 +811,14 @@ def main():
         # rather than killing a window the operator opened by hand.
         chrome_prof = None
         chrome_proc = None
+        # Resolved ONCE, from the Playwright instance we are already inside — see
+        # chrome_executable(). Opening a second sync_playwright to ask is an error, and it is the
+        # error that killed the first remote run on the new code.
+        chrome_exe = chrome_executable(pw)
         if a.launch_chrome:
             chrome_prof = a.chrome_profile or str(
                 Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / f"pjud_wA{a.slot or 0}")
-            chrome_proc = launch_chrome(a.port, chrome_prof, a.slot or 1)
+            chrome_proc = launch_chrome(a.port, chrome_prof, a.slot or 1, exe=chrome_exe)
             if not chrome_proc:
                 boot_lock.release()
                 raise SystemExit(f"could not start Chrome on {a.port}")
@@ -888,7 +910,7 @@ def main():
             try:
                 close_chrome(chrome_proc, chrome_prof)
                 time.sleep(6)                      # let the profile lock and the port go
-                chrome_proc = launch_chrome(a.port, chrome_prof, a.slot or 1)
+                chrome_proc = launch_chrome(a.port, chrome_prof, a.slot or 1, exe=chrome_exe)
                 if not chrome_proc:
                     note("  *** the replacement Chrome never opened CDP")
                     return False
