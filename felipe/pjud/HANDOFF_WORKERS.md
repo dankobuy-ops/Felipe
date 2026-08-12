@@ -329,24 +329,51 @@ Backups from the migration: `<table>_bak_20260807`. Drop them once the types hav
 
 ---
 
-## 9. State of play, 2026-08-07 evening
+## 9. State of play, 2026-08-12
 
-- Worker A sweeping nationwide, 15/07/2026 → 07/08/2026, on `pjud_wA1` / port 9342.
-- ~85 causas harvested, **every one with a verified ebook PDF**; 1 block, auto-recovered.
-- Neon: **4,120+ causas**, typed columns, 91 direct Drive URLs.
-- Ebooks average ~1 MB, 15–16 pages. Budget the full national window at several hundred MB.
+**Local: four workers sweeping all of July** (01/07 → 31/07), disjoint index ranges 0–57 / 58–114
+/ 115–171 / 172–229, ports 9342/9352/9362/9372, supervised hourly by `Mantencion_Slots.ps1`.
+
+- Neon: **3,700+ causas**, ~2,870 with a verified ebook in Drive.
+- Windows swept: 01/06–30/06 (partial, ~9 tribunales), **01/07–14/07 complete**, 15/07–10/08
+  complete. June is the outstanding one.
+- **The seeding trick that made this cheap:** each slot's `state.json` was pre-loaded with the
+  3,117 causas already harvested, so `needs_visit()` returns False for them. The sweep then pays
+  for searches and pagination — which are cheap — and buys a causa open only for something
+  genuinely new. Arica listed 32 bank causas and cost 3 opens.
+- ⚠️ **Do not write a seed under a running worker.** It holds state in memory and rewrites the
+  whole file after every causa, so an edit from outside is silently overwritten on the next save.
+  Stop the worker, ingest it, then seed.
+
+**Remote:** the June sweep is the current test — see §11 for the rate translation it is testing.
+
+### What the July window taught us about "missing" data
+
+Taking the **union across slots** rather than reading each state separately: every causa ever
+discovered had already been harvested. The only real gap was **5 courts whose pagination never
+got past page 1** (all showing `pages=1 rows_seen=100`), so ~194 rows were never enumerated at
+all. Per-slot "missing" counts were inflated ~3× by overlapping ranges — an artefact of the
+supervisor bug that once restarted slots as 39–120 / 78–171 / 117–229.
+
+⇒ **Audit coverage by the union, and by `rows_seen` vs `total`, never by one slot's state.**
 
 ### Next
 
-1. Let the sweep finish (~6 h remaining at the time of writing), then re-run `ingest_worker_a.py`.
-2. **Build worker B** — `grab_doc` already does the work; it needs the causa-reopen loop and its
-   own profile, run on its own so it never competes with A for the same IP budget.
-3. **Worker C** — refresh. Needs a decision on what "changed" means (new historia row? new
+1. **Worker B is built but unwired** — `causas.texto_demanda` is still 0 rows, so no document
+   beyond the ebook has ever been fetched. It is the largest untapped gain here.
+2. **Worker C** — refresh. Needs a decision on what "changed" means (new historia row? new
    escrito?) before it is worth writing.
-4. **Notificaciones and Exhortos** modal tabs are still unparsed and have no columns. Free to
+3. **Notificaciones and Exhortos** modal tabs are still unparsed and have no columns. Free to
    read once the modal is open — they belong in worker A's free harvest when someone adds them.
+4. **Seed remote runs from Neon.** A runner starts from an artifact, so June's 225 already-
+   harvested causas will be re-opened — ~9% of the window spent on work already done. A
+   `--skip-scraped` that preloads causa ids from Neon at startup would close it; `cdp_scrape.
+   scraped_rols()` already reads exactly that.
 5. `waf_check.py`'s stale profile-rotation advice (§5).
-6. **Revoke the GitHub PAT embedded in the `origin` URL** in `C:\Claude\.git\config` (see it with
+6. **The supervisor will not run on battery.** The Scheduled Task carries
+   `DisallowStartIfOnBatteries` and `StopIfGoingOnBatteries`, which is why it went silent from
+   18:57 on 08-11 to 13:56 on 08-12 and left a dead slot unnoticed through the night.
+7. **Revoke the GitHub PAT embedded in the `origin` URL** in `C:\Claude\.git\config` (see it with
    `git remote -v`). That file is untracked and has never been pushed, but the token is live and
    printed by any `git remote -v`. Revoke it on GitHub, then
    `git remote set-url origin https://github.com/dankobuy-ops/Felipe.git`.
@@ -391,3 +418,43 @@ and that is what killed round 1. Fixed: one budget for every result request.
 **The old "3 workers = blocked" note from 2026-07-23 was right, but for the wrong reason.** It was
 measured while every worker also fired the corte-change burst, so it never isolated concurrency.
 This trial does, and reaches the same ceiling — now for a reason we can point at.
+
+---
+
+## 11. Four workers, and why the ceiling above is not a worker count (2026-08-12)
+
+**Four local workers ran clean**: 1.75–1.8 result requests/min sustained, **zero trouble events**
+over 25 minutes, 73 causa opens and 65 ebooks in a 20-minute window. That is past the rate §10
+records for *three* workers dying immediately.
+
+Nothing about the site changed. Two things about us did:
+
+1. **The input stopped looking robotic.** §10 predates `_kbd_pause` and `human_scroll`. The
+   2026-08-10 `speed_probe` ramp then showed a single session holding ~3 result requests/min
+   without tripping, which already contradicted the §10 ceiling.
+2. **Four workers do not make four workers' worth of traffic.** They share one connection and one
+   machine, so each extra worker stretches every other one's cycle. The fleet self-damps.
+
+⇒ **A worker count is not a budget.** What predicted every failure on 2026-08-12 was the *trouble
+column* — blocks, modal timeouts, failed selects — never the number of workers or the rate on its
+own. Measure with `rate_watch.py` and judge by what goes wrong.
+
+### ⚠️ Runners do NOT self-damp — the rule has to be translated
+
+Each runner has its own machine and its own link, so **N shards at the same gap really is N times
+the rate**, into a budget that belongs to the whole datacenter **range** (three unrelated Azure
+addresses blocked within 14 seconds of each other, 2026-08-11).
+
+That reframes the trial which concluded "sharding is pointless": those three shards each ran at
+the single-worker 20 s gap, i.e. **~9 result requests/min, roughly five times anything measured
+safe**. It confounded concurrency with rate and could not tell which the range objected to.
+
+So the remote workflow now scales pacing by shard count — `--search-gap` and `--causa-gap` set to
+`base × shards`. N shards each firing every `base×N` seconds is `N/(base×N) = 1/base` requests per
+second **whatever N is**, so the aggregate is identical at 1, 2 or 6 shards. With `ramp_min`
+(default 30 min) letting each runner prove itself before the next joins, a failure can finally be
+attributed to the runner that caused it.
+
+⚠️ **Extra runners still buy no extra allowance** — that part of 08-11 stands. The open question
+is only whether they can *coexist* at a fixed aggregate rate, which is worth knowing because
+runners are free and the residential IP is not.

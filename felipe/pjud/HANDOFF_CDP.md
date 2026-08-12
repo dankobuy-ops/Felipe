@@ -1,10 +1,56 @@
-# PJUD scraper — CDP Handoff (updated 2026-08-07)
+# PJUD scraper — CDP Handoff (site + WAF reference; history updated 2026-08-12)
 
 > **Building or running a worker? Read [`HANDOFF_WORKERS.md`](HANDOFF_WORKERS.md) first.**
 > It covers the three-worker architecture, pacing with its evidence, block recovery, the Neon
 > schema, and the traps that cost real time. **This** file is the reference for the *site and the
 > WAF* — entry gates, block tiers, the corte-change burst — and for the history of how each
 > conclusion was reached.
+
+---
+
+## ⚠️ READ THIS BEFORE ANYTHING BELOW — what is still true, as of 2026-08-12
+
+This file is kept as a **record of how each conclusion was reached**, which means much of it is
+superseded by later evidence. The dated sections below are left intact on purpose — several of
+them were overturned by a *later* section in this same file, and seeing that happen is the point.
+What follows is the current state. Where they disagree, this block wins.
+
+**Superseded — do NOT rebuild these:**
+
+| claim, somewhere below | what is actually true |
+|---|---|
+| "the F5 flag follows the **profile dir**, not the IP" | The limit is a per-IP request **rate**, and the verdict follows the **address**. A blocked profile is fine after re-entry (~18 s). |
+| "**unattended worker is impossible**, two human-only gates" | A fully scripted walk-in succeeds on a virgin profile. The "gate" was the `#no-disponible` AVISO covering the entry button. Only the tier-3 image CAPTCHA needs a human. |
+| "a **warm-up ritual** earns trust" | Never real. Same AVISO. |
+| "rotate/rename the profile dir after a block" | Throws away a warm session for nothing. `waf_check.py` still says this and is **stale**. |
+| "`CAUSA_GAP` is now 90 s", "60 s between searches" | 25 s and 20 s. `speed_probe.py` ramped both far lower without tripping on 2026-08-10; the old numbers were compensating for robotic keyboard and scroll behaviour, since fixed. |
+| "2 workers yes, 3 no" | Measured before the human-input fixes. **Four** local workers ran clean on 2026-08-12 at 1.75 result requests/min. Judge by trouble events, not by worker count. |
+| "the daily GitHub-Actions sweep cannot work" | True of the *headless* `run.py` generation. A **headed** runner under Xvfb enters and sweeps fine — headless was the entire problem, because F5's challenge tests `document.visibilityState`. |
+
+**Still true, and load-bearing:**
+
+- **Never a bare `.click()`.** F5 scores pointer *motion*; `human_click()`'s arc and dwell is the
+  whole reason this works. `Runtime.evaluate` DOM reading is innocent.
+- **Never judge a document by size or status — check for `%PDF`.** A clicked PDF hands back
+  Chrome's viewer wrapper, ~14 KB of HTML with status 200.
+- **Never judge readiness by the results table.** It shows the *previous* search's rows while a
+  new one runs. Ground truth is a `consultaFechaCivil.php` response arriving after the click.
+- **`sin resultados` from a spent session is a false negative**, not an empty court.
+- **The corte-change burst is real.** Never touch `#corteFec`; sweep with Corte = Todos.
+- **Tier 3 (full-page image CAPTCHA) needs a human.** Detect, report, stop. Never script it.
+
+**Newer than everything below (2026-08-11/12), see `HANDOFF_WORKERS.md` for detail:**
+
+- A **GitHub runner IP is not refused** — remote scraping works, headed under Xvfb.
+- The remote budget belongs to the **datacenter range**, so extra runners buy no extra allowance.
+  Whether they can *coexist* at a fixed aggregate rate is being tested; the trial that concluded
+  "sharding is pointless" ran every shard at the single-worker gap and confounded rate with
+  concurrency.
+- **A wedged form is not a block.** Every `select_tribunal_kbd` failing is a broken session, and
+  it is cured by a **replacement browser** and by nothing else — cooling off and re-entering the
+  same browser does not work. `fresh_browser()` is the second rung of the recovery ladder.
+- **Aggregate request rate is never `N × 1/gap`.** Local workers slow each other down; runners do
+  not. Measure it with `rate_watch.py`.
 
 
 **Supersedes the 2026-07-21 version.** Project: **Poder Judicial Virtual** (Oficina
@@ -68,7 +114,12 @@ reaps it, and poll the log file.
 
 **Budget, measured 2026-08-07:** ~24 causa opens on one IP across an afternoon before a tier-2
 block, at 45 s spacing. Detail is the binding constraint — searches are cheap by comparison
-(208 in an evening, no search-block). `CAUSA_GAP` is now 90 s.
+(208 in an evening, no search-block). ~~`CAUSA_GAP` is now 90 s.~~
+
+> **Superseded 2026-08-10.** `CAUSA_GAP` is **25 s** and `SEARCH_GAP` **20 s**. `speed_probe.py`
+> ramped opens 90 → 8 s and result requests 45 → 4 s on live sessions without tripping once, and
+> the same IP then did 730 opens in a day. The "~24 opens per afternoon" ceiling was a property
+> of how the input looked — a metronome keyboard and no scrolling — not of the site.
 
 ---
 

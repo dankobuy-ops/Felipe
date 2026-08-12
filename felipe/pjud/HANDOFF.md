@@ -1,4 +1,19 @@
-# PJUD scraper — Handoff
+# PJUD scraper — Handoff ⚠️ SUPERSEDED, KEPT FOR HISTORY
+
+> **STOP. This file describes the 2026-06 design and none of it is how the scraper works now.**
+> It documents the **headless-Playwright, Google-Sheets, daily-cron** generation, which was
+> abandoned after the CDP pivot. Its central approach is not merely outdated, it is *known not to
+> work*: a headless browser never clears F5's challenge, because the challenge tests
+> `document.visibilityState`. The daily cron on that design failed 17 jobs a day for ~13 days
+> before being disarmed on 2026-08-05, and the workflow is now disabled outright.
+>
+> **Read instead:**
+> - [`HANDOFF_WORKERS.md`](HANDOFF_WORKERS.md) — the workers, pacing, recovery, Neon schema. Start here.
+> - [`HANDOFF_CDP.md`](HANDOFF_CDP.md) — the site and the WAF, and how each conclusion was reached.
+> - [`HANDOFF_PC2.md`](HANDOFF_PC2.md) — the second machine, worker B.
+>
+> Storage moved from Sheets to **Neon Postgres + Drive**. Nothing below should be used to plan
+> work; it is kept only so the reasoning behind the pivot stays legible.
 
 **Project:** Poder Judicial Virtual (Oficina Judicial Virtual, OJV) — civil causas scraper.
 

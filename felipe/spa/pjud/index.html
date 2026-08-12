@@ -96,9 +96,12 @@
             Cancelar una corrida detiene la cadena.
           </p>
           <p class="hint-small">
-            Cada runner tiene su propia IP. El bloqueo del sitio es un límite de
-            <em>ritmo por IP</em>, así que más runners rinden más — pero llegan todos a la vez,
-            que es justo lo que el sitio castiga. Empieza con 1.
+            Cada runner tiene su propia IP, pero <strong>eso no da más presupuesto</strong>: el
+            límite pertenece al <em>rango</em> del datacenter, no a la dirección. El 11/08 tres
+            runners con IP distinta rindieron 214 causas — menos que las 226 de uno solo. Por eso
+            los runners ahora <strong>se reparten el ritmo</strong> (la pausa de cada uno se
+            multiplica por la cantidad de runners) y <strong>entran de a uno cada 30 minutos</strong>,
+            para poder atribuir un bloqueo al runner que lo causó. Empieza con 1.
           </p>
         </div>
       </details>
