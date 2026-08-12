@@ -51,6 +51,8 @@ scraper/
   ojv.py               entry + search + freshness + block detection   ← ONE copy, use it
   worker_a.py          the discovery worker
   ingest_worker_a.py   state.json -> Neon (safe to run mid-sweep)
+  rate_watch.py        what request rate the fleet is ACTUALLY producing, read from the logs.
+                       Never derive it from the gaps — see §4.
   migrate_types.py     one-shot: TEXT -> DATE/TIMESTAMPTZ/INTEGER
   census.py            shim -> worker_a.py --no-detail (superseded)
   cdp_scrape.py        the older single-corte scraper; still the source of the
@@ -124,26 +126,44 @@ something it should have — never one whose ebook control simply does not exist
 ## 4. Pacing — the numbers and the evidence
 
 ```python
-SEARCH_GAP   = 60.0   # search click to search click
-PAGE_GAP     = 20.0   # paginator clicks
-CAUSA_GAP    = 90.0   # between causa opens   ← the one that matters
-POST_CAUSA   = 30.0
+SEARCH_GAP   = 20.0   # EVERY result request — searches AND page advances
+GAP_JITTER   = 0.15   # ±15%, so concurrent workers drift apart instead of firing in unison
+CAUSA_GAP    = 25.0   # between causa opens
+EBOOK_GAP    =  4.0   # after the modal renders, before asking for the pdf
+POST_CAUSA   = 10.0
 COOL_OFF     = 180.0  # × recovery number, after a block
 CLEAN_STREAK = 12     # clean opens that win the recovery budget back
+MAX_SWAPS    = 3      # replacement browsers a worker may open for a wedged form
 ```
 
-Real open-to-open intervals, measured from logs (the two gaps add up, so config ≠ observed):
+⚠️ **These are NOT the 60/20/90/30 numbers this section used to print.** Those came from the
+2026-08-07 trials, and `speed_probe.py` overturned them on 2026-08-10 by ramping the gaps down on
+a live session and measuring where it actually broke:
 
-| config | idle | observed open→open | outcome |
-|---|---|---|---|
-| 45 + 15 | 60 s | median **99 s** | **blocked at 11 opens** |
-| 90 + 30 | 120 s | median **143 s** | 50+ opens, no block |
+| what was ramped | ramp | result |
+|---|---|---|
+| result requests, 51 of them | 45 → 22 → 10 → 6 → 4 s | never tripped once |
+| causa opens, 18 of them | 90 → 60 → 40 → 25 → 15 → 8 s | never tripped, 18/18 ebooks |
 
-⚠️ **"One minute between causas" is not an untried idea — it is the setting that blocked.**
+Below ~15 s neither cycle shrinks any further, because the **site's own response time** (12–26 s)
+is what dominates — our floor, not the site's limit. **The old 60 s was never a rate limit; it was
+compensation for input that did not look human** — a metronome keyboard and no scrolling at all.
+Fix the behaviour (`_kbd_pause`, `human_scroll`) and most of the budget disappears. The settings
+above sit deliberately *above* the fastest clean level rather than at it.
 
-The limit behaves like a **rate**, not a quota: the same IP has now done well over 50 opens in a
-day without a second block. Searches are cheap and their 60 s is the best-evidenced number here;
-do not slow them looking for safety, and do not speed up detail looking for time.
+⚠️ **PAGE_GAP IS GONE ON PURPOSE. A paginator click is a search** — it hits
+`consultaFechaCivil.php` and returns a result set. Pacing it separately at 20 s against a 60 s
+SEARCH_GAP meant every tribunal over 100 rows quietly fired at three times the intended rate.
+One budget now covers every result request.
+
+⚠️ **The per-worker gap is a floor on the interval, never a promise of the fleet's rate**, and it
+is wrong in *both* directions. Aggregate rate goes UP when causas are already banked (a seeded
+pass skips the opens that used to dominate each cycle — slot 1 produced 66 result requests in ten
+hours on 08-11, then one every 20–40 s on 08-12 with identical settings), and DOWN as workers are
+added, because they share one connection and slow each other. **Measure it, do not derive it:**
+`rate_watch.py` reads the logs and reports what actually went out. Measured 2026-08-12 with four
+workers: 2.6 result requests/min over 5 min, **1.8/min sustained over 15 min, zero trouble
+events** — comfortably past the ceiling §10 records for three workers.
 
 ---
 
@@ -164,6 +184,35 @@ stale.** It predates the re-entry finding and throws away a warm session for not
 
 The recovery budget counts **consecutive** blocks, reset by 12 clean opens. A lifetime cap would
 strand a 250-causa sweep after six blocks however many clean hours sat between them.
+
+### ★★ The second rung: a wedged form needs a NEW BROWSER, not a re-entry (2026-08-12)
+
+There are **two** failure modes here and only one of them is a rate verdict:
+
+| symptom | what it is | what fixes it |
+|---|---|---|
+| rejection frame / challenge iframe / `numero de soporte` | tier-2 block, a RATE verdict | cool off, re-enter the same browser |
+| every `select_tribunal_kbd` fails — option list gone, or the value will not stick | the **session/form is wedged** | **a replacement browser. Nothing else.** |
+
+Measured four times in one afternoon: slots 1, 2 and 3 each reached the state where no tribunal
+could be selected, and a replacement Chrome had each of them searching again within a minute.
+Slot 1 proved the negative directly — it spent a full 180 s cool-off *and* a clean re-entry,
+still could not select a tribunal, and stopped anyway; relaunched onto a new browser it pulled
+the very same court (Arica, 139 registros) on its first search.
+
+So `recover()` now has a second rung, `fresh_browser()`: close this Chrome, open another on the
+same profile and port, walk in. It is bounded by `MAX_SWAPS` — if the *replacements* keep wedging
+then the browser was never the fault, and relaunching for ever would bury that.
+
+⚠️ **A replacement arrives through the entry gate like any other new session**, and the lock is
+handed to `boot_lock` so the sweep loop releases it on the next *confirmed search*, not merely on
+reaching a form. A fresh browser loading pjud.cl is exactly the burst the gate exists to prevent.
+
+⚠️ **It only fires when the worker opened its own Chrome** (`--launch-chrome`). A worker attached
+to a browser someone else started says so and stops, rather than closing a window it does not own.
+
+Until this existed, the only cure lived in the hourly supervisor — so a worker that wedged at
+01:00 sat dead until 02:00.
 
 Only **tier 3** (a full-page image CAPTCHA) needs a human. `ojv.walk_in()` detects it, says so,
 and stops rather than attempting it.

@@ -207,7 +207,12 @@ while none of them was a PDF. Check the magic bytes, always.
 
 1. **`--dry` before every real run.** It is free and it has caught a wrong window twice.
 2. **Never two document workers on one IP.** Confirm PC 1 and PC 2 have different WAN IPs.
-3. **Do not speed up `CAUSA_GAP`.** 60 s of idle blocked at 11 opens; 120 s ran 50+ clean. The
-   numbers are in `HANDOFF_WORKERS.md` §4 with the evidence.
+3. **Take the pacing from the code, not from memory.** This rule used to read "do not speed up
+   `CAUSA_GAP`: 60 s of idle blocked at 11 opens, 120 s ran 50+ clean" — true when written and
+   overtaken on 2026-08-10, when `speed_probe.py` ramped causa opens from 90 s down to 8 s on a
+   live session without tripping once. `CAUSA_GAP` is now **25 s** and `SEARCH_GAP` **20 s**, and
+   the old 60 s turned out to be compensating for robotic keyboard and scroll behaviour that has
+   since been fixed. `HANDOFF_WORKERS.md` §4 carries the ramps and the evidence; `rate_watch.py`
+   measures what a running fleet is actually producing, which is never `N × 1/gap`.
 4. **Do not commit `pjud_config.json`, `token.json` or `client_secret.json`.** Public repo.
 5. **Pull before you start.** PC 1 is actively committing to `main`.
