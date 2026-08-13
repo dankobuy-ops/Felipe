@@ -523,9 +523,36 @@ query comes back** — not when it merely reaches the form. (On 2026-08-10 all f
 a form and none could search; a form-based release would have opened the gate four times on the
 strength of nothing.)
 
-Where a shared lock is impossible (separate cloud runners), use a timer with enough headroom to
-cover the slow path twice over — and prefer a long **ramp** (30 min) so each worker proves itself
-before the next joins and a failure can be attributed.
+### ⚠️ A shared lock is never actually impossible — find the thing both machines can see
+
+The obvious fallback for workers on *separate machines* is a timer, because there is no shared
+filesystem. Resist it. A timer cannot express "after the previous one succeeded", and for a
+**concurrency test** it is not an approximation but a broken instrument: staggering two runners by
+30 minutes means that for those 30 minutes there is exactly one session, which measures nothing
+about whether two can coexist.
+
+They always share *something* — the database you are writing results to. One row is enough:
+
+```sql
+-- acquire: ONE conditional update, so two racers cannot both win
+UPDATE entry_gate SET holder = :me, ts = now()
+WHERE id = 1
+  AND (holder IS NULL OR holder = :me OR ts < now() - interval :stale)
+RETURNING holder            -- a row back means you hold it
+```
+
+Three properties make it safe, and each is load-bearing:
+
+- **Single statement.** `SELECT` then `UPDATE` has a window where both readers see "free".
+  The database serialises the row; let it.
+- **Stale-break.** A holder that dies must not strand everyone. Release with `WHERE holder = :me`
+  so a broken-as-stale holder cannot later clear a gate that now belongs to someone else.
+- **Fail OPEN.** If the database is unreachable, log it and proceed. A gate that failed closed
+  would stall the whole fleet over an unrelated outage; failing open costs at worst one ungated
+  arrival — exactly what you had before the gate existed.
+
+Verify all three against the real database before you trust it: B refused while A holds, B
+acquires after A releases, a silent holder broken after `stale`.
 
 ---
 
@@ -573,6 +600,45 @@ cases), and never charge an outage to the block budget.
 
 Related: if the **public IP changed** during the outage, the session is void — anti-bot systems
 bind a session to the address that was issued it, and re-entry cannot fix that.
+
+### ★★ Recovery rescues the WORKER. Make sure it also rescues the WORK.
+
+The most expensive class of bug found in this repo is not in the scraping — it is in the code
+written to keep the scraping alive. Two instances in one afternoon, both silent:
+
+1. **A run that skipped items reported success.** The "N consecutive failures = stop" guard only
+   fires on a *run* of failures. When the assigned range **ended** before the run reached the
+   limit, the loop simply exited and printed a clean `DONE`, with real courts never searched and
+   *nothing in state marking them*. Absent is not the same as incomplete: no resume revisits an
+   item that was never recorded, and no audit of `complete` flags can see the hole.
+2. **A browser swap resumed at the wrong index.** After replacing a wedged browser, the worker
+   rewound one step — the item that tripped the limit — and carried on past the four that had
+   failed *before* it. The swap saved the session and abandoned its work.
+
+Both were found only by auditing the **union across all workers**, and both had been live for an
+entire national sweep.
+
+⇒ **Every recovery path must ask "what did I skip while failing?" and go back for it.** Rewind
+over the whole failure run, not the last step. Record skipped items explicitly, exit non-zero, and
+never let a partial pass end in a success code.
+
+⇒ **Audit coverage by the union, not by any single worker's state.** Per-worker "missing" counts
+were inflated ~3× by overlapping ranges, while the genuinely absent items appeared in no worker's
+state at all.
+
+### ⚠️ Stop yourself before the platform stops you
+
+Any hosted runner has a hard ceiling (GitHub: 6 hours, then killed). A kill loses whatever was in
+flight *and writes no report*, so the next run cannot tell "the job is finished" from "the last
+one was cut off in the middle". Give the worker its own **lifespan** below that ceiling: stop
+cleanly, save state, record where it got to, exit with a distinct code. A hard kill becomes a
+handover.
+
+And when chaining runs, **continue on the WORK, not on a hop count.** A fixed number of
+continuations either stops with the job half-done or keeps firing at a finished one, because it
+never looks at what happened. Have each run write a verdict — finished / reason / stopped-at /
+blocks — into the state the next run can read, and continue while work remains *and* the failures
+stay within range. Keep a hard hop bound anyway, as the backstop against a bug in that logic.
 
 ### ⚠️ The silent throttle
 
@@ -795,6 +861,33 @@ Rules that made these probes trustworthy:
    *and* at ~11 actions cannot tell you which mattered. Design the probe to separate them.
 6. **Write down what you disproved.** Half the entries above exist because a theory was rebuilt
    twice.
+
+### ★★ Your instrumentation will lie to you more often than your scraper does
+
+On the day this section was written, the scrapers ran all day and the *monitoring* produced four
+false readings in a row. Every one looked like a real event:
+
+| what it reported | what was true | the bug |
+|---|---|---|
+| "5 of 4 workers alive — duplicate!" | 4 alive | the ingest script's filename **contains** the worker's, so it matched |
+| "0 of 4 alive" for three hours | 1 alive and working | `(...).Count` returns **empty** on a single object in PowerShell; needs `@(...)` |
+| "10 orphaned browsers" | one healthy browser | a single Chrome **is** ~10 processes |
+| two green probe runs "measuring" | two setup crashes | `\|\| echo "a refusal is the measurement"` swallowed tracebacks |
+
+The last one is the dangerous shape: **a probe whose failures look like results launders a bug
+into a number somebody will later plan against.** Its fix is the general rule — decide green/red
+on whether the measurement was *written*, never on the process exiting.
+
+Rules that follow:
+
+- **A monitor must distinguish "nothing wrong" from "I could not tell".** Silence and success must
+  not look identical. If your check cannot run, say so loudly.
+- **Count with the array form, match with the exact form.** Both classic bugs above are one
+  character of shell each.
+- **Prefer evidence of life over evidence of absence.** A process list that comes back empty
+  because of permissions is *ignorance*, not death — never kill or restart on it alone.
+- **When an alarm fires, verify before acting.** Three of the four above would have caused a
+  harmful intervention on a healthy fleet.
 
 ---
 
