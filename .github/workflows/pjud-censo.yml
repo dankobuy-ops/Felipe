@@ -73,6 +73,14 @@ on:
         description: "Cuántos runners en paralelo (1 = un solo worker de punta a punta)"
         required: false
         default: "1"
+      idx_from:
+        description: "Barrer sólo desde este índice de tribunal (vacío = 0)"
+        required: false
+        default: ""
+      idx_to:
+        description: "…hasta este índice (vacío = 229). Para pruebas dirigidas."
+        required: false
+        default: ""
       ramp_min:
         description: "Minutos de espera extra por runner (0 = todos a la vez; la reja los ordena)"
         required: false
@@ -139,13 +147,20 @@ jobs:
       - id: gen
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json, math, os
+          import json, math
           n = max(1, min(12, int("${{ inputs.shards }}" or 6)))
-          total = 230
-          step = math.ceil(total / n)
-          shards = [{"slot": i + 1, "start": i * step,
-                     "end": min(total - 1, (i + 1) * step - 1)}
-                    for i in range(n) if i * step <= total - 1]
+          # A targeted window, for experiments that need a specific slice of the country —
+          # e.g. "the densest 40 courts", to separate a per-session OPEN budget from a per-session
+          # TIME budget, which the default nationwide split cannot do because searching sparse
+          # courts couples the two.
+          lo = int("${{ inputs.idx_from }}" or 0)
+          hi = int("${{ inputs.idx_to }}" or 229)
+          lo, hi = max(0, lo), min(229, hi)
+          span = hi - lo + 1
+          step = math.ceil(span / n)
+          shards = [{"slot": i + 1, "start": lo + i * step,
+                     "end": min(hi, lo + (i + 1) * step - 1)}
+                    for i in range(n) if lo + i * step <= hi]
           print("matrix=" + json.dumps({"include": shards}))
           PY
 
