@@ -872,6 +872,28 @@ judgements explicitly:
   "5 of 4 alive" — and, worse, would have read *3 workers + 1 ingest* as a healthy 4 and stayed
   silent through a real death (2026-08-12).
 
+### ⚠️ A worker's log format is not an interface — but supervisors will treat it as one
+
+A supervisor that decides anything by grepping a worker's output has a hidden coupling to that
+output, and nothing will fail when you break it.
+
+Measured 2026-08-13: a supervisor checked the **last three lines** of the log for `DONE.` to decide
+a slot had finished. The worker then gained two closing lines — a structured run report, and a
+"closed the browser I opened" message — which pushed `DONE.` out of that window. The supervisor
+could no longer see a finished slot, and **restarted it every hour, ten times overnight**, each
+restart launching a browser, walking into the site, running a search, finding nothing to do and
+exiting. Ten pointless arrivals at a site that scores arrivals, and it would have continued
+indefinitely.
+
+Nothing errored. Nothing looked wrong. The logs even said `DONE.` every single time.
+
+⇒ **Have the worker write a structured verdict — `finished`, `reason`, `stopped_at` — into the
+state file, and have supervisors read THAT.** State is an interface; prose is not. Keep a log
+fallback for old state, but read a generous tail rather than an exact line count.
+
+⇒ More generally: **when you change what a worker prints, grep the repo for anything that reads
+it.** The coupling is invisible from the worker's side.
+
 ### ⚠️ Rotate logs, never truncate them
 
 Redirecting stdout to an existing log **truncates** it — destroying the very lines that say why

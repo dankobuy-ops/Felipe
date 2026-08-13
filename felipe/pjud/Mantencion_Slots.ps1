@@ -129,8 +129,29 @@ try {
             continue
         }
         Say "slot $s looks dead (scan=0, pid not running, log $([int]$age) min old)"
-        if ((Test-Path $swp) -and (Get-Content $swp -Tail 3 -ErrorAction SilentlyContinue | Select-String "DONE\.")) {
-            Say "slot $s finished (DONE) — nothing to restart"
+        # ⚠️ ASK THE STATE, NOT THE LOG. This used to grep the last THREE lines for "DONE." — and
+        # on 2026-08-13 worker_a grew two more closing lines (the RUN REPORT, and close_chrome's
+        # "closed the Chrome this worker opened"), which pushed "DONE." out of that window. The
+        # supervisor stopped being able to see a finished slot and restarted it EVERY HOUR: 21
+        # times in one day, each one launching Chrome, walking into the OJV, running a search,
+        # finding nothing to do and exiting. Twenty-one pointless arrivals at the site, and it
+        # would have gone on for ever.
+        # A worker's own log format is not an interface. meta.finished IS one — worker_a writes it
+        # on every exit path precisely so something else can read the verdict.
+        $finished = $false
+        $stf = Join-Path $d "state.json"
+        if (Test-Path $stf) {
+            try {
+                $finished = (& $py -c "import json;print(json.load(open(r'$stf',encoding='utf-8'))['meta'].get('finished') is True)" 2>$null).Trim() -eq "True"
+            } catch { $finished = $false }
+        }
+        # Fall back to the log only for states written before meta.finished existed, and read a
+        # generous tail this time rather than exactly three lines.
+        if (-not $finished -and (Test-Path $swp)) {
+            $finished = [bool](Get-Content $swp -Tail 12 -ErrorAction SilentlyContinue | Select-String "DONE\.")
+        }
+        if ($finished) {
+            Say "slot $s finished — nothing to restart"
             continue
         }
 
