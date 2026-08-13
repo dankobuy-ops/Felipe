@@ -1,4 +1,29 @@
-"""WORKER B — backfill the REMAINING documents for causas already in Neon. For the second PC.
+"""WORKER B — FINISH a causa. Everything the site holds about it, in one open.
+
+Worker A discovers causas and takes what an open makes free plus the ebook. B completes them:
+EVERY document and EVERY georreferencia, not a fixed list of four. Worker C (not built) then only
+keeps a finished causa current — new movements, new documents, new georef.
+
+WHAT "EVERYTHING" MEANS, per causa (this is C.scrape_causa(full=True), which already did it):
+    header, litigantes, escritos                    free once the modal is open
+    texto demanda / certificado / ebook             3 header documents
+    EVERY cuaderno, not just the first              switching costs one AJAX request each
+      -> every historia row's `doc` AND `anexo`     the bulk of the work
+      -> every row's georreferencia -> lat/lng      one sub-modal each
+    receptor / notificaciones                       one modal
+
+⚠️ THAT IS MANY REQUESTS PER CAUSA, not one. A causa with 3 cuadernos and 40 historia rows can
+cost 40+ document fetches and as many geo lookups. On a runner, where a session is cut at roughly
+70 requests-with-documents, expect to FINISH ONLY A HANDFUL of causas per session — which is
+fine, because B works a SELECTION, and each open is spent entirely on something asked for.
+
+WHY THIS RUNS ON RUNNERS (operator, 2026-08-13). Bulk sweeping belongs local: a residential
+session does 730+ opens a day against a runner's ~70. But B's work is bounded by construction —
+"here is a list of causas, finish them" — which fits a small session budget exactly, needs no
+discovery, wastes nothing on empty courts, and never spends the residential IP that worker A
+depends on.
+
+(Original note: backfill the REMAINING documents for causas already in Neon.)
 
 Worker A discovers causas by sweeping tribunales. Worker B does the opposite: it asks Neon which
 causas are missing a document, and goes and gets exactly those. Nothing is discovered here, so it
@@ -43,7 +68,7 @@ THE FREE HALF
     litigantes. The open we are already paying for renders all of that, so B harvests it too and
     writes it back. Skipping it would mean paying the expensive part twice.
 """
-import sys, time, argparse, re
+import sys, time, argparse, re, random
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -53,6 +78,7 @@ import dbstore
 import gstore
 import ojv
 import run
+import ingest_cdp
 from ojv import note
 import worker_a as A
 from playwright.sync_api import sync_playwright
@@ -117,53 +143,101 @@ def work_list(desde, hasta, selector, where="", ids_file="", limit=0):
     return out
 
 
-def store_result(store, causa_id, rec, ebook_url):
-    """Write back ONE causa: the ebook link, plus whatever metadata the open gave us for free.
+def store_result(store, causa_id, rec, _unused=None):
+    """Write EVERYTHING this causa gave up: documents, anexos, cuadernos, georref, receptor,
+    litigantes — and the three header document URLs on the causa row itself.
 
-    ⚠️ A targeted UPDATE, never store.upsert(). upsert writes EVERY column from EXCLUDED, so it
-    would blank texto_demanda, certificado, fill and anything else this worker has no opinion
-    about. Worker B knows about the ebook and (for shells) the header — nothing else.
+    ⚠️ THE CHILD TABLES GO THROUGH ingest_cdp.build(), NOT a hand-rolled mapping. build() already
+    produces the deterministic ids the rest of the data uses (cuaderno = <causa>-c<n>-<folio>-<k>,
+    litigante = <causa>-<rut>), so re-running updates in place instead of duplicating. A second
+    mapping here would drift from it, and the drift would look like missing data.
+
+    ⚠️ THE CAUSA ROW IS STILL A TARGETED UPDATE, never store.upsert(). upsert writes EVERY column
+    from EXCLUDED, so it would blank `fill`, `fill_status` and anything else B has no opinion
+    about — the same trap that nearly wiped tribunales.corte for all 180 rows. B knows the header
+    and the three document URLs; it says nothing about the rest.
     """
+    parts = ingest_cdp.build({
+        "rol": rec["rol"], "tribunalId": rec["tribunalId"],
+        "tribunalSel": rec.get("tribunalSel", ""), "corte": "",
+        "header": rec.get("header") or {}, "litigantes": rec.get("litigantes") or [],
+        "cuadernos": rec.get("cuadernos") or [], "escritos": rec.get("escritos") or [],
+        "receptor": rec.get("receptor") or [],
+        "ebook": rec.get("ebook", ""), "scrape_level": "full",
+    }, {})
+
+    # Child tables: upsert is correct here — every row is fully specified by this harvest.
+    for tab in ("Ruts", "Litigantes", "Cuadernos", "Escritos",
+                "Documentos", "Anexos", "Notificaciones Receptor"):
+        rows = parts.get(tab)
+        if rows:
+            store.upsert(tab, rows)
+
+    # The causa row: only the columns B actually learned.
     sets, vals = [], []
-    if ebook_url:
-        sets.append("ebook=%s")
-        vals.append(ebook_url)
+    for col in ("ebook", "texto_demanda", "certificado"):
+        if rec.get(col):
+            sets.append(f'"{col}"=%s'); vals.append(rec[col])
     h = rec.get("header") or {}
-    if h:
-        for col in ("f_ingreso", "estado_adm", "procedimiento", "ubicacion", "estado_proc", "etapa"):
-            if h.get(col):
-                v = h[col]
-                if col == "f_ingreso":
-                    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", v)
-                    v = f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else v
-                sets.append(f'"{col}"=%s')
-                vals.append(v)
-    if not sets:
-        return
-    sets.append("updated_at=%s")
-    vals.append(run._now())
+    for col in ("f_ingreso", "estado_adm", "procedimiento", "ubicacion", "estado_proc", "etapa"):
+        if h.get(col):
+            v = h[col]
+            if col == "f_ingreso":
+                m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", v)
+                v = f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else v
+            sets.append(f'"{col}"=%s'); vals.append(v)
+    # 'full' is the whole point of worker B: it marks a causa as FINISHED, which is what lets
+    # worker C later ask "what changed" instead of "what is missing".
+    sets.append("fill_status=%s"); vals.append("full")
+    sets.append("updated_at=%s"); vals.append(run._now())
     vals.append(causa_id)
     with store.conn.cursor() as cur:
         cur.execute(f"UPDATE causas SET {', '.join(sets)} WHERE causa_id=%s", vals)
 
-    # Litigantes come free with the open and most of these causas are shells without any.
-    lits, ruts = [], []
-    for L in rec.get("litigantes") or []:
-        rut = run.norm_rut(L.get("rut", ""))
-        if not rut:
-            continue
-        if "JUR" in (L.get("persona", "") or "").upper():
-            ruts.append({"rut": rut, "tipo": "empresa", "razon_social": L.get("nombre", ""),
-                         "updated_at": run._now()})
-        else:
-            n, sg, ap, am = run.split_persona(L.get("nombre", ""))
-            ruts.append({"rut": rut, "tipo": "persona", "nombre": n, "segundo_nombre": sg,
-                         "ap_paterno": ap, "ap_materno": am, "updated_at": run._now()})
-        lits.append({"id": f"{causa_id}-{rut}", "causa_id": causa_id, "rut": rut,
-                     "participante": L.get("participante", ""), "updated_at": run._now()})
-    if ruts:
-        store.upsert("pjud_ruts", ruts)
-        store.upsert("pjud_litigantes", lits)
+
+def finish_causa(p, tid, tname, row):
+    """Open ONE causa and take everything: all cuadernos, every doc and anexo, every georref,
+    receptor. Returns the record C.scrape_causa produces, or None if the modal never opened.
+
+    ⚠️ This deliberately delegates to C.scrape_causa(full=True) rather than reimplementing the
+    harvest. That routine already walks every cuaderno, fetches each historia row's doc and anexo,
+    resolves each geo sub-modal and reads the receptor — and a second implementation would drift
+    from it exactly the way the duplicated block detectors drifted, silently and in the direction
+    of collecting less.
+
+    ⚠️ DOCS_INPAGE is forced ON. fetch_doc() dispatches on that module flag, and with it off it
+    uses the OUT-OF-PROCESS downloader that fetches from outside the browser with copied cookies —
+    the one thing in this codebase that looks nothing like a user. In-page fetching makes the same
+    single request the click would have made, from the session that already holds it, and verifies
+    %PDF before believing it.
+    """
+    C.DOCS, C.DOCS_INPAGE, C.GPS = True, True, True
+    causa_id = f"{tid}-{row['rol']}"
+    note(f"    open {causa_id}  {row['car'][:52]}")
+    C.human_click(p, p.locator("#dtaTableDetalleFecha tbody tr").nth(row["i"])
+                  .locator("a[onclick*='detalleCausaCivil']").first, timeout=8000)
+    t0 = time.time()
+    while time.time() - t0 < 90:
+        p.wait_for_timeout(400)
+        try:
+            if p.evaluate("(rol)=>{const m=document.querySelector('#modalDetalleCivil');"
+                          "return !!m && m.innerText.indexOf(rol)>=0;}", row["rol"]):
+                break
+        except Exception:
+            pass
+    else:
+        note(f"    modal did not open after {time.time()-t0:.0f}s")
+        return None
+    p.wait_for_timeout(1500)
+    C.human_scroll(p, notches=random.randint(2, 5))
+    meta = {"rol": row["rol"], "tribunalId": tid, "tribunalSel": tname, "corte": "",
+            "fecha": row.get("fecha", "")}
+    # scrape_causa closes the modal itself, on every path.
+    rec = C.scrape_causa(p, None, meta, full=True)
+    C.clear_stuck_modal(p)
+    note(f"      {rec.get('n_historia', 0)} historia rows | {rec.get('n_docs', 0)} documents "
+         f"| {rec.get('n_geo', 0)} georref | {len(rec.get('receptor') or [])} receptor")
+    return rec
 
 
 def main():
@@ -275,7 +349,7 @@ def main():
                         break
                     time.sleep(A.CAUSA_GAP)
                     try:
-                        rec = A.harvest_causa(ctx, p, tid, by_id[tid], c, want_ebook=True)
+                        rec = finish_causa(p, tid, by_id[tid], c)
                     except Exception as e:
                         note(f"    [warn] harvest threw: {str(e)[:80]}")
                         rec = None
@@ -294,18 +368,10 @@ def main():
                             break
                         continue
                     consec_fail = 0
-                    url = ""
-                    eb = rec.get("ebook") or {}
-                    if eb.get("bytes"):
-                        f = PDFS / eb["file"]
-                        body = f.read_bytes()
-                        if body[:4] == b"%PDF":
-                            url = dbstore.direct_link(
-                                store.upload_pdf(f"{cid}/ebook.pdf", body))
-                    store_result(store, cid, rec, url)
+                    store_result(store, cid, rec)
                     done += 1
-                    note(f"      -> {cid} ebook={'yes' if url else 'NO'} "
-                         f"(done {done}/{n}, failed {failed})")
+                    note(f"      -> {cid} FINISHED: {rec.get('n_docs',0)} docs, "
+                         f"{rec.get('n_geo',0)} georref (done {done}/{n}, failed {failed})")
                     time.sleep(A.POST_CAUSA)
                 if consec_fail >= A.MODAL_FAIL_LIMIT:
                     break

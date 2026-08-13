@@ -303,11 +303,38 @@ def cuaderno_options(page):
 
 
 def select_cuaderno(page, index):
+    """Switch cuaderno with the TRUSTED keyboard, never select_option.
+
+    ⚠️ This used `page.select_option`, which is the synthetic-change path that
+    `select_tribunal_kbd` exists to avoid — its own docstring says that event trips the F5 WAF,
+    and `establish_form_kbd` drives every other control by keyboard for exactly that reason. The
+    cuaderno switch was the one select left doing it, and it went unnoticed because worker A only
+    ever reads cuaderno 1 and never switches. Worker B switches on EVERY causa, so this would
+    have fired on every single one.
+
+    Returns True if the selection took. The caller should treat False as "do not trust the
+    historia now on screen" — it still belongs to the previous cuaderno.
+    """
     try:
-        page.select_option("#selCuaderno", index=index)
-        page.wait_for_timeout(1600)   # historia reloads via AJAX
+        opts = page.eval_on_selector_all(
+            "#selCuaderno option", "els=>els.map((o,i)=>({i:i,sel:o.selected}))")
+        if index >= len(opts):
+            return False
+        cur = next((o["i"] for o in opts if o["sel"]), 0)
+        if cur == index:
+            return True
+        page.locator("#selCuaderno").focus()
+        key = "ArrowDown" if index > cur else "ArrowUp"
+        for _ in range(abs(index - cur)):
+            page.keyboard.press(key)
+            _kbd_pause(page, base=85, spread=60)
+        page.wait_for_timeout(1600)          # historia reloads via AJAX
+        now = page.eval_on_selector_all(
+            "#selCuaderno option", "els=>els.findIndex(o=>o.selected)")
+        return now == index
     except Exception as e:
         print(f"      [warn] selCuaderno {index}: {e}")
+        return False
 
 
 def parse_historia(page):
