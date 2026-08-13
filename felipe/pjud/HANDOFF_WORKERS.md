@@ -85,6 +85,21 @@ python scraper\ingest_worker_a.py            # uploads ebooks to Drive + upserts
 python scraper\ingest_worker_a.py --dry      # counts only
 ```
 
+> ### ⚠️ THE SUPERVISOR IS DISABLED (2026-08-13). RE-ENABLE IT BEFORE ANY LOCAL RUN.
+>
+> ```powershell
+> schtasks /change /tn "PJUD mantencion slots" /enable
+> ```
+>
+> It was turned off once July finished and June moved to runners, because an hourly timer has no
+> idea the work is over: it kept firing, re-ingesting the same 3,600 rows every hour, and — until
+> `7cbe93c` — relaunching a finished slot ten times overnight, each relaunch a real walk-in to the
+> OJV.
+>
+> **The failure mode of forgetting is silent and expensive**: workers run unsupervised, so a slot
+> that dies at 01:00 stays dead until someone looks. That is the exact 19-hour outage this task was
+> built to prevent. Check `Get-ScheduledTask 'PJUD mantencion slots'` says `Ready`, not `Disabled`.
+
 **Hourly maintenance runs on its own and RESTARTS the sweep** — Windows Scheduled Task
 `PJUD mantencion horaria`, registered by `.\Mantencion_Horaria.ps1 -Install`, logging to
 `data\worker_a\ingesta.log`. Each hour it ingests, then checks the sweep and relaunches it if it
