@@ -89,6 +89,53 @@ def internet_up(timeout=4.0):
     return False
 
 
+def can_resolve(host=None, timeout=6.0):
+    """Can we resolve the target's name? Connectivity is NOT the same question.
+
+    ⚠️ internet_up() deliberately probes raw IPs (1.1.1.1, 8.8.8.8) so a DNS problem cannot be
+    mistaken for an outage — which means it happily reports "online" while pjud.cl is
+    unresolvable. On 2026-08-13 a runner hit ERR_NAME_NOT_RESOLVED, internet_up() said fine, and
+    the worker spent all three entry attempts on a name it could not look up. The failure then
+    read as the site refusing us; it never reached the site at all.
+
+    A datacenter resolver's path to a Chilean authoritative server is long and not always
+    reliable, and every walk-in and every retry re-resolves these names — so a retry storm can
+    make this worse by itself.
+    """
+    import socket as _s
+    for h in ([host] if host else ["www.pjud.cl", OJV_HOST]):
+        try:
+            _s.setdefaulttimeout(timeout)
+            _s.getaddrinfo(h, 443)
+        except OSError as e:
+            note(f"DNS: cannot resolve {h} ({str(e)[:50]})")
+            return False
+    return True
+
+
+def wait_for_dns(max_wait=1800, poll=30.0):
+    """Wait for the target's name to resolve again. (came_back, seconds_waited).
+
+    Treated like an outage, NOT like a block: no cool-off is charged, no recovery is spent, and
+    the profile is not touched. There is nothing to apologise to the site for — we never reached
+    it. Shorter than the internet wait because a resolver blip is usually seconds, not hours, and
+    a runner that cannot resolve for half an hour is better off ending so the next one can try
+    from a different machine.
+    """
+    t0 = time.time()
+    if can_resolve():
+        return True, 0.0
+    note("*** CANNOT RESOLVE pjud.cl — this is DNS, not a block. Not spending entry attempts.")
+    while time.time() - t0 < max_wait:
+        time.sleep(poll)
+        if can_resolve():
+            el = time.time() - t0
+            note(f"*** DNS came back after {el:.0f}s — resuming")
+            return True, el
+    note(f"*** still cannot resolve after {max_wait / 60:.0f} min — stopping")
+    return False, time.time() - t0
+
+
 def wait_for_internet(max_wait=14400, poll=20.0):
     """Block until connectivity returns. (came_back, seconds_waited).
 
@@ -621,6 +668,12 @@ def walk_in(ctx):
         note(f"could not reach the OJV by click-through (attempt {attempt}/3)")
         if not internet_up():
             if not wait_for_internet()[0]:
+                return None
+        # ⚠️ AND ASK WHETHER WE CAN RESOLVE IT. An unresolvable name is not a refusal, and
+        # spending entry attempts on one wastes the whole arrival — the worker never touches the
+        # site, yet the run ends looking like it was turned away.
+        elif not can_resolve():
+            if not wait_for_dns()[0]:
                 return None
         _only_tab(ctx, start)
         time.sleep(8)
