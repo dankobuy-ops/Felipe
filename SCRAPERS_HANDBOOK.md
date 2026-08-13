@@ -463,6 +463,40 @@ that works is local, where separate sessions on one residential address ran four
 Two concurrent runners did survive 1h46m against 11 minutes for three, so if you must have two,
 expect to be culled in pairs and make sure every runner ingests before it dies.
 
+### ★ …and then measure the SPEED separately, because it is a different question
+
+Having found that concurrency is the constraint, it is tempting to stop. Don't — you still do not
+know how fast ONE of them may go, and we had been guessing (inheriting the local numbers).
+
+Measured 2026-08-12, one runner ramped 45 → 35 → 28 → 22 → 17 → 13 → 10 → 8 → 6 s:
+
+| gap | mean cycle | mean req/min |
+|---|---|---|
+| 45 s | 67.0 s | 0.90 |
+| 22 s | 43.8 s | 1.38 |
+| **13 s** | **28.9 s** | **2.10** |
+| 10 s | 28.4 s | 2.11 |
+| 8 s | 30.8 s | 1.95 |
+| 6 s | 29.1 s | 2.07 |
+
+**36 requests, never tripped.** The cycle floors at ~28 s from gap 13 downward, because the site's
+own response (17–23 s) plus ~2 s of our activity is all that remains — 8 s and 6 s buy nothing and
+8 s is marginally worse. Overall split: **74 s of activity against 662 s of deliberate idling —
+10% active.**
+
+⇒ **There is no remote rate limit either.** X is the site's response time, the same answer as
+local. We had been running remote workers at 20 s, about half the achievable throughput, for no
+reason anyone had measured.
+
+**And this makes the concurrency finding stronger, not weaker.** Those four culled shards were
+paced at ×4 — roughly 0.7 req/min each, a *third* of what one runner sustains — and were cut down
+in pairs anyway. With speed eliminated as a candidate, concurrent sessions are the only variable
+left standing.
+
+⚠️ **The general lesson: "we get blocked" and "how fast can we go" are separate questions, and
+answering one does not answer the other.** Test them separately or you will attribute a
+concurrency limit to speed, throttle yourself for months, and never find out.
+
 ### ⚠️ Keep concurrent workers out of lockstep
 
 Two workers started together pace from the same instant and stay synchronised forever — observed

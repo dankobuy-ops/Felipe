@@ -65,13 +65,17 @@ on:
         required: false
         default: "30"
       base_search_gap:
-        description: "Segundos entre requests de resultados, POR RUNNER antes de escalar"
+        description: "Segundos entre requests de resultados, por runner (X medido = 13)"
         required: false
-        default: "20"
+        default: "13"
       base_causa_gap:
-        description: "Segundos entre aperturas de causa, POR RUNNER antes de escalar"
+        description: "Segundos entre aperturas de causa, por runner"
         required: false
         default: "25"
+      scale_pacing:
+        description: "true = multiplicar las pausas por la cantidad de shards (ya no hace falta)"
+        required: false
+        default: "false"
       detail:
         description: "false = solo censo | true = además abre cada causa y baja el ebook"
         required: false
@@ -285,10 +289,32 @@ jobs:
           # seconds is N/(base*N) = 1/base requests per second, whatever N is. So the aggregate
           # is identical at 1, 2 or 6 shards, and this test measures what it means to measure:
           # whether the range objects to CONCURRENT SESSIONS at all, with rate held constant.
+          # ★ MEASURED 2026-08-12, pjud-velocidad run 31658994520: a single runner ramped
+          # 45 -> 35 -> 28 -> 22 -> 17 -> 13 -> 10 -> 8 -> 6 s and NEVER TRIPPED across 36
+          # requests. The cycle floors at ~28 s from gap 13 downward, because the SITE's own
+          # response time (17-23 s) plus ~2 s of our activity is all that is left — 8 s and 6 s
+          # are no better than 10 s, and 8 s is marginally worse. X = 13 s, ~2.1 requests/min.
+          #
+          # ⇒ THERE IS NO REMOTE RATE LIMIT TO FIND, exactly as there was none locally. So the
+          # x N scaling below is off by default: it was built to hold the aggregate at one
+          # worker's rate while we still suspected rate was what the range objected to, and the
+          # probe has now removed rate as a candidate. It stays available because turning it on
+          # is how the aggregate is pinned if that question is ever reopened.
+          #
+          # ⚠️ This also strengthens the concurrency finding rather than weakening it: the four
+          # shards that were culled in pairs on 08-12 were paced at x4 — about 0.7 rpm each,
+          # a THIRD of what one runner sustains — and were cut down anyway. With speed ruled out,
+          # concurrent sessions are the only variable left.
           N=${{ inputs.shards }}
-          SG=$(python -c "print(round(${{ inputs.base_search_gap }} * $N, 1))")
-          CG=$(python -c "print(round(${{ inputs.base_causa_gap }}  * $N, 1))")
-          echo "shards=$N -> search gap ${SG}s, causa gap ${CG}s per runner (aggregate = 1 worker)"
+          if [ "${{ inputs.scale_pacing }}" = "true" ]; then
+            SG=$(python -c "print(round(${{ inputs.base_search_gap }} * $N, 1))")
+            CG=$(python -c "print(round(${{ inputs.base_causa_gap }}  * $N, 1))")
+            echo "shards=$N, pacing SCALED -> search ${SG}s, causa ${CG}s (aggregate = 1 worker)"
+          else
+            SG=${{ inputs.base_search_gap }}
+            CG=${{ inputs.base_causa_gap }}
+            echo "shards=$N, pacing UNSCALED -> search ${SG}s, causa ${CG}s per runner (measured X)"
+          fi
           # ⚠️ OUR lifespan, deliberately BELOW the platform's 350-minute timeout. A job killed by
           # timeout-minutes loses whatever the current tribunal had in flight and, worse, never
           # writes its run report — so the chain cannot tell "the window is finished" from "this

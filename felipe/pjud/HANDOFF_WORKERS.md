@@ -487,9 +487,35 @@ culled regardless:
 because they are how this was measured and how it would be re-measured if the site changes — not
 because more runners help. Two runners did survive 1h46m against 11 minutes for three.
 
-⚠️ **A remote worker is worth roughly 40% of a local one** even when healthy: 1.11 opens/min
-against ~2.7 locally, with ebook fetches taking up to 9.8 s against ~1 s. Runners are free and
-the residential IP is not, which is the only reason to use them at all.
+### ★ X for a runner, measured 2026-08-12 (`pjud-velocidad`, run 31658994520)
+
+One runner ramped 45 → 35 → 28 → 22 → 17 → 13 → 10 → 8 → 6 s. **36 requests, never tripped.**
+
+| gap | mean cycle | mean req/min |
+|---|---|---|
+| 45 s | 67.0 s | 0.90 |
+| 22 s | 43.8 s | 1.38 |
+| **13 s** | **28.9 s** | **2.10** ← use this |
+| 10 s | 28.4 s | 2.11 |
+| 8 s | 30.8 s | 1.95 |
+| 6 s | 29.1 s | 2.07 |
+
+The cycle floors at ~28 s from gap 13 down: the site's own response time (17–23 s) plus ~2 s of
+activity is everything that is left. 8 s and 6 s buy nothing. Overall **74 s active against 662 s
+idle — 10%**.
+
+⇒ **No remote rate limit exists**, same as local. `base_search_gap` is now **13**, and the ×N
+scaling is **off by default** (`scale_pacing`) — it was built to pin the aggregate while rate was
+still a suspect, and rate has now been ruled out.
+
+⚠️ **This strengthens the concurrency verdict.** The four shards culled in pairs were paced at ×4,
+about 0.7 req/min each — a third of what one runner sustains — and were cut down anyway. Speed is
+eliminated; concurrent sessions are the only variable left.
+
+⚠️ **The 40% figure was wrong, and worth correcting explicitly.** It came from ebook fetches
+(9.8 s remote vs ~1 s local), which is *bandwidth on document downloads*. The SEARCH round-trip is
+identical on a runner (17–23 s vs the local 12–26 s). So a runner is at full speed for census
+work, and only slower for document-heavy detail passes.
 
 Every shard did ingest before dying (`if: always()`), so the run still banked its work: June went
 352 → 461 causas and 216 → 318 ebooks.
