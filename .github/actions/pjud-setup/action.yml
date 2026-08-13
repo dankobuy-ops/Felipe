@@ -1,0 +1,108 @@
+name: "PJUD runner setup"
+description: "Python, Playwright, Xvfb, secrets and (optionally) a headed Chrome on a CDP port."
+
+# Every PJUD job needs the same seven steps before it can do anything, and six copies of them in
+# one workflow is how a fix lands in five places and gets missed in the sixth. The ⚠️ notes below
+# are the ones that were each learned by losing a run.
+
+inputs:
+  pjud_config:
+    description: "secrets.PJUD_CONFIG — Neon connection + Drive folder ids"
+    required: true
+  google_client_secret:
+    description: "secrets.GOOGLE_CLIENT_SECRET"
+    required: false
+    default: ""
+  google_token_json:
+    description: "secrets.GOOGLE_TOKEN_JSON"
+    required: false
+    default: ""
+  launch_chrome:
+    description: "true = open a headed Chrome here. Worker A opens its OWN (--launch-chrome); B and C do not."
+    required: false
+    default: "false"
+  port:
+    description: "CDP port for the Chrome launched here"
+    required: false
+    default: "9222"
+  profile:
+    description: "Chrome user-data-dir (a worker OWNS its profile — never shared)"
+    required: false
+    default: "pjud_x"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install deps
+      shell: bash
+      run: |
+        pip install playwright psycopg2-binary requests \
+                    google-auth google-auth-oauthlib google-api-python-client
+        playwright install chromium --with-deps
+
+    # ⚠️ HEADED UNDER XVFB, NEVER HEADLESS. Measured 2026-08-11, same code both ways: headed
+    # entered and searched; --headless=new never got past entry in 102 s. F5's challenge tests
+    # document.visibilityState and a headless browser has no visible surface. One flag, and it
+    # was the entire reason a daily workflow failed for a fortnight.
+    - name: Xvfb
+      shell: bash
+      run: |
+        sudo apt-get install -y --no-install-recommends xvfb >/dev/null 2>&1 || true
+        Xvfb :99 -screen 0 1440x900x24 >/dev/null 2>&1 &
+        sleep 2
+        echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+    - name: Restore config (Neon + Drive ids)
+      shell: bash
+      working-directory: felipe/pjud/scraper
+      env:
+        PJUD_CONFIG: ${{ inputs.pjud_config }}
+      run: |
+        printf '%s' "$PJUD_CONFIG" > pjud_config.json
+        python -c "import json;d=json.load(open('pjud_config.json'));print('config keys:',sorted(d))"
+
+    - name: Google credentials
+      if: ${{ inputs.google_token_json != '' }}
+      shell: bash
+      working-directory: felipe/pjud/scraper
+      env:
+        GOOGLE_CLIENT_SECRET: ${{ inputs.google_client_secret }}
+        GOOGLE_TOKEN_JSON: ${{ inputs.google_token_json }}
+      run: |
+        printf '%s' "$GOOGLE_CLIENT_SECRET" > client_secret.json
+        printf '%s' "$GOOGLE_TOKEN_JSON"    > token.json
+
+    - name: Identify this runner
+      shell: bash
+      # `run: echo "... : ..."` is a YAML parse error — a plain scalar may not contain ": ".
+      # Block scalar, always.
+      run: |
+        echo "runner public IP: $(curl -s --max-time 10 https://api.ipify.org || echo unknown)"
+
+    - name: Launch Chrome (headed, own profile)
+      if: ${{ inputs.launch_chrome == 'true' }}
+      shell: bash
+      working-directory: felipe/pjud/scraper
+      run: |
+        # ⚠️ --no-sandbox is mandatory in a CI container. Without it Chrome dies before opening the
+        # debugging port, and the CDP handshake failure reads exactly like a WAF refusal — which is
+        # how an hour went into investigating the site instead of the container.
+        # ⚠️ It opens https://www.pjud.cl/ and NOTHING deeper. The OJV is reached by CLICKING
+        # through from there, never by typing its URL: a referrer-less arrival at a deep
+        # application URL is not something a person does. See THE ONE RULE.
+        CHROME=$(python -c "from playwright.sync_api import sync_playwright;\
+          p=sync_playwright().start();print(p.chromium.executable_path)")
+        "$CHROME" --remote-debugging-port=${{ inputs.port }} \
+          --user-data-dir="$HOME/${{ inputs.profile }}" \
+          --no-sandbox --disable-dev-shm-usage --disable-gpu \
+          --no-first-run --no-default-browser-check --window-size=1440,900 \
+          https://www.pjud.cl/ >/dev/null 2>chrome.err &
+        for i in $(seq 1 40); do
+          curl -sf "http://127.0.0.1:${{ inputs.port }}/json/version" >/dev/null && break || sleep 1
+        done
+        curl -sf "http://127.0.0.1:${{ inputs.port }}/json/version" >/dev/null \
+          || (echo "::error::CDP never opened on ${{ inputs.port }}"; tail -20 chrome.err; exit 1)

@@ -1,0 +1,383 @@
+name: PJUD — cola nocturna (pruebas encadenadas)
+
+# One dispatch, six tests, run STRICTLY ONE AT A TIME on six fresh runners.
+#
+# ⚠️ NO CRON, AND THIS IS NOT AN OVERSIGHT (operator, 2026-08-13). Nothing here may fire on its
+# own. A queue that a person started is fine — the jobs below are that one activation unfolding —
+# but a schedule is not, and the previous PJUD workflow proved why: it carried a cron and spent
+# ~13 days firing 17 failing jobs a day at a site that had already refused it.
+#
+# ⚠️ WHY ONE WORKFLOW WITH CHAINED JOBS, AND NOT SIX DISPATCHES. GitHub keeps exactly ONE pending
+# run per concurrency group. Queue three and the third silently CANCELS the one already waiting —
+# which is how a worker-B run that had never touched the site was destroyed on 2026-08-13. Jobs
+# inside a single run queue properly, each gets its own runner and its own IP, and each gets its
+# own 350-minute budget, so the 6-hour job ceiling bounds each test rather than the whole night.
+#
+# ⚠️ `if: !cancelled()` ON EVERY JOB, NOT `success()`. A blocked test is a RESULT — half of what
+# this queue is here to measure is where things stop. Failing the rest of the night because test 2
+# got refused would throw away the four measurements after it. Cancelling by hand still stops
+# everything, which is the intended off switch.
+#
+# ── WHAT THIS QUEUE IS FOR ────────────────────────────────────────────────────────────────────
+#
+# 1. THE OPEN QUESTION. Six remote sessions ended at 73-85 causa opens and it looked like a per-
+#    session budget. It is not one: on 2026-08-13 a run at causa_gap=8 reached 170 opens / 148 MB
+#    / 101 min clean. Comparing the BLOCKED runs with each other kills every counter —
+#      opens 74-85 vs 170 | bytes 62.6 MB vs 148 MB | life 68-70 min vs 101 | searches 2-8 in BOTH
+#    What the blocked runs actually shared: the same June window, the same start at index 0, a 25 s
+#    causa gap, and all of them died in the same big Antofagasta civil courts (1041-1043, 349-373
+#    results) at index 16-18. The clean run changed window, range AND pace at once, so it proves
+#    the ceiling is not fixed and names no cause. Jobs `probe_pace` and `probe_position` are the
+#    two arms that separate those, one variable each.
+#
+#    ⚠️ A theory that died on the way here: "the blocked runs predate removing the direct-
+#    navigation fallback". It fit the commit timestamps exactly, and grep found the fallback's own
+#    log line fired ZERO times in five blocked runs. It was dead code throughout. A commit landing
+#    between a failure and a success is a coincidence until a log line proves it RAN.
+#
+# 2. WORKER B HAS NEVER WRITTEN A DOCUMENT. Neon holds 5,016 causas, 45,701 cuaderno rows — and
+#    `documentos` = 0, `georref` = 0, `fill_status='full'` = 0. B's only real dispatch was
+#    cancelled before it touched the site. So `b_smoke` proves the write path on TWO causas before
+#    `b_real` spends a session on it, and everything downstream of B is gated on that.
+#
+# 3. WORKER C IS NEW TONIGHT and has never run at all. Its whole value is the skip lists: a
+#    finished causa costs 40+ document fetches to re-harvest, and re-buying them would spend an
+#    entire session learning nothing. `c_smoke` checks the thing that must be true — an unchanged
+#    causa costs ONE open and ZERO fetches.
+#
+# Order: b_smoke (cheap, gates B and C) -> the two probes (the open question) -> b_real -> c_smoke
+# -> c_real. Roughly 5 h. Every job may be skipped individually from the dispatch form.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_b_smoke:
+        description: "1. worker B sobre 2 causas — ¿escribe documentos? (documentos=0 hoy)"
+        required: false
+        default: "true"
+      run_probe_pace:
+        description: "2. probe RITMO: junio, idx 0, causa_gap 8 (una variable vs los bloqueados)"
+        required: false
+        default: "true"
+      run_probe_position:
+        description: "3. probe POSICIÓN: junio, idx 16 (Antofagasta), causa_gap 25"
+        required: false
+        default: "true"
+      run_b_real:
+        description: "4. worker B sesión completa — ¿cuántas causas termina?"
+        required: false
+        default: "true"
+      run_c_smoke:
+        description: "5. worker C sobre 3 causas — ¿0 fetches si nada cambió?"
+        required: false
+        default: "true"
+      run_c_real:
+        description: "6. worker C sobre todas las causas 'full'"
+        required: false
+        default: "true"
+      b_window_desde:
+        description: "Ventana de worker B/C (desde)"
+        required: false
+        default: "01/07/2026"
+      b_window_hasta:
+        description: "Ventana de worker B/C (hasta)"
+        required: false
+        default: "31/07/2026"
+      b_where:
+        description: "Predicado SQL para elegir las causas de worker B"
+        required: false
+        default: "procedimiento ILIKE '%Obligaci%Dar%'"
+      probe_desde:
+        description: "Ventana de los probes (la de las corridas bloqueadas)"
+        required: false
+        default: "01/06/2026"
+      probe_hasta:
+        required: false
+        default: "30/06/2026"
+
+# Same group as the sweep: this hits the SAME site, and two workers arriving outside the arrival
+# protocol is exactly what the entry gate exists to prevent.
+concurrency:
+  group: pjud-censo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 1 ─────────────────────────────────────────────────────────────────────────
+  # Two causas. The point is not throughput, it is whether ANY of the write path works: modal
+  # opens -> every historia row's doc fetched IN PAGE -> %PDF verified -> uploaded to Drive ->
+  # Documentos/Anexos/Cuadernos rows land in Neon -> fill_status='full'. Today all four counters
+  # downstream of that are zero, so a full session would be two hours spent finding out something
+  # ten minutes can tell us.
+  b_smoke:
+    if: ${{ inputs.run_b_smoke == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "true"
+          port: "9222"
+          profile: "pjud_b"
+
+      - name: Count what exists BEFORE
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage before --label b_smoke
+
+      - name: worker B — 2 causas
+        working-directory: felipe/pjud/scraper
+        run: |
+          set -o pipefail       # ⚠️ without it a traceback exits 0 through tee and the job is green
+          python -u worker_b.py --port 9222 --select where \
+            --where "${{ inputs.b_where }}" \
+            --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
+            --limit 2 --max-recover 1 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Did it actually write? (this step decides green/red)
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage after --label b_smoke --require-docs 1
+
+  # ── 2 ─────────────────────────────────────────────────────────────────────────
+  # ONE VARIABLE off the blocked set: same June window, same start at index 0, same search gap —
+  # causa gap 25 -> 8. Past ~85 opens and the pace was what mattered, which would make "fix the
+  # behaviour and you get speed back" true for the third time in this repo. Dead at ~77 in
+  # Antofagasta again and the count was never the thing.
+  probe_pace:
+    needs: b_smoke
+    if: ${{ !cancelled() && inputs.run_probe_pace == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "false"     # worker A opens its own — fresh_browser() cannot repair one it did not open
+
+      - name: worker A — junio desde idx 0, causa_gap 8
+        working-directory: felipe/pjud/scraper
+        run: |
+          # No state artifact is restored on purpose: a resumed run skips causas it already banked,
+          # and a probe that skips opens measures nothing. A fresh runner has no state.json, so
+          # needs_visit() returns True for every causa and the open count is real.
+          python -u worker_a.py --port 9222 --slot 1 --chrome-profile "$HOME/pjud_p1" \
+            --launch-chrome --gate db --max-recover 1 \
+            --start 0 --end 40 \
+            --desde "${{ inputs.probe_desde }}" --hasta "${{ inputs.probe_hasta }}" \
+            --search-gap 13 --causa-gap 8 --max-minutes 170 \
+            --only-proc "obligaci.*dar"
+
+      - name: Verdict
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage probe --label "probe_pace (junio idx0, gap 8)" --slot 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: night-probe-pace
+          path: felipe/pjud/data/worker_a1/state.json
+          if-no-files-found: warn
+
+  # ── 3 ─────────────────────────────────────────────────────────────────────────
+  # The other arm. Same 25 s gap the blocked runs used, but START AT INDEX 16 — straight into the
+  # Antofagasta civil courts where all five of them died, skipping the ~75 opens of small courts
+  # that preceded it. If the block is positional it should arrive almost immediately, on a handful
+  # of opens. If it takes ~75 opens again, position had nothing to do with it and the count is
+  # real after all.
+  probe_position:
+    needs: probe_pace
+    if: ${{ !cancelled() && inputs.run_probe_position == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "false"
+
+      - name: worker A — junio desde idx 16 (Antofagasta), causa_gap 25
+        working-directory: felipe/pjud/scraper
+        run: |
+          python -u worker_a.py --port 9222 --slot 2 --chrome-profile "$HOME/pjud_p2" \
+            --launch-chrome --gate db --max-recover 1 \
+            --start 16 --end 30 \
+            --desde "${{ inputs.probe_desde }}" --hasta "${{ inputs.probe_hasta }}" \
+            --search-gap 13 --causa-gap 25 --max-minutes 170 \
+            --only-proc "obligaci.*dar"
+
+      - name: Verdict
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage probe --label "probe_position (junio idx16, gap 25)" --slot 2
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: night-probe-position
+          path: felipe/pjud/data/worker_a2/state.json
+          if-no-files-found: warn
+
+  # ── 4 ─────────────────────────────────────────────────────────────────────────
+  # The number nobody has: how many causas does worker B actually FINISH in one runner session?
+  # The dry run estimates ~2 min per causa, which is a local number carried remotely — the exact
+  # habit that has been wrong twice this week. This measures it.
+  b_real:
+    needs: probe_position
+    if: ${{ !cancelled() && inputs.run_b_real == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "true"
+          port: "9222"
+          profile: "pjud_b"
+
+      - name: Count what exists BEFORE
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage before --label b_real
+
+      - name: worker B — sesión completa
+        working-directory: felipe/pjud/scraper
+        run: |
+          set -o pipefail
+          python -u worker_b.py --port 9222 --select where \
+            --where "${{ inputs.b_where }}" \
+            --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
+            --limit 40 --max-recover 1 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: What got finished
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage after --label b_real
+
+  # ── 5 ─────────────────────────────────────────────────────────────────────────
+  # Worker C's first run ever. --min-age-h 0 because b_real just touched these causas seconds ago
+  # and the normal 24 h staleness guard would correctly find nothing to do.
+  #
+  # ⚠️ THE MEASUREMENT IS "0 fetches", NOT "it finished". A C run that re-downloads everything
+  # LOOKS successful — same rows written, same green tick — while costing exactly what B costs and
+  # buying nothing. `night_check.py --stage after-c` fails the step if pdf traffic grew on causas
+  # that reported no changes, because that is the only way this bug is visible from outside.
+  c_smoke:
+    needs: b_real
+    if: ${{ !cancelled() && inputs.run_c_smoke == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "true"
+          port: "9222"
+          profile: "pjud_c"
+
+      - name: Count what exists BEFORE
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage before --label c_smoke
+
+      - name: worker C — 3 causas recién terminadas
+        working-directory: felipe/pjud/scraper
+        run: |
+          set -o pipefail
+          python -u worker_c.py --port 9222 \
+            --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
+            --min-age-h 0 --limit 3 --max-recover 1 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Did it re-buy anything it already had?
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage after-c --label c_smoke
+
+  # ── 6 ─────────────────────────────────────────────────────────────────────────
+  c_real:
+    needs: c_smoke
+    if: ${{ !cancelled() && inputs.run_c_real == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "true"
+          port: "9222"
+          profile: "pjud_c"
+
+      - name: Count what exists BEFORE
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage before --label c_real
+
+      - name: worker C — todas las causas 'full'
+        working-directory: felipe/pjud/scraper
+        run: |
+          set -o pipefail
+          python -u worker_c.py --port 9222 \
+            --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
+            --min-age-h 0 --max-recover 1 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Result
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage after-c --label c_real
+
+  # ── The morning report ────────────────────────────────────────────────────────
+  # ⚠️ `if: always()` — the whole point is that this runs when tests have FAILED. A summary that
+  # only appears on a clean night is a summary you never read on the night you needed it.
+  report:
+    needs: [b_smoke, probe_pace, probe_position, b_real, c_smoke, c_real]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Deliberately NOT the composite action: this job only reads Neon, and pulling Playwright
+      # and a browser to print a table would add two minutes to every night for nothing.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Config
+        working-directory: felipe/pjud/scraper
+        env:
+          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
+        run: |
+          pip install psycopg2-binary
+          printf '%s' "$PJUD_CONFIG" > pjud_config.json
+      - name: Morning report
+        working-directory: felipe/pjud/scraper
+        run: |
+          {
+            echo "## Cola nocturna — resultado"
+            echo ""
+            echo "| prueba | estado |"
+            echo "|---|---|"
+            echo "| 1. b_smoke (¿escribe documentos?) | ${{ needs.b_smoke.result }} |"
+            echo "| 2. probe_pace (junio idx0 gap 8) | ${{ needs.probe_pace.result }} |"
+            echo "| 3. probe_position (junio idx16 gap 25) | ${{ needs.probe_position.result }} |"
+            echo "| 4. b_real (sesión completa) | ${{ needs.b_real.result }} |"
+            echo "| 5. c_smoke (¿0 fetches?) | ${{ needs.c_smoke.result }} |"
+            echo "| 6. c_real | ${{ needs.c_real.result }} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          python -u night_check.py --stage report >> "$GITHUB_STEP_SUMMARY"

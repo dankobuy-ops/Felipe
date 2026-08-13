@@ -867,6 +867,38 @@ sub-documents list, the history — all of it, every time. Only extra *requests*
 
 Identify your scarce act explicitly. It is rarely the thing that feels slowest.
 
+### ★ Split workers by HOW MUCH of the record they intend to take
+
+Once the scarce act is named, the natural division of labour is not by subject area but by depth.
+PJUD ended up with three workers spending the same causa open three different ways:
+
+| worker | job | cost per record |
+|---|---|---|
+| **A** discovers | sweep the list, take everything the open makes free + one document | 1 open, 1 fetch |
+| **B** finishes | every document, every sub-lookup, every tab | 1 open, **40+ fetches** |
+| **C** refreshes | re-open a finished record, take only what is NEW | 1 open, **0 fetches** |
+
+This is what lets bounded work run where the budget is small and unbounded work run where it is
+large: A needs a big allowance and gets the residential address; B is bounded by construction
+("here is a list, finish it") and fits a small cloud session exactly.
+
+⚠️ **A refresh worker's whole value is one number: fetches when nothing changed. It must be zero.**
+If it re-downloads what it already holds it costs exactly what the deep worker costs and buys
+nothing — while looking *completely successful*: same rows written, same green tick. Load what you
+already have, hand it to the shared harvest as a skip list, and **assert the invariant in the run's
+own output** so the failure is visible from outside.
+
+⚠️ **Skipping work must never mean forgetting the answer.** The skip list has to carry the stored
+value, not merely suppress the lookup — because the row still gets written back, and a field you
+declined to re-fetch goes back EMPTY and erases what you had. Same shape as the upsert trap in
+Part 8: writing every column from a partial harvest blanks everything the harvest had no opinion
+about.
+
+⚠️ **The deterministic row id is what makes any of this work, and it is exactly what drifts.** The
+skip list is matched by id; if the id scheme changes on either side, nothing matches, every skip
+list is empty, and the refresh silently becomes the deep worker again. Test it by refreshing a
+record you finished *minutes* ago — anything re-fetched there is drift, not news.
+
 ### Pagination: harvest each page before advancing
 
 A row index belongs to the page it was read from. Paginating to the end and then clicking page-1

@@ -568,3 +568,77 @@ work, and only slower for document-heavy detail passes.
 
 Every shard did ingest before dying (`if: always()`), so the run still banked its work: June went
 352 → 461 causas and 216 → 318 ebooks.
+
+---
+
+## Worker C — refresh (built 2026-08-13, first run is the night queue)
+
+`worker_c.py`. Re-opens a **finished** causa (`fill_status='full'`) and takes only what is new.
+The division of labour, by how much of the causa each worker intends to take:
+
+| worker | takes | cost per causa |
+|---|---|---|
+| A | list sweep + what the modal makes free + ebook | 1 open, 1 fetch |
+| B | every document, every georreferencia, every cuaderno, receptor | 1 open, **40+ fetches** |
+| C | only what changed since the last visit | 1 open, **0 fetches** |
+
+**How the skipping works.** C loads what Neon already holds — `documentos`/`anexos` ids,
+`cuadernos.georref`, the three header document columns — into `cdp_scrape.KNOWN_DOCS` /
+`KNOWN_GEO` / `KNOWN_HEADER`. The **shared** harvest (`scrape_causa(full=True)`) consults them.
+Worker A and worker B leave them `None` and behave exactly as before. There is deliberately no
+second, leaner harvest: that is how the duplicated block detectors drifted, silently, toward
+collecting less.
+
+⚠️ **`KNOWN_GEO` carries the stored value; it does not merely suppress the lookup.** Every historia
+row is written back as a `Cuadernos` row by an upsert, `georref` included. A row whose geo we
+skipped would go back with `georref=''` and blank a coordinate we already own — the same trap as
+the upsert that nearly wiped `tribunales.corte` for all 180 rows.
+
+⚠️ **The skip lists are module state and are cleared in a `finally`.** Leaving one set would make
+the *next* causa skip documents belonging to a different causa.
+
+⚠️ **The invariant that decides whether C is worth its session budget:** on a causa finished
+minutes ago, documents fetched for rows we already held must be **0**. If the row ids drift, every
+skip list matches nothing and C quietly becomes worker B at worker B's price — while reporting
+success, writing the same rows, and going green. `refresh_causa` counts it as `on_known`, the run
+writes `data/worker_c/last_run.json`, and `night_check.py --stage after-c` fails the step on it.
+
+**`updated_at` means "when we last looked", not "when it last changed".** C moves it on every
+successful visit including one that found nothing, because that is what makes
+`ORDER BY updated_at` a work queue instead of an infinite loop over the same stalest causa.
+
+**State of play 2026-08-13:** Neon holds 5,016 causas and 45,701 cuaderno rows, and
+`documentos = 0`, `georref = 0`, `fill_status='full' = 0`. **Worker B has never successfully
+written a document** — its only real dispatch was cancelled before it touched the site. So C has
+nothing to refresh until B runs, and the night queue orders them accordingly.
+
+## The night queue — `pjud-noche.yml`
+
+One dispatch, six tests, strictly one at a time, each on its own runner and IP.
+
+⚠️ **No cron, ever** (operator). A queue a person started is fine; a schedule is not.
+
+⚠️ **One workflow with chained jobs, NOT six dispatches.** GitHub keeps exactly **one** pending run
+per concurrency group — queue a third and it silently cancels the one already waiting, which is how
+a worker B run that had never touched the site was destroyed on 2026-08-13. Jobs inside one run
+queue properly and each gets its own 350-minute budget.
+
+⚠️ **`if: !cancelled()` on every job, not `success()`.** A blocked test is a *result*; failing the
+rest of the night because test 2 was refused would throw away the four measurements after it.
+
+| # | job | question |
+|---|---|---|
+| 1 | `b_smoke` | does worker B write a document **at all**? (2 causas, gates the rest) |
+| 2 | `probe_pace` | June, idx 0, causa gap **8** — one variable off the blocked set |
+| 3 | `probe_position` | June, idx **16** (Antofagasta), causa gap 25 — the other arm |
+| 4 | `b_real` | how many causas does B actually finish in one session? |
+| 5 | `c_smoke` | 3 causas, must cost **0 fetches** |
+| 6 | `c_real` | C over every `full` causa |
+
+Probes 2 and 3 exist because the "session budget" turned out not to exist — see
+`SCRAPERS_HANDBOOK.md`, Part 5. They separate *pace* from *position*: all five blocked runs shared
+the June window, a start at index 0, a 25 s causa gap, and died in the same Antofagasta civil
+courts at idx 16–18.
+
+⚠️ **Neither probe restores a state artifact, deliberately.** A resumed run skips causas it already
+banked, and a probe that skips opens measures nothing.

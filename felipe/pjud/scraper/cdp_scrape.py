@@ -36,6 +36,20 @@ RESUME = False  # --resume: skip causas already scraped (fill_status='scraped') 
 COUNT_ONLY = False  # --count-only: count bank C-causas per tribunal, no detail opens
 _STORE = None   # dbstore.Store (Drive uploads + Neon), lazy-initialised
 
+# ── what we ALREADY have (worker C only) ─────────────────────────────────────
+# A refresh must not re-buy a document it already stored: on a finished causa that would be 40+
+# needless fetches, which is the whole session budget spent learning nothing. Worker C fills these
+# from Neon before each open; worker A and worker B leave them None and behave exactly as before.
+#
+# ⚠️ KNOWN_GEO CARRIES THE STORED VALUE, it does not merely suppress the lookup. ingest_cdp emits a
+# Cuadernos row for EVERY historia row, georref included, and that write is an upsert — so a row
+# whose geo we skipped would go back with georref='' and BLANK a coordinate we already own. The
+# same shape as the upsert that nearly wiped tribunales.corte. Skipping work must never mean
+# forgetting the answer.
+KNOWN_DOCS = None    # set of "<causa>-c<n>-<folio>-<k>-doc" / "-anexo" ids already in Neon
+KNOWN_GEO = None     # {"<causa>-c<n>-<folio>-<k>": stored georref} — carried through untouched
+KNOWN_HEADER = None  # set of header keys ("texto_demanda"/"certificado"/"ebook") already stored
+
 BANK = ['SANTANDER', 'ESTADO DE CHILE', 'BANCOESTADO', 'BANCO DEL ESTADO', 'ITAU',
         'SCOTIABANK', 'BANCO INTERNACIONAL', 'CREDITO E INVERSIONES', 'BCI',
         'BANCO DE CHILE', 'FALABELLA', 'COOPEUCH', 'BICE', 'CONSORCIO', 'RIPLEY', 'BTG']
@@ -834,6 +848,8 @@ def scrape_causa(page, api, meta, full=False):
     header_urls = {}
     if DOCS:
         for hd in grab_header_docs(page):
+            if KNOWN_HEADER and hd["key"] in KNOWN_HEADER:
+                continue                      # worker C: already on the causa row
             body = fetch_doc(page, api, hd["action"], hd["val"], param=hd["param"])
             if body and len(body) >= 1024:
                 obj = f"{causa_id}/{hd['key']}.pdf".replace(" ", "_")
@@ -857,11 +873,15 @@ def scrape_causa(page, api, meta, full=False):
             folio = hh.get("folio", "")
             n = seen.get(folio, 0) + 1
             seen[folio] = n
+            row_id = f"{causa_id}-c{cnum}-{folio}-{n}"
             if GPS and hh.get("geo"):
-                g = resolve_geo(page, hh["geo"])
-                if g:
-                    hh["georref"] = g
-                pace(P_STEP)
+                if KNOWN_GEO is not None and KNOWN_GEO.get(row_id):
+                    hh["georref"] = KNOWN_GEO[row_id]   # carry it forward; never re-resolve
+                else:
+                    g = resolve_geo(page, hh["geo"])
+                    if g:
+                        hh["georref"] = g
+                    pace(P_STEP)
             # reduced filter: cuaderno-1 keep only 'Ingreso demanda'; other cuadernos keep all
             want_doc = full or (not is_principal) \
                 or ("ingreso demanda" in (hh.get("desc", "") or "").lower())
@@ -870,6 +890,8 @@ def scrape_causa(page, api, meta, full=False):
                     form = hh.get(kind)
                     if not (form and form.get("action") and form.get("val")):
                         continue
+                    if KNOWN_DOCS is not None and f"{row_id}-{kind}" in KNOWN_DOCS:
+                        continue              # worker C: already in Drive and in Neon
                     body = fetch_doc(page, api, form["action"], form["val"])
                     if body and len(body) >= 1024:
                         obj = f"{causa_id}/c{cnum}/{folio}-{n}-{kind}.pdf".replace(" ", "_")
