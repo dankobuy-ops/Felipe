@@ -428,7 +428,43 @@ anything measured safe — so it **confounded concurrency with rate** and could 
 range objected to. The fix is to scale each runner's gap by the shard count: N shards each firing
 every `base×N` seconds is `1/base` requests/second *whatever N is*.
 
-### ★ SETTLED 2026-08-12: it is the CONCURRENT SESSIONS, not the rate
+### ★★ OVERTURNED 2026-08-13 — and the mistake is more instructive than the finding
+
+**Everything in the next section is wrong, and it is left standing because of HOW it was wrong.**
+
+The conclusion below — "concurrent runners are culled as a group, remote means one worker" — rested
+entirely on the observation that shards died within seconds of each other, three trials running.
+It was never checked against a **solo baseline**. When one was finally measured:
+
+| config (identical pacing, gated arrival) | opens per shard | combined | session life |
+|---|---|---|---|
+| 1 runner | 77 | 77 | 75 min |
+| 2 runners | 75, 72 | 147 | 66 min |
+| 3 runners | 74, 72, 70 | **216** | 65 min |
+
+**A session gets ~70–77 requests-with-documents and is then refused, whether it is alone or one of
+three.** Nothing is shared. Yield scales linearly with runners.
+
+And the "coordinated cull" dissolves: three sessions started within three minutes of each other,
+each spending an identical allowance at an identical rate, **arrive at zero together**. Simultaneous
+deaths were never evidence of coordination — they were evidence of identical clocks started
+together. Twenty-one seconds apart, and it means nothing at all.
+
+⚠️ **The generalisable error: "they failed together" does not imply "they caused each other to
+fail".** Workers doing the same work at the same pace from the same start will always fail
+together, for entirely independent reasons. Without a solo control you cannot tell a shared
+ceiling from a per-session budget — and every remedy for the first is wasted effort against the
+second. Three trials and two days went into a conclusion one control run reversed.
+
+⚠️ **Still unexplained, and recorded as such:** one earlier trial had four shards die within
+18 seconds holding **74, 16, 2 and 38** requests. Wildly unequal work, identical death time — a
+per-session budget cannot produce that. Those shards were paced 4× slower and staggered 30 minutes
+apart, so they may not be comparable, but the pattern has no account. Do not treat the model below
+as complete.
+
+---
+
+### ~~★ SETTLED 2026-08-12: it is the CONCURRENT SESSIONS, not the rate~~ (superseded, see above)
 
 The experiment was run properly — four runners joining 30 minutes apart, each paced ×4 so the
 **aggregate never exceeded one worker's rate**. Every one entered on its first attempt, so

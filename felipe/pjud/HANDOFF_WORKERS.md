@@ -455,7 +455,41 @@ second **whatever N is**, so the aggregate is identical at 1, 2 or 6 shards. Wit
 (default 30 min) letting each runner prove itself before the next joins, a failure can finally be
 attributed to the runner that caused it.
 
-### ★ Settled the same day: it is the concurrent SESSIONS, not the rate. Remote = one worker.
+### ★★ OVERTURNED 2026-08-13: shards DO scale. Remote = 3 workers, not 1.
+
+**The section below is wrong.** It concluded "remote means one worker" from three trials in which
+shards died within seconds of each other — and never once measured a **solo baseline** to compare
+against. With one, at gap 13 and a gated arrival:
+
+| config | opens per shard | combined | session life |
+|---|---|---|---|
+| 1 runner | 77 | 77 | 75 min |
+| 2 runners | 75, 72 | 147 | 66 min |
+| 3 runners | 74, 72, 70 | **216** | 65 min |
+
+A session gets **~70–77 causa opens** and is then refused — alone or one of three. Nothing is
+shared, and yield scales linearly with runners.
+
+The "coordinated cull" was an artefact: three sessions started within three minutes, each spending
+an identical allowance at an identical pace, reach zero together. 21 s apart in this trial, and it
+carries no information.
+
+⇒ **Use `shards=3`.** Roughly triples the yield per wall-clock hour, and each runner still needs
+its own ~65 min before handing over.
+
+⚠️ **Unexplained, so the model is useful rather than complete:** the 08-12 four-shard run died
+within 18 s holding **74 / 16 / 2 / 38** opens. Unequal work, identical death time — a per-session
+budget cannot produce that. Those shards were paced ×4 and ramped 30 min apart, so they may not be
+comparable, but nothing accounts for the pattern.
+
+⚠️ **The lesson worth keeping:** "they failed together" does not imply "they caused each other to
+fail". Workers doing the same work at the same pace from the same start always fail together, for
+independent reasons. Without a solo control you cannot tell a shared ceiling from a per-session
+budget, and every remedy for the first is wasted against the second.
+
+---
+
+### ~~★ Settled the same day: it is the concurrent SESSIONS, not the rate. Remote = one worker.~~ (superseded)
 
 The experiment ran that evening — four runners joining 30 min apart, each paced ×4 so the
 **aggregate never exceeded one worker's rate**. All four entered on the first attempt (so a

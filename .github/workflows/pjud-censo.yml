@@ -20,7 +20,20 @@ name: PJUD — censo remoto (por demanda)
 # same minute were untouched, and the three together produced 214 causa opens against 226 for one
 # shard alone. Whatever else is true, extra runners do NOT buy extra allowance.
 #
-# ⚠️★ SETTLED 2026-08-12 — IT IS THE CONCURRENT SESSIONS, NOT THE RATE. USE shards=1.
+# ★★ OVERTURNED 2026-08-13 — SHARDS DO SCALE. The block below is kept for the record; ignore its
+# conclusion. Measured at gap 13 with a gated arrival, and this time WITH A SOLO CONTROL:
+#     1 runner      77 opens, 75 min
+#     2 runners     75 + 72 = 147 opens, 66 min
+#     3 runners     74 + 72 + 70 = 216 opens, 65 min
+# A session gets ~70-77 causa opens and is then refused, ALONE OR NOT. Nothing is shared; yield
+# scales linearly. The "coordinated cull" was three identical clocks started together running down
+# together — 21 s apart here, and it means nothing.
+# ⇒ shards=3 is fine and roughly triples the yield per wall-clock hour. The earlier verdict rested
+# on never having measured one runner by itself.
+# ⚠️ Unexplained: the 08-12 four-shard run died within 18 s holding 74/16/2/38 opens — unequal work,
+# identical death. A per-session budget cannot produce that. Model is useful, not complete.
+#
+# ⚠️ SUPERSEDED 2026-08-12 — IT IS THE CONCURRENT SESSIONS, NOT THE RATE. USE shards=1.
 # The earlier trial confounded the two (every shard ran at the single-worker 20 s gap, ~9 result
 # requests/min), so it was re-run properly: four runners joining 30 min apart, each paced x4 so
 # the AGGREGATE never exceeded one worker's rate. Every one entered on its first attempt —
