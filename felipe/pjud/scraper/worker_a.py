@@ -1074,8 +1074,18 @@ def main():
                     # Bounded by MAX_SWAPS: if new browsers keep wedging, the fault is not the
                     # browser and relaunching for ever would just hide it.
                     if swaps < MAX_SWAPS and fresh_browser():
+                        # ⚠️ REWIND OVER THE WHOLE FAILED RUN, not just the last one. `idx -= 1`
+                        # retried only the tribunal that tripped the limit and carried on past
+                        # the four before it — which were then absent from state for ever, since
+                        # nothing revisits a court that was never recorded. Measured 2026-08-12:
+                        # slot 4 wedged at idx 214-218, swapped browsers, resumed at 218, and
+                        # left Colina and 1º/2º/3º Civil San Miguel silently unswept. The swap
+                        # rescued the WORKER but not its work.
+                        idx -= select_fails       # loop's idx += 1 lands on the FIRST failure
+                        del skipped[-select_fails:]   # they are being retried, not lost
+                        note(f"  rewinding {select_fails} tribunal(es) to idx {idx + 1} — the "
+                             f"swap must not leave the skipped ones behind")
                         select_fails = 0
-                        idx -= 1                  # retry the tribunal we could not select
                         continue
                     note(f"  *** a replacement browser did not help either — stopping. "
                          f"resume with --start {idx}")
