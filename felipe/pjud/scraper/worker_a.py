@@ -1018,6 +1018,13 @@ def main():
                 time.sleep(a.offset)
         last_search = 0.0
         select_fails = 0
+        # ⚠️ EVERY tribunal this run could not select, for the whole run — because
+        # SELECT_FAIL_LIMIT only fires on a RUN of failures, and a range that ENDS first never
+        # reaches it. Slot 3 skipped idx 226-229 that way on 2026-08-12 (four instant failures in
+        # 1.5 s, one short of the limit) and exited "DONE. tribunales=62" with two real courts
+        # never searched and NOTHING in state marking them missing — the exact silent
+        # under-collection the state file exists to make impossible.
+        skipped = []
         # ⚠️ Run-level, NOT per-tribunal. Scoped to the tribunal it never reached the
         # limit: a throttle that costs two opens per court simply moved on to the next
         # one, degrading for hours without a single detector firing (2026-08-08).
@@ -1039,7 +1046,18 @@ def main():
                     continue
                 note(f"  [{idx}] {tgt['v']} re-search: {len(missing)} causa(s) lack detail")
             if not C.select_tribunal_kbd(p, tgt["v"]):
-                note(f"  [{idx}] {tgt['v']} could not select — skip")
+                # ⚠️ SAY WHY. An instant failure means the VALUE IS NOT IN THE OPTION LIST — the
+                # select was re-populated or emptied under us — while a slow one means the arrows
+                # were pressed and the value would not stick. They are different faults and the
+                # log could not tell them apart, so report what the select actually holds now.
+                try:
+                    nopt = p.eval_on_selector_all(
+                        "#fecTribunal option", "e=>e.filter(o=>o.value&&o.value!=='0').length")
+                except Exception:
+                    nopt = "?"
+                note(f"  [{idx}] {tgt['v']} could not select — skip "
+                     f"(select holds {nopt} options, expected {len(tl)})")
+                skipped.append((idx, tgt["v"], tgt["t"]))
                 select_fails += 1
                 # ⚠️ NEVER let this end in a clean DONE. On 2026-08-08 a stale modal blocked every
                 # select and the run "completed" having swept nothing, reporting the previous
@@ -1264,6 +1282,19 @@ def main():
         if inc:
             note(f"  INCOMPLETE (paginator stuck): {inc}")
         tally_line("TALLY final:")
+        # ⚠️ A RUN THAT SKIPPED A TRIBUNAL DID NOT FINISH, whatever the tally says. These never
+        # reached state at all — they are absent, not incomplete — so no later resume would ever
+        # notice them and no audit of `complete` flags can see the hole. Record them in meta so
+        # the gap is visible, and exit non-zero so the supervisor restarts the slot instead of
+        # reading "DONE" and standing down. (2026-08-12: slot 3 skipped four courts, two of them
+        # real, and reported success.)
+        if skipped:
+            st["meta"]["skipped"] = [{"idx": i, "id": v, "name": n} for i, v, n in skipped]
+            save()
+            note(f"  *** {len(skipped)} tribunal(es) were NEVER SEARCHED — not incomplete, ABSENT: "
+                 f"{[f'{i}:{v}' for i, v, _ in skipped]}")
+            note(f"  *** re-run this slot to pick them up. NOT a clean finish.")
+            return 5
         return 0
 
 
