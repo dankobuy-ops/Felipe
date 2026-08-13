@@ -640,6 +640,49 @@ never looks at what happened. Have each run write a verdict — finished / reaso
 blocks — into the state the next run can read, and continue while work remains *and* the failures
 stay within range. Keep a hard hop bound anyway, as the backstop against a bug in that logic.
 
+### ★★ A block is the LAST sign, not the first — learn to see yourself degrading
+
+Every recovery mechanism in this file reacts to a refusal. That is too late, and it need not be:
+sessions decline visibly first. Measured on a remote worker, 2026-08-13, the decline was legible
+for **twelve minutes** before the rejection that ended the run:
+
+| time | signal | lead |
+|---|---|---|
+| 03:42 | anti-bot interstitial served instead of a document (×2) | **12 min** |
+| 03:47 | paginator stalled | 7 min |
+| 03:49 | search 75 s → timeout | 5 min |
+| 03:50–51 | two "empty" results at 57–59 s | 4 min |
+| **03:54** | **hard rejection — run over** | — |
+
+Healthy latency for that site was a **measured** 17–23 s. It ran 45, 57, 59, 75.
+
+**Score the symptoms on a rolling window rather than tripping on any one**, because the site's own
+latency varies honestly (13–29 s here) and a single slow response means nothing. Weight by how
+close each symptom is to an outright refusal:
+
+```
+anti-bot interstitial on a document   2   # this IS a refusal, just not on a search
+search timeout / never-proved-fresh   2
+search slower than 2x baseline        1   # the trend, never one sample
+paginator stall                       1
+--- and CLEAR the window on a fast, fresh result ---
+```
+
+When the score trips, **step back before you are pushed**: cool off and re-enter *pre-emptively*.
+Re-entry costs seconds; a hard block costs the recovery budget, and on a cloud runner with one
+retry it costs the whole run. Do not count this against the recovery budget — nothing has refused
+you yet. It is the equivalent of a person noticing a site has gone sluggish and taking a break
+rather than clicking harder.
+
+⚠️ **The same score decides what you are allowed to BELIEVE.** An "empty" from a healthy session
+is an answer; from a degrading one it is a symptom. On the run above, the worker filed two large
+courts as swept-and-empty four minutes before it was blocked — and we already held 26 records from
+one of them, so the verdict was provably false. Nothing downstream flags that, and a resume skips
+them for ever. So: record the empty, but only mark it *complete* when the session is clean.
+
+⇒ Generally: **a scraper's confidence in its own results should be a function of its measured
+health at the time it collected them.**
+
 ### ⚠️ The silent throttle
 
 The worst failure has no tell at all: no rejection page, no challenge iframe, just operations that

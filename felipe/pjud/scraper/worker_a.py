@@ -108,6 +108,24 @@ CLEAN_STREAK = 12      # clean causa opens that earn the recovery budget back
 # modal failures with a clean block-check ARE the tell, and nothing else reports them.
 MODAL_FAIL_LIMIT = 3
 SELECT_FAIL_LIMIT = 5   # consecutive un-selectable tribunales = the form is gone
+# ── health, so a session can see itself going before it is cut off ────────────
+# ⚠️ A BLOCK IS NOT THE FIRST SIGN, IT IS THE LAST. Measured on remote shard 2, 2026-08-13, the
+# decline was legible for TWELVE MINUTES before the hard rejection:
+#     03:42  apm_challenged=2                     12 min before
+#     03:47  paginator stalled                     7 min
+#     03:49  search 75.2 s -> TIMEOUT              5 min
+#     03:50  two 'empty' at 57-59 s                4 min
+#     03:54  hardRej=1, blocked
+# Healthy search latency is 17-23 s (measured, pjud-velocidad 31658994520). It ran 45, 57, 59, 75.
+# Reacting at the block costs the recovery budget and, remotely with --max-recover 1, the run.
+# Reacting at the FIRST signals costs one re-entry, about 18 s.
+#
+# ⚠️ An APM challenge IS a refusal — the anti-bot interstitial served instead of a document. It
+# was already being counted and nothing acted on it, which is why it makes the heaviest signal.
+HEALTH_BASELINE_S = 23.0   # top of the measured healthy search band
+HEALTH_SLOW_MULT = 2.0     # a search this many times baseline is "slow"
+HEALTH_WINDOW = 6          # events kept in the rolling window
+HEALTH_TRIP = 4            # score at or above this = degrading, act now
 # How many times a worker may throw its browser away and open another. A wedged form is cured by
 # a replacement browser and by nothing else (measured 4x, 2026-08-12), but if the REPLACEMENTS
 # keep wedging then the browser was never the fault — and relaunching for ever would bury that
@@ -890,6 +908,26 @@ def main():
         clean_since_block = 0
         swaps = 0
         blocks_seen = 0
+        # Rolling health. Each entry is (weight, what) — heavier means closer to a refusal.
+        health = []
+
+        def note_health(weight, what):
+            """Record a symptom and report the running score."""
+            health.append((weight, what))
+            del health[:-HEALTH_WINDOW]
+            sc = sum(w for w, _ in health)
+            if sc:
+                note(f"      [health] {what} — score {sc}/{HEALTH_TRIP} "
+                     f"({', '.join(x for _, x in health)})")
+            return sc
+
+        def degrading():
+            return sum(w for w, _ in health) >= HEALTH_TRIP
+
+        def health_clear(why=""):
+            if health:
+                note(f"      [health] cleared{(' — ' + why) if why else ''}")
+            health.clear()
         start_ip = ojv.public_ip()
         note(f"public IP at start: {start_ip}")
 
@@ -1095,6 +1133,29 @@ def main():
                 if a.no_detail or not missing:
                     continue
                 note(f"  [{idx}] {tgt['v']} re-search: {len(missing)} causa(s) lack detail")
+            # ⚠️ ACT BEFORE THE BLOCK, NOT AFTER IT. This is the whole point of the health score.
+            # Re-entry costs ~18 s and does not touch the recovery budget; a hard rejection costs
+            # the budget and, on a runner with --max-recover 1, the entire run. Worker 2 on
+            # 2026-08-13 spent twelve minutes visibly degrading and then lost everything to a
+            # block it could have stepped out of the way of.
+            # This is NOT a recovery — nothing has refused us yet — so it is deliberately not
+            # counted against `recoveries`. It is the session equivalent of a person noticing the
+            # site has gone sluggish and taking a break rather than clicking harder.
+            if degrading():
+                note(f"  *** SESSION DEGRADING (score {sum(w for w,_ in health)}) — stepping back "
+                     f"BEFORE a block: cooling off {COOL_OFF:.0f}s, then re-entering")
+                save()
+                tally_line("TALLY at degradation:")
+                time.sleep(COOL_OFF)
+                health_clear("stepped back and re-entered")
+                p2, S2, tl2 = enter_and_setup(ctx, net, a.desde, a.hasta)
+                if p2 is None:
+                    note("  *** could not re-enter after stepping back — stopping")
+                    return finish("degraded", False, 3)
+                p, S, tl = p2, S2, tl2
+                last_search = 0.0
+                idx -= 1                       # retry the tribunal we were about to do
+                continue
             if not C.select_tribunal_kbd(p, tgt["v"]):
                 # ⚠️ SAY WHY. An instant failure means the VALUE IS NOT IN THE OPTION LIST — the
                 # select was re-populated or emptied under us — while a slow one means the arrows
@@ -1182,6 +1243,7 @@ def main():
             if kind in ("stale", "timeout"):
                 note(f"  [{idx}/{len(tl)}] {tgt['v']:>5} {tgt['t'][:34]:36} {kind.upper()} "
                      f"after {el:.1f}s — never proved fresh, NOT recording")
+                note_health(2, kind)
                 consec_fail += 1
                 if consec_fail >= MODAL_FAIL_LIMIT:
                     note(f"  *** {consec_fail} unproductive actions in a row — silent throttle. "
@@ -1193,6 +1255,13 @@ def main():
                         return finish("throttled", False, 3)
                 continue
 
+            # ⚠️ THE TREND, not any single slow search. The site's own latency varies 13-29 s
+            # honestly, so one slow result means nothing; a run of them against a MEASURED
+            # baseline is the session going. Worker 2 ran 45, 57, 59, 75 s against 17-23 s.
+            if el > HEALTH_BASELINE_S * HEALTH_SLOW_MULT:
+                note_health(1, f"slow-search {el:.0f}s")
+            elif kind == "results":
+                health_clear("a fast, fresh search")
             consec_fail = 0                      # a search that proved fresh clears it too
             total = C.total_registros(p) if kind == "results" else None
             ent = {"idx": idx, "name": tgt["t"], "kind": kind, "elapsed": round(el, 1),
@@ -1200,7 +1269,18 @@ def main():
                    "banks": 0, "causas": []}
             st["tribunales"][tgt["v"]] = ent
             if kind != "results" or total is None:
-                ent["complete"] = True
+                # ⚠️ "sin resultados" IS WHAT A SPENT SESSION RETURNS. Marking it complete records
+                # a court as swept-and-empty for ever, and nothing downstream flags it — on
+                # 2026-08-13 a degrading remote shard filed 3º Civil Concepción and 1º Civil
+                # Talcahuano as empty for June, four minutes before it was blocked. We already
+                # hold 26 June causas from the first of those, so the verdict was provably false.
+                # An empty from a HEALTHY session is an answer; from a degrading one it is a
+                # symptom. Record it either way, but only trust it when the session is clean.
+                ent["complete"] = not degrading()
+                if not ent["complete"]:
+                    ent["suspect_empty"] = True
+                    note(f"      [!] '{kind}' while the session is degrading — NOT trusting it, "
+                         f"left incomplete so a later pass re-checks this court")
                 note(f"  [{idx}/{len(tl)}] {tgt['v']:>5} {tgt['t'][:34]:36} {kind:7} {el:5.1f}s "
                      f"total={total}")
                 save()
@@ -1296,6 +1376,10 @@ def main():
                             tally["bytes"] += rec["ebook"]["bytes"]
                         elif rec["ebook"].get("apm_challenge"):
                             tally["apm"] += 1
+                            # ⚠️ THE EARLIEST TELL, and it was being counted and ignored. The APM
+                            # interstitial served instead of a document is a refusal; on 08-13 it
+                            # appeared TWELVE MINUTES before the hard block that ended the run.
+                            note_health(2, "apm-challenge")
                         save()
                         tally_line("      running:")
                         time.sleep(gap_for(POST_CAUSA))
