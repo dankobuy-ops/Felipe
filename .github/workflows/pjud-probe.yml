@@ -21,6 +21,16 @@ on:
         required: false
         default: ""
 
+# ⚠️ SAME GROUP AS THE CENSO, because this probe hits the SAME SITE. Dispatched during a censo run
+# it would put a second set of live sessions on the OJV outside the arrival protocol — and the
+# censo's results would then be measuring the probe. There was nothing stopping that until
+# 2026-08-13, on a day when several "site behaviour" findings turned out to be our own doing.
+# cancel-in-progress is FALSE: a queued probe waits its turn, it never kills a sweep that is
+# working.
+concurrency:
+  group: pjud-censo
+  cancel-in-progress: false
+
 jobs:
   probe:
     runs-on: ubuntu-latest
