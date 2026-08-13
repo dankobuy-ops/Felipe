@@ -448,7 +448,15 @@ class PgEntryLock:
     DDL = """CREATE TABLE IF NOT EXISTS entry_gate (
                  id INTEGER PRIMARY KEY, holder TEXT, ts TIMESTAMPTZ)"""
 
-    def __init__(self, holder, stale=420.0, timeout=1800.0):
+    def __init__(self, holder, stale=420.0, timeout=5400.0):
+        # ⚠️ THE TIMEOUT MUST COVER THE WHOLE QUEUE, NOT ONE ARRIVAL. Each arrival costs
+        # ~90-120 s (Chrome launch, walk-in, form, first search), and the gate is strictly
+        # serial — so with N shards the LAST one waits about N x 2 minutes before its turn.
+        # At the old 1800 s, ten shards put the tail right on the limit, and a timeout does not
+        # fail loudly: it proceeds UNGATED, which is precisely the burst the gate exists to
+        # prevent, on precisely the shards a concurrency test is measuring. 5400 s covers a
+        # 12-shard queue (the plan job's cap) with slow walk-ins and still sits far below the
+        # 300-minute lifespan.
         self.holder, self.stale, self.timeout = str(holder), stale, timeout
         self.held = False
         self.conn = None
