@@ -367,6 +367,27 @@ a style preference; it is the documented failure mode.
   the hard cap extends to 3× while the site's own spinner says it is still working — a slowdown
   from 11–35 s to over 75 s was discarding valid searches.
 
+### ⚠️ "Online" and "can reach the target" are different questions
+
+A connectivity check that probes **raw IPs** (1.1.1.1, 8.8.8.8) is deliberately independent of the
+target — which is right, because it lets you tell an outage from a block. But it means the check
+returns *online* while the target's name is unresolvable, and the worker then spends its entire
+arrival on a host it never looked up. The run ends looking like it was refused; it never reached
+the site at all.
+
+Observed 2026-08-13: a cloud runner hit `ERR_NAME_NOT_RESOLVED` and burned all three entry
+attempts. From a residential line at the same minute the site resolved and served HTTP 200 in
+1.3 s. Nothing was wrong with it.
+
+⇒ **Ask both questions.** `internet_up()` *and* `can_resolve(target)`. A resolution failure is an
+outage, not a refusal: no cool-off, no recovery spent, no profile rotated — there is nothing to
+apologise for when you never arrived.
+
+⚠️ And consider that you may be causing it. Every walk-in and every retry re-resolves the host, so
+N workers × M attempts is a lot of queries from one address range in minutes. A datacenter
+resolver's path to a distant authoritative server is long and rate-limits are real: **a retry
+storm can manufacture the DNS failures that then look like blocks.**
+
 ### ⚠️ Never judge a downloaded document by size or status
 
 Clicking a document link opens a popup, the browser renders the PDF in its built-in viewer, and
@@ -611,6 +632,36 @@ Three properties make it safe, and each is load-bearing:
 
 Verify all three against the real database before you trust it: B refused while A holds, B
 acquires after A releases, a silent holder broken after `stale`.
+
+### ⚠️ Three ways a shared gate quietly stops working
+
+All three were live at once here, and together they produced a "concurrency ceiling" that did not
+exist. A gate that is *present but not working* is worse than none, because you trust the results.
+
+**1. A killed process never releases it.** Cancel a cloud run and the workers are killed outright —
+`atexit` never fires, and the row stays held by something that no longer exists. The next run then
+queues behind a corpse for the whole stale timeout.
+⇒ **Stamp the holder with the run/session id and break foreign holders on sight.** If your
+scheduler guarantees one run at a time, a holder from a *different* run cannot be alive. Only
+holders from your own run deserve the stale timer.
+⚠️ Parse that id carefully. Ours were `slot1-<run>` but also `slot3-swap-<run>`; taking the second
+dash-separated field read `swap` as the run id, which would have broken a **live** holder and let
+two workers in at once — the exact thing the gate exists to prevent, introduced while fixing it.
+Take the last field.
+
+**2. Some arrival paths don't use it.** Ours had four ways in — boot, recover, outage re-entry,
+browser swap — and only two were wired to the shared gate. The other two fell back to a *file*
+lock, which on separate machines is per-machine and therefore meaningless. So every recovery
+re-entry was effectively ungated: the moment several workers blocked, they all walked back in
+simultaneously.
+⇒ **One factory, every path.** Grep for every construction of the lock; a fallback default is how
+this hides. And note the shape of the bug: it only appears once workers start *failing*, so it is
+invisible in the happy path and in small tests.
+
+**3. It gets held across a sleep.** A blocked worker cooled off for 3–9 minutes while holding the
+gate, turning one worker's rate penalty into the whole fleet's stall.
+⇒ **A gate is for arriving. Release before any wait**, and re-acquire when you are actually ready
+to walk in.
 
 ---
 
@@ -984,6 +1035,37 @@ Rules that made these probes trustworthy:
    *and* at ~11 actions cannot tell you which mattered. Design the probe to separate them.
 6. **Write down what you disproved.** Half the entries above exist because a theory was rebuilt
    twice.
+
+### ★★ Do not invent a property of the target to explain your own results
+
+The most expensive hour of 2026-08-13 went on a theory that the site's address range "tires" and
+needs ~90 minutes to recover. The evidence was a real correlation — every run that worked had over
+an hour of quiet before it; every collapse came ~20 minutes after another run.
+
+It was wrong, and the operator killed it in one sentence: *we ran back-to-back tests all day
+locally with no decay.* The correlation existed because I had **also** been raising the worker
+count over the same period — two variables moving together across eight runs, and I attributed the
+result to the one I could not measure.
+
+Worse, the theory was *self-protecting*: it made every experiment cost 90 minutes, which meant
+fewer experiments, which meant it stayed untested.
+
+⇒ **When your results need a new property of the target to make sense, suspect your own code
+first.** In this case the real causes were all local: an ungated recovery path, a gate held by a
+killed process, a DNS failure nobody was checking for. Every one was findable without a theory
+about the site.
+
+⇒ **A rule that makes testing expensive should be the first thing you test.**
+
+### ⚠️ A "dry run" must be proven inert before you point it at production
+
+While verifying a scheduler script, I ran it with `shards=0` believing that would be rejected. The
+planner clamped `0 → 1` and it **dispatched a real run at the live site**, during the very quiet
+period the test was meant to protect. It was cancelled 50 seconds in, still inside `pip install`,
+so it never reached the target — luck, not design.
+
+⇒ **A safe-looking parameter is not a dry run.** Either have a real `--dry` path that exits before
+any request, or test the wiring against something that cannot reach production at all.
 
 ### ★★ Your instrumentation will lie to you more often than your scraper does
 
