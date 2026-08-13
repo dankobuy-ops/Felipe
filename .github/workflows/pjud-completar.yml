@@ -112,6 +112,11 @@ jobs:
                 --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}")
           if [ -n "${{ inputs.where }}" ]; then ARGS+=(--where "${{ inputs.where }}"); fi
           if [ "${{ inputs.limit }}" != "0" ]; then ARGS+=(--limit ${{ inputs.limit }}); fi
+          # ⚠️ set -o pipefail. Without it the pipeline's status is TEE's, so a Python traceback
+          # exits 0 and the job goes green having measured nothing — which is exactly what
+          # happened on the first dry run, and is the same shape as the `|| echo` that once made
+          # a failed ingest look successful.
+          set -o pipefail
           python -u worker_b.py "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Launch Chrome (headed, own profile)

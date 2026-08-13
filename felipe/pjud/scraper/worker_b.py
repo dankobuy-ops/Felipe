@@ -121,7 +121,12 @@ def work_list(desde, hasta, selector, where="", ids_file="", limit=0):
     elif selector == "where":
         if not where:
             raise SystemExit("--select where needs --where '<sql predicate>'")
-        sql.append(f"AND ({where})")          # operator-supplied; this is their own database
+        # ⚠️ ESCAPE THE PERCENTS. This clause is interpolated into a query that psycopg2 then
+        # parameter-substitutes, so every % in it is read as a placeholder marker. The example
+        # HANDOFF_PC2 documents — ILIKE '%Obligaci%Dar%' — therefore died with
+        # "IndexError: list index out of range" inside cur.execute, i.e. the documented usage had
+        # never worked. Doubling them makes psycopg2 emit a literal %.
+        sql.append(f"AND ({where.replace('%', '%%')})")   # operator-supplied; their own database
     elif selector == "ids":
         ids = [x.strip() for x in Path(ids_file).read_text(encoding="utf-8").splitlines()
                if x.strip() and not x.startswith("#")]
