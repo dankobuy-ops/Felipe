@@ -501,11 +501,16 @@ once the *blocked* runs were compared against each other instead of against the 
 | — | 25 s | 2 | 77 | **62.6 MB** | — | blocked |
 | — | 25 s | 3 | 85 | 80.2 MB | — | blocked |
 | — | 25 s | 3 | 74 | 69.8 MB | 70 min | blocked |
-| after the entry fix | **8 s** | 7 | **162** | **139.9 MB** | **96 min** | clean |
+| the fast run | **8 s** | 8 | **221** | **179 MB** | **131 min** | clean — *stopped by hand* |
 
-Every candidate dies on this table. **Opens**: 74–85 blocked, 162 clean. **Bytes**: blocked at
-62.6 MB, clean at 139.9 MB — and the blocked runs alone span 29.5–136.5 MB, a 4× spread.
-**Elapsed**: 68–70 vs 96 min. **Searches**: 2–8 in *both* groups.
+Every candidate dies on this table. **Opens**: 74–85 blocked, 221 clean. **Bytes**: blocked at
+62.6 MB, clean at 179 MB — and the blocked runs alone span 29.5–136.5 MB, a **4× spread**.
+**Elapsed**: 68–70 vs 131 min. **Searches**: 2–8 in *both* groups.
+
+⚠️ Note what the blocked column alone already proves: two runs that both ended in a refusal, one
+at 62.6 MB and one at 136.5 MB. **A byte ceiling was refuted by the failures by themselves**, and
+I spent an evening "confirming" one from a single close pair (136.5 vs 125 MB) picked out of that
+spread. A wide spread contains a convincing pair for almost any hypothesis.
 
 **The cause is still open, and two candidate causes were killed writing this section.** First a
 byte ceiling (above). Then "the blocked runs predate removing the direct-navigation fallback" —
@@ -1067,6 +1072,34 @@ supervisor decides a slot still has a usable browser**, so an orphan actively mi
 and lets the original exit, so `poll()` reports "already gone" while a full browser is still
 running. Kill the tree you know about, **then** sweep for anything still holding your profile
 directory. (Ten orphans and a live CDP port, PJUD, 2026-08-12.)
+
+### ⚠️ Running it on hosted CI — the traps that cost whole runs
+
+Cloud runners are attractive for a scraper: free minutes, a fresh IP per job, no machine to babysit.
+Four things about the *platform* have each destroyed real work here (GitHub Actions, PJUD, 2026-08).
+
+**A concurrency group holds exactly ONE pending run.** `cancel-in-progress: false` protects the run
+that is *executing*; it says nothing about the one waiting. Dispatch a third and the queued one is
+**silently cancelled** — that is how a worker-B run that had never touched the site was destroyed.
+⇒ **To run N things in sequence, make them N JOBS IN ONE RUN**, chained with `needs:`. Jobs queue
+properly, each still gets its own machine, its own IP and its own full job timeout.
+
+**`if: success()` on a chained measurement queue throws away the rest of the night.** A blocked or
+refused test is a *result* — often the very result you queued it for. Use `if: !cancelled()` so one
+refusal does not cost the four measurements behind it, and keep cancellation as the off switch.
+
+**A step's exit code is the LAST command's.** `python … | tee` reports tee's status, so a traceback
+exits 0 and the job goes green having measured nothing. `set -o pipefail`, every time. Same family
+as `|| echo "…"`, which once made a failed ingest look successful and lost 431 MB of PDFs.
+
+**Validate the YAML before dispatching it.** `run: echo "public IP: $(…)"` is a parse error — a
+plain YAML scalar may not contain `": "` — and you find out at dispatch, after queueing behind a
+five-hour job. One `yaml.safe_load` over the file catches it in a second. Boilerplate repeated
+across six jobs belongs in a composite action for the same reason: a fix applied in five places
+and missed in the sixth is the normal outcome.
+
+⇒ And the one that is not a platform quirk: **a runner is a different environment, so every number
+measured elsewhere is unmeasured here.** See Part 10.
 
 ### Encoding will bite you on Windows
 

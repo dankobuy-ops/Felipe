@@ -642,3 +642,20 @@ courts at idx 16–18.
 
 ⚠️ **Neither probe restores a state artifact, deliberately.** A resumed run skips causas it already
 banked, and a probe that skips opens measures nothing.
+
+### Worker B proven end to end — 2026-08-13, 23:0x
+
+The night queue's `b_smoke` job (2 causas, `--require-docs 1`) passed on its first run:
+
+| | before | after |
+|---|---:|---:|
+| `documentos` | **0** | **21** |
+| `cuadernos.georref` | **0** | **5** |
+| `causas.fill_status='full'` | **0** | **2** |
+
+Four counters had sat at zero for days behind the assumption that worker B worked, because its
+only real dispatch had been cancelled before it touched the site. **Ten minutes on two causas
+settled it.** Size the smoke test to the question, and gate the full session on it.
+
+⚠️ `documentos` keys on **`cuaderno_id`**, not `causa_id` — a row belongs to a historia row
+(`<causa>-c<n>-<folio>-<k>`), not to the causa. Worth remembering when writing an ad-hoc query.
