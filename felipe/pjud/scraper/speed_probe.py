@@ -136,8 +136,20 @@ def main():
     with sync_playwright() as pw:
         ctx = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{a.port}", timeout=60000).contexts[0]
         p = C.find_ojv_page(ctx)
-        if p is None:
-            raise SystemExit("no form — walk in first")
+        # ⚠️ WALK IN IF NOBODY HAS. This probe was written to run against a browser the OPERATOR
+        # had already walked into, so it assumed the form was on screen and bailed with "walk in
+        # first" otherwise. On a RUNNER there is no operator: the first remote attempt
+        # (2026-08-12) found a pjud page, failed on `#fecCompetencia`, and produced no measurement
+        # at all — which looked like a site verdict and was nothing of the kind.
+        # enter_and_setup() is the same walk-in worker A uses, so the probe now measures a session
+        # established exactly the way production establishes one.
+        if p is None or not p.query_selector("#fecCompetencia"):
+            import worker_a as A
+            note("no form on screen — walking in (nobody else is going to)")
+            p, S0, tl0 = A.enter_and_setup(ctx, net, a.desde, a.hasta)
+            if p is None:
+                raise SystemExit("could not reach the form — nothing to measure")
+            note(f"walked in: {len(tl0)} tribunales, dates already established")
         p.bring_to_front()
         p.on("response", ojv.make_tap(net))
         S = Settler(p)
