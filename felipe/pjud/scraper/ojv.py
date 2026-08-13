@@ -423,6 +423,107 @@ class EntryLock:
         self.release()
 
 
+class PgEntryLock:
+    """The entry gate, across MACHINES. Same contract as EntryLock, backed by Postgres.
+
+    ⚠️ WHY THIS EXISTS. The rule for starting concurrent workers is a CONDITION, not a timer:
+    the next worker may enter only once the previous one has landed a CONFIRMED SEARCH. Locally
+    that is a file lock. Two cloud runners are two machines with no shared filesystem, so the
+    workflow fell back to a stagger — and a timer cannot express the rule. It is also useless for
+    a concurrency TEST: giving runner 1 a thirty-minute head start measures nothing about whether
+    two sessions can coexist, because for the first thirty minutes there is only one.
+
+    Both runners already share Neon, so the gate lives there. One row, held by name, released on
+    the holder's first confirmed search, and broken if the holder goes silent longer than `stale`
+    (a runner that dies holding it must not strand the fleet — same reasoning as the file lock).
+
+    ⚠️ The acquire is a single conditional UPDATE ... RETURNING, so two runners racing for the row
+    cannot both win: Postgres serialises it. Do not "improve" this into SELECT-then-UPDATE.
+
+    ⚠️ If the database is unreachable this DOES NOT BLOCK. A gate that fails closed would strand
+    every worker over an unrelated outage; failing open costs at worst an ungated arrival, which
+    is what we had before this existed.
+    """
+
+    DDL = """CREATE TABLE IF NOT EXISTS entry_gate (
+                 id INTEGER PRIMARY KEY, holder TEXT, ts TIMESTAMPTZ)"""
+
+    def __init__(self, holder, stale=420.0, timeout=1800.0):
+        self.holder, self.stale, self.timeout = str(holder), stale, timeout
+        self.held = False
+        self.conn = None
+        try:
+            import psycopg2, dbstore
+            self.conn = psycopg2.connect(**dbstore._conn_kwargs())
+            self.conn.autocommit = True
+            with self.conn.cursor() as c:
+                c.execute(self.DDL)
+                c.execute("INSERT INTO entry_gate (id, holder, ts) VALUES (1, NULL, now()) "
+                          "ON CONFLICT (id) DO NOTHING")
+        except Exception as e:
+            note(f"entry gate unavailable ({str(e)[:60]}) — proceeding UNGATED")
+            self.conn = None
+
+    def acquire(self):
+        if self.conn is None:
+            return False
+        t0, waited = time.time(), False
+        while time.time() - t0 < self.timeout:
+            try:
+                with self.conn.cursor() as c:
+                    c.execute(
+                        "UPDATE entry_gate SET holder=%s, ts=now() "
+                        "WHERE id=1 AND (holder IS NULL OR holder=%s "
+                        "               OR ts < now() - make_interval(secs => %s)) "
+                        "RETURNING holder",
+                        (self.holder, self.holder, self.stale))
+                    if c.fetchone():
+                        self.held = True
+                        atexit.register(self.release)
+                        note(f"entry gate acquired by {self.holder}"
+                             + (f" after {time.time()-t0:.0f}s" if waited else ""))
+                        return True
+            except Exception as e:
+                note(f"entry gate error ({str(e)[:50]}) — proceeding UNGATED")
+                return False
+            if not waited:
+                note("another runner is walking in — waiting my turn (shared gate)")
+                waited = True
+            time.sleep(5)
+        note("entry gate timed out — proceeding anyway rather than stalling for ever")
+        return False
+
+    def touch(self):
+        if not (self.held and self.conn):
+            return
+        try:
+            with self.conn.cursor() as c:
+                c.execute("UPDATE entry_gate SET ts=now() WHERE id=1 AND holder=%s",
+                          (self.holder,))
+        except Exception:
+            pass
+
+    def release(self):
+        if not (self.held and self.conn):
+            return
+        self.held = False
+        try:
+            with self.conn.cursor() as c:
+                # Only release a gate we still hold — if we were broken as stale, the row now
+                # belongs to whoever broke us and clearing it would let a third worker in.
+                c.execute("UPDATE entry_gate SET holder=NULL, ts=now() "
+                          "WHERE id=1 AND holder=%s", (self.holder,))
+        except Exception:
+            pass
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *a):
+        self.release()
+
+
 def _only_tab(ctx, keep):
     """Leave exactly one pjud tab open, and make sure it is the one in FRONT.
 

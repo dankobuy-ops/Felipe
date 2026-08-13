@@ -700,6 +700,14 @@ def main():
                     help="seconds to wait before the FIRST request. Give each concurrent worker "
                          "a different offset (e.g. 0 and 30 with a 60 s gap) so their requests "
                          "interleave instead of arriving together.")
+    ap.add_argument("--gate", choices=("file", "db"), default="file",
+                    help="how the entry gate is shared. 'file' for workers on ONE machine; 'db' "
+                         "for separate machines (cloud runners), which have no shared filesystem "
+                         "and so cannot use a lock file. The rule is the same either way: the "
+                         "next worker enters only after the previous one lands a CONFIRMED "
+                         "SEARCH. A timer cannot express that, and staggering runners by 30 min "
+                         "makes a concurrency test meaningless -- for those 30 min there is only "
+                         "one session.")
     ap.add_argument("--slot", type=int, default=0,
                     help="worker number. Each slot gets its OWN state.json and pdfs/ under "
                          "data/worker_a<N>. Two workers sharing one state file would interleave "
@@ -811,7 +819,8 @@ def main():
         # ALREADY-RUNNING Chrome, and that worker still walks in and still searches. Gating only
         # the launch left exactly that path — the one that fires unattended at 3 a.m. — ungated,
         # and released on the form instead of on a confirmed search.
-        boot_lock = ojv.EntryLock(DATA.parent / "entry.lock")
+        boot_lock = (ojv.PgEntryLock(f"slot{a.slot}-{os.environ.get('GITHUB_RUN_ID', 'local')}")
+                     if a.gate == "db" else ojv.EntryLock(DATA.parent / "entry.lock"))
         boot_lock.acquire()
         # Held so a wedged form can be answered with a REPLACEMENT browser later — see
         # fresh_browser(). A worker that did not open its own Chrome has neither, and says so
@@ -912,7 +921,8 @@ def main():
                 return False
             swaps += 1
             note(f"  browser swap {swaps}: replacing this Chrome and walking in again")
-            lock = ojv.EntryLock(DATA.parent / "entry.lock")
+            lock = (ojv.PgEntryLock(f"slot{a.slot}-swap-{os.environ.get('GITHUB_RUN_ID','local')}")
+                    if a.gate == "db" else ojv.EntryLock(DATA.parent / "entry.lock"))
             lock.acquire()
             ok = False
             try:

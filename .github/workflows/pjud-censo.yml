@@ -61,9 +61,9 @@ on:
         required: false
         default: "1"
       ramp_min:
-        description: "Minutos entre la entrada de un runner y el siguiente (0 = todos juntos)"
+        description: "Minutos de espera extra por runner (0 = todos a la vez; la reja los ordena)"
         required: false
-        default: "30"
+        default: "0"
       base_search_gap:
         description: "Segundos entre requests de resultados, por runner (X medido = 13)"
         required: false
@@ -246,6 +246,12 @@ jobs:
           # Actions minutes are free on a public repo, so a runner waiting its turn costs nothing
           # but wall clock — and the job ceiling is 350 min, which bounds how far this can ramp:
           # shard N idles N-1 ramps before it starts, so keep shards * ramp_min well under that.
+          # ⚠️ 0 BY DEFAULT NOW — the gate does this properly. Runners share an entry gate in
+          # Postgres (--gate db), so the next one enters only once the previous has landed a
+          # CONFIRMED SEARCH. That is the actual rule; a timer only ever approximated it, and for
+          # a CONCURRENCY TEST it is worse than useless: a 30-minute head start means that for
+          # those 30 minutes there is exactly one session, which measures nothing.
+          # Keep ramp_min for the case where you deliberately want spacing ON TOP of the gate.
           WAIT=$(( (${{ matrix.slot }} - 1) * ${{ inputs.ramp_min }} * 60 ))
           if [ "$WAIT" -gt 0 ]; then
             echo "shard ${{ matrix.slot }}: holding ${WAIT}s (${{ inputs.ramp_min }} min x $(( ${{ matrix.slot }} - 1 ))) so the runner before me can prove itself first"
@@ -320,7 +326,11 @@ jobs:
           # writes its run report — so the chain cannot tell "the window is finished" from "this
           # runner was cut off at tribunal 140". Stopping ourselves first turns a hard kill into a
           # handover: state saved, verdict recorded, exit 7.
-          ARGS=(--max-recover 1 --launch-chrome --search-gap "$SG" --causa-gap "$CG"
+          # --gate db: separate machines have no shared filesystem, so the entry gate lives in
+          # Neon. Each runner still owns its OWN Chrome (--launch-chrome) — a session is never
+          # shared — and opens it INSIDE the gate, because four fresh browsers arriving together
+          # is itself the burst the gate exists to prevent.
+          ARGS=(--max-recover 1 --launch-chrome --gate db --search-gap "$SG" --causa-gap "$CG"
                 --max-minutes ${{ inputs.lifespan_min }})
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
