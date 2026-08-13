@@ -1,0 +1,172 @@
+name: PJUD — completar causas (worker B, en runners)
+
+# Finish causas that worker A has already discovered: EVERY document, EVERY georreferencia, all
+# cuadernos, receptor. Worker A takes what an open makes free plus the ebook; this takes the rest.
+#
+# ★ WHY THIS BELONGS ON RUNNERS AND THE SWEEP DOES NOT (operator, 2026-08-13).
+# A residential session does 730+ causa opens in a day; a runner session is cut at roughly 70
+# requests-with-documents. Sweeping a month remotely would need ~54 sessions — it is local work,
+# permanently. But worker B's job is BOUNDED BY CONSTRUCTION: "here is a list of causas, finish
+# them". That fits a small session budget exactly — no discovery, no pagination, nothing wasted on
+# empty courts, every request spent on something explicitly asked for. And it never touches the
+# residential IP that worker A depends on, which is the whole reason HANDOFF_PC2 originally
+# demanded a second machine.
+#
+# ⚠️ SIZE THE JOB BEFORE STARTING IT. A causa with 3 cuadernos and 40 historia rows costs 40+
+# document fetches plus as many geo lookups. Expect a HANDFUL of causas finished per session, not
+# seventy. `dry: true` prints the work-list and an ETA and touches nothing — run it first.
+#
+# ⚠️ ONE RUNNER. worker_b builds its work-list from Neon and has no way to take a disjoint slice
+# of it, so two runners would both start at the top and finish the same causas twice — spending
+# the scarcest budget we have on duplicates. Sharding needs a --shard/--of flag on worker_b first,
+# or better, the claim-queue design (workers claim causas from a Postgres table, self-balancing).
+#
+# ⚠️ HEADED UNDER XVFB, NEVER HEADLESS — F5's challenge tests document.visibilityState.
+
+on:
+  workflow_dispatch:
+    inputs:
+      select:
+        description: "Qué causas completar"
+        required: true
+        type: choice
+        options: [fill, where, ids, all]
+        default: fill
+      where:
+        description: "Predicado SQL, si select=where (ej: procedimiento ILIKE '%Dar%')"
+        required: false
+        default: ""
+      desde:
+        description: "Desde (dd/mm/aaaa) — ventana en la que se buscan las causas"
+        required: true
+        default: "01/07/2026"
+      hasta:
+        description: "Hasta (dd/mm/aaaa)"
+        required: true
+        default: "31/07/2026"
+      limit:
+        description: "Tope de causas en la lista de trabajo (0 = sin tope)"
+        required: false
+        default: "40"
+      dry:
+        description: "true = sólo imprime la lista y la ETA, no toca el sitio"
+        required: false
+        default: "true"
+
+# Same group as the censo: this hits the SAME site. Two workers arriving outside the arrival
+# protocol is what the gate exists to prevent, and it would make either run's results meaningless.
+concurrency:
+  # A DRY run reads Neon and prints a work-list — it never opens a browser and never touches the
+  # site, so making it queue behind a live sweep would only discourage the "always --dry first"
+  # habit that has caught a wrong window twice. Real runs share the censo's group.
+  group: ${{ inputs.dry == 'true' && 'pjud-completar-dry' || 'pjud-censo' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  completar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install playwright psycopg2-binary requests \
+                      google-auth google-auth-oauthlib google-api-python-client
+          playwright install chromium --with-deps
+
+      - name: Xvfb (headed, never headless)
+        if: ${{ inputs.dry != 'true' }}
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb >/dev/null 2>&1 || true
+          Xvfb :99 -screen 0 1440x900x24 >/dev/null 2>&1 &
+          sleep 2
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Restore config (Neon + Drive ids)
+        working-directory: felipe/pjud/scraper
+        env:
+          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
+        run: printf '%s' "$PJUD_CONFIG" > pjud_config.json
+
+      - name: Google credentials (every document goes to Drive)
+        working-directory: felipe/pjud/scraper
+        env:
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_TOKEN_JSON:    ${{ secrets.GOOGLE_TOKEN_JSON }}
+        run: |
+          printf '%s' "$GOOGLE_CLIENT_SECRET" > client_secret.json
+          printf '%s' "$GOOGLE_TOKEN_JSON"    > token.json
+
+      - name: Work-list (dry)
+        if: ${{ inputs.dry == 'true' }}
+        working-directory: felipe/pjud/scraper
+        run: |
+          ARGS=(--select "${{ inputs.select }}" --dry
+                --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}")
+          if [ -n "${{ inputs.where }}" ]; then ARGS+=(--where "${{ inputs.where }}"); fi
+          if [ "${{ inputs.limit }}" != "0" ]; then ARGS+=(--limit ${{ inputs.limit }}); fi
+          python -u worker_b.py "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Launch Chrome (headed, own profile)
+        if: ${{ inputs.dry != 'true' }}
+        working-directory: felipe/pjud/scraper
+        run: |
+          # --no-sandbox is mandatory in a CI container; without it Chrome dies before it opens
+          # the debugging port, which reads as a WAF refusal and is nothing of the kind.
+          CHROME=$(python -c "from playwright.sync_api import sync_playwright;\
+            p=sync_playwright().start();print(p.chromium.executable_path)")
+          "$CHROME" --remote-debugging-port=9222 --user-data-dir="$HOME/pjud_b" \
+            --no-sandbox --disable-dev-shm-usage --disable-gpu \
+            --no-first-run --no-default-browser-check --window-size=1440,900 \
+            https://www.pjud.cl/ >/dev/null 2>chrome.err &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:9222/json/version >/dev/null && break || sleep 1
+          done
+          curl -sf http://127.0.0.1:9222/json/version >/dev/null \
+            || (echo "::error::CDP never opened"; tail -20 chrome.err; exit 1)
+          echo "runner public IP: $(curl -s --max-time 10 https://api.ipify.org || echo unknown)"
+
+      - name: Finish the causas
+        if: ${{ inputs.dry != 'true' }}
+        working-directory: felipe/pjud/scraper
+        run: |
+          # ⚠️ --max-recover 1, as in the censo. A block does not clear on a runner: re-entry
+          # succeeds and is refused again within ~80 s, because the ADDRESS carries the verdict.
+          # Take one cheap retry for a hiccup, then let the job end — every causa finished so far
+          # is already written to Neon and Drive, because B commits per causa, not at the end.
+          ARGS=(--select "${{ inputs.select }}" --max-recover 1
+                --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}")
+          if [ -n "${{ inputs.where }}" ]; then ARGS+=(--where "${{ inputs.where }}"); fi
+          if [ "${{ inputs.limit }}" != "0" ]; then ARGS+=(--limit ${{ inputs.limit }}); fi
+          python -u worker_b.py --port 9222 "${ARGS[@]}"
+
+      - name: What got finished
+        if: ${{ always() && inputs.dry != 'true' }}
+        working-directory: felipe/pjud/scraper
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import sys; sys.path.insert(0, ".")
+          import dbstore
+          c = dbstore.Store().conn.cursor()
+          c.execute("""SELECT count(*) FROM causas WHERE fill_status='full'
+                       AND updated_at > now() - interval '6 hours'""")
+          print(f"### Causas completadas en esta corrida: **{c.fetchone()[0]}**\n")
+          c.execute("SELECT count(*) FROM documentos"); d = c.fetchone()[0]
+          c.execute("SELECT count(*) FROM anexos"); a = c.fetchone()[0]
+          c.execute("SELECT count(*) FROM causas WHERE fill_status='full'"); f = c.fetchone()[0]
+          print(f"- documentos en total: **{d}**\n- anexos: **{a}**\n- causas 'full': **{f}**")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.dry != 'true' }}
+        with:
+          name: worker-b-debug-${{ github.run_id }}
+          path: felipe/pjud/scraper/chrome.err
+          if-no-files-found: ignore
