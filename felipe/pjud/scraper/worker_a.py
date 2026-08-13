@@ -586,7 +586,28 @@ def launch_chrome(port, profile, slot=1, exe=None):
     return None
 
 
-def enter_and_setup(ctx, net, desde, hasta, lock=None):
+# ⚠️ WHICH GATE. Set from --gate in main(). It is a module global because enter_and_setup() is
+# called from four places — boot, recover, the degradation step-back and fresh_browser — and
+# THREE of them used to fall through to the file lock below. On separate machines a file lock is
+# per-machine and therefore meaningless, so every recovery re-entry on a runner was effectively
+# UNGATED: shards that blocked all walked back in at the same moment, which is exactly the burst
+# the gate exists to prevent. Measured indirectly on 2026-08-13, when 5- and 10-shard runs
+# collapsed in a way no single-worker run does.
+GATE_KIND = "file"
+
+
+def new_gate(name):
+    """The entry gate of whatever kind this worker was told to use.
+
+    Holder is "<name>-<run id>"; the gate reads the LAST dash-separated field as the run id, so
+    compound names like "slot3-swap" stay safe.
+    """
+    if GATE_KIND == "db":
+        return ojv.PgEntryLock(f"{name}-{os.environ.get('GITHUB_RUN_ID', 'local')}")
+    return ojv.EntryLock(DATA.parent / "entry.lock")
+
+
+def enter_and_setup(ctx, net, desde, hasta, lock=None, gate_name="reentry"):
     """Walk in and build the search form. Returns (page, Settler, tribunal list).
 
     Module level and parameterised so worker B shares it verbatim. Entry, the Competencia
@@ -618,7 +639,7 @@ def enter_and_setup(ctx, net, desde, hasta, lock=None):
     # already established is not a new arrival and has nothing to prove to the queue.
     own = lock is None
     if own:
-        lock = ojv.EntryLock(DATA.parent / "entry.lock")
+        lock = new_gate(gate_name)
         lock.acquire()
     try:
         pg = ojv.walk_in(ctx)
@@ -761,7 +782,8 @@ def main():
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
             raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy — refusing to search with it")
 
-    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA
+    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA, GATE_KIND
+    GATE_KIND = a.gate
     if a.search_gap:
         SEARCH_GAP = a.search_gap
     if a.causa_gap:
@@ -837,8 +859,7 @@ def main():
         # ALREADY-RUNNING Chrome, and that worker still walks in and still searches. Gating only
         # the launch left exactly that path — the one that fires unattended at 3 a.m. — ungated,
         # and released on the form instead of on a confirmed search.
-        boot_lock = (ojv.PgEntryLock(f"slot{a.slot}-{os.environ.get('GITHUB_RUN_ID', 'local')}")
-                     if a.gate == "db" else ojv.EntryLock(DATA.parent / "entry.lock"))
+        boot_lock = new_gate(f"slot{a.slot}")
         boot_lock.acquire()
         # Held so a wedged form can be answered with a REPLACEMENT browser later — see
         # fresh_browser(). A worker that did not open its own Chrome has neither, and says so
@@ -959,8 +980,7 @@ def main():
                 return False
             swaps += 1
             note(f"  browser swap {swaps}: replacing this Chrome and walking in again")
-            lock = (ojv.PgEntryLock(f"slot{a.slot}-swap-{os.environ.get('GITHUB_RUN_ID','local')}")
-                    if a.gate == "db" else ojv.EntryLock(DATA.parent / "entry.lock"))
+            lock = new_gate(f"slot{a.slot}-swap")
             lock.acquire()
             ok = False
             try:
@@ -1026,7 +1046,8 @@ def main():
                     note(f"  *** exiting 6 = needs a FRESH PROFILE. resume with --start {idx}")
                     save()
                     raise SystemExit(6)
-                p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
+                p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta,
+                                           gate_name=f"slot{a.slot}-outage")
                 if p is None:
                     note("  *** could not re-enter after the outage — stopping")
                     return False
@@ -1043,8 +1064,17 @@ def main():
             # back in at the same pace just earns another one; each successive block waits longer.
             cool = COOL_OFF * recoveries
             note(f"  recovery {recoveries}/{a.max_recover}: cooling off {cool:.0f}s, then re-entry")
+            # ⚠️ COOL OFF UNGATED. A block is OUR rate verdict; making every other shard wait out
+            # our 3-, 6-, 9-minute penalty turns one worker's problem into the fleet's. The gate
+            # is for ARRIVING, and we are not arriving yet — the re-entry below takes a fresh one
+            # when it is ready. (Normally boot_lock is already released by the first-search
+            # verdict, but a block during that very first search leaves it ours.)
+            if boot_lock and boot_lock.held:
+                note("      releasing the entry gate before cooling off — not ours to hold")
+                boot_lock.release()
             time.sleep(cool)
-            p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta)
+            p, S, tl = enter_and_setup(ctx, net, a.desde, a.hasta,
+                                       gate_name=f"slot{a.slot}-recover")
             if p is None:
                 # ⚠️ SECOND RUNG BEFORE GIVING UP. Re-entry failing is not proof that a human is
                 # needed — it is equally what a wedged browser looks like, and the two were
@@ -1146,9 +1176,17 @@ def main():
                      f"BEFORE a block: cooling off {COOL_OFF:.0f}s, then re-entering")
                 save()
                 tally_line("TALLY at degradation:")
+                # ⚠️ NEVER SLEEP HOLDING THE GATE. If this trips before the first search the boot
+                # gate is still ours, and cooling off for 180 s with it would stall every other
+                # shard for three minutes over OUR problem. Release first; the re-entry below
+                # takes a fresh one when it is actually ready to walk in.
+                if boot_lock and boot_lock.held:
+                    note("      releasing the entry gate before cooling off — not ours to hold")
+                    boot_lock.release()
                 time.sleep(COOL_OFF)
                 health_clear("stepped back and re-entered")
-                p2, S2, tl2 = enter_and_setup(ctx, net, a.desde, a.hasta)
+                p2, S2, tl2 = enter_and_setup(ctx, net, a.desde, a.hasta,
+                                              gate_name=f"slot{a.slot}-degraded")
                 if p2 is None:
                     note("  *** could not re-enter after stepping back — stopping")
                     return finish("degraded", False, 3)
