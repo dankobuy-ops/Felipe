@@ -58,6 +58,28 @@ that made the scraper *faster*, not slower:
 Gentle pacing is what you reach for when you cannot find the real problem. It hides the symptom,
 costs you throughput forever, and leaves the actual tell in place.
 
+### ⚠️ Fallbacks are where the rule quietly dies
+
+A fallback is written on a bad day, to rescue a run. It therefore fires **only when things are
+already going wrong** — which is exactly when looking wrong costs the most.
+
+Worked example (2026-08-13). Entry was: load the site's public home page, click the link to the
+service. A fallback was added to *type the service's deep URL directly* when that click failed,
+justified as "typing a public URL is ordinary browsing; a preference for the prettier path is not
+worth losing the run over."
+
+Both halves of that were wrong:
+
+- **Nobody types the deep URL of an internal console.** They land on the home page and click. The
+  fallback was not a slightly-less-pretty path, it was a different actor.
+- **It only ever ran on already-struggling sessions**, so the least human-looking action in the
+  whole run happened at its most fragile moment. The one worker observed using it tried twice and
+  never got in, while three siblings on identical machines clicked through first time.
+
+⇒ **Audit your fallbacks against the rule, separately from the happy path.** Ask what triggers
+each one, and whether a person in that situation would do that. "Click through, or do not get in"
+is a better rule than a fallback that rescues the run by acting like a bot.
+
 ### The honest nuance
 
 This is a rule about **what the site can observe**, not a vow of literal-mindedness. Reading the

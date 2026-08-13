@@ -598,17 +598,27 @@ def walk_in(ctx):
     start.bring_to_front()
     start.wait_for_timeout(4000)
     page = None
-    # ⚠️ ONE click-through attempt, then go direct. It was three, but the 2nd and 3rd were never
-    # real clicks at all (see the tab note above), so all they ever bought was two minutes.
-    # Measured 2026-08-11 across four profiles: the click-through succeeded on its first attempt
-    # 1 time in 3 — it is NOT broken, just unreliable — while direct navigation went 2/2 in about
-    # four seconds. Since this is held under the entry lock, every wasted minute is a minute the
-    # other three workers spend queued, so one honest try and then the reliable path.
-    for attempt in (1,):
+    # ⚠️★ NEVER NAVIGATE DIRECTLY TO THE OJV (operator, 2026-08-13). There used to be a fallback
+    # here that typed https://oficinajudicialvirtual.pjud.cl/home/ into the address bar when the
+    # click-through failed, justified as "typing a public URL is ordinary browsing".
+    #
+    # It is not what a person does. Someone using this service lands on www.pjud.cl and clicks
+    # "Plataforma para el ingreso de causas y escritos" — nobody types the deep URL of an internal
+    # console. And the fallback fired at exactly the wrong moment: only ever when the session was
+    # ALREADY struggling, so the run's least human-looking action happened precisely when it could
+    # least afford one. The evidence for keeping it was also weaker than it looked — the shard
+    # observed using it on 2026-08-13 (4-shard run, slot 2) used it twice and never landed a search
+    # at all, while its three siblings clicked through on the first try and got in.
+    #
+    # So: click through, or do not get in. Three honest attempts, each after a full reset of the
+    # tab state — which is now meaningful, because `_only_tab` fixed the bug that made attempts 2
+    # and 3 fire no clicks at all. If all three fail, return None and let the caller stop; an
+    # entry we cannot make the human way is not one worth forcing.
+    for attempt in (1, 2, 3):
         page = _reach_ojv(ctx, start, wait=60.0)
         if page is not None:
             break
-        note(f"could not reach the OJV by click-through (attempt {attempt}/1)")
+        note(f"could not reach the OJV by click-through (attempt {attempt}/3)")
         if not internet_up():
             if not wait_for_internet()[0]:
                 return None
@@ -621,29 +631,8 @@ def walk_in(ctx):
         except Exception:
             pass
     if page is None:
-        # FALLBACK: go straight there. The click-through from www.pjud.cl is preferred because it
-        # is what a person does, but on 2026-08-09 it stopped producing a usable tab on a changed
-        # IP — three attempts, every one blank — while a direct navigation in a focused tab
-        # cleared F5's challenge in six seconds. Typing a public URL is ordinary browsing; a
-        # preference for the prettier path is not worth losing the run over.
-        note("click-through failed — navigating to the OJV directly")
-        try:
-            page = next((q for q in ctx.pages if OJV_HOST in (q.url or "")), None) or ctx.new_page()
-            _only_tab(ctx, page)      # the challenge needs THIS tab in front, not a leftover
-            page.bring_to_front()
-            page.goto(f"https://{OJV_HOST}/home/", wait_until="domcontentloaded", timeout=60000)
-            for _ in range(20):                   # the challenge needs the tab VISIBLE to run
-                page.wait_for_timeout(3000)
-                if page.query_selector("[onclick*='accesoConsultaCausas'], "
-                                       "[onclick*='accesoInvitado'], #no-disponible"):
-                    note("  direct navigation reached the OJV")
-                    break
-            else:
-                note("could not reach the OJV directly either")
-                return None
-        except Exception as e:
-            note(f"direct navigation failed: {str(e)[:70]}")
-            return None
+        note("could not reach the OJV by clicking through, and we do NOT type the URL — stopping")
+        return None
     page.bring_to_front()
     page.wait_for_timeout(4000)
     try:
