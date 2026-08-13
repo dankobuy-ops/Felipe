@@ -101,6 +101,10 @@ on:
         description: "false = solo censo | true = además abre cada causa y baja el ebook"
         required: false
         default: "true"
+      no_ebook:
+        description: "true = abre la causa y toma la metadata, pero NO baja el ebook"
+        required: false
+        default: "false"
       only_proc:
         description: "Regex de procedimiento a conservar (vacío = todos)"
         required: false
@@ -358,8 +362,13 @@ jobs:
           # Neon. Each runner still owns its OWN Chrome (--launch-chrome) — a session is never
           # shared — and opens it INSIDE the gate, because four fresh browsers arriving together
           # is itself the burst the gate exists to prevent.
+          # --no-ebook halves the requests per open (modal only, no document). It is how we
+          # separate "the counter counts OPENS" from "the counter counts REQUESTS": at ~73 opens
+          # both models agree, because an open and its ebook move together. Drop the document and
+          # they diverge — ~73 opens says opens, ~145 says requests.
           ARGS=(--max-recover 1 --launch-chrome --gate db --search-gap "$SG" --causa-gap "$CG"
                 --max-minutes ${{ inputs.lifespan_min }})
+          if [ "${{ inputs.no_ebook }}" = "true" ]; then ARGS+=(--no-ebook); fi
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
           python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \
