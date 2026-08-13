@@ -455,6 +455,41 @@ second **whatever N is**, so the aggregate is identical at 1, 2 or 6 shards. Wit
 (default 30 min) letting each runner prove itself before the next joins, a failure can finally be
 attributed to the runner that caused it.
 
-⚠️ **Extra runners still buy no extra allowance** — that part of 08-11 stands. The open question
-is only whether they can *coexist* at a fixed aggregate rate, which is worth knowing because
-runners are free and the residential IP is not.
+### ★ Settled the same day: it is the concurrent SESSIONS, not the rate. Remote = one worker.
+
+The experiment ran that evening — four runners joining 30 min apart, each paced ×4 so the
+**aggregate never exceeded one worker's rate**. All four entered on the first attempt (so a
+datacenter address is not refused at the door), and then:
+
+```
+20:23  s1 joins 135.232.208.131 -> 1 concurrent
+20:53  s2 joins 20.3.215.36     -> 2
+21:23  s3 joins 20.102.46.202   -> 3
+21:34:36 s2 BLOCKED / 21:34:50 s3 BLOCKED    14 seconds apart   -> back to 1
+21:53  s4 joins 20.81.47.119    -> 2
+23:39:22 s1 BLOCKED / 23:39:40 s4 BLOCKED    18 seconds apart   -> 0
+```
+
+Rate held constant, and unrelated addresses were still cut down in near-simultaneous pairs — the
+same signature as 08-11. **The verdict is applied to the range and triggered by concurrent
+sessions, not by request rate alone.**
+
+Throughput is *worse* than a single worker, because each shard pays the ×N pacing tax and is
+culled regardless:
+
+| | wall clock | causa opens |
+|---|---|---|
+| 1 shard @ 1× | 38 min | 42 (**1.11/min**) |
+| 4 shards @ ×4 | 196 min | **130 total** |
+| 1 shard extrapolated | 196 min | ~218 |
+
+⇒ **Remote is ONE worker, chained with a cool-off.** `shards`/`ramp_min` stay in the workflow
+because they are how this was measured and how it would be re-measured if the site changes — not
+because more runners help. Two runners did survive 1h46m against 11 minutes for three.
+
+⚠️ **A remote worker is worth roughly 40% of a local one** even when healthy: 1.11 opens/min
+against ~2.7 locally, with ebook fetches taking up to 9.8 s against ~1 s. Runners are free and
+the residential IP is not, which is the only reason to use them at all.
+
+Every shard did ingest before dying (`if: always()`), so the run still banked its work: June went
+352 → 461 causas and 216 → 318 ebooks.

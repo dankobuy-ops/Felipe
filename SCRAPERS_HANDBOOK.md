@@ -428,8 +428,40 @@ anything measured safe — so it **confounded concurrency with rate** and could 
 range objected to. The fix is to scale each runner's gap by the shard count: N shards each firing
 every `base×N` seconds is `1/base` requests/second *whatever N is*.
 
-⇒ Extra runners buy no extra allowance. Whether they can coexist at a fixed aggregate rate is,
-as of 2026-08-12, **an open question under test**.
+### ★ SETTLED 2026-08-12: it is the CONCURRENT SESSIONS, not the rate
+
+The experiment was run properly — four runners joining 30 minutes apart, each paced ×4 so the
+**aggregate never exceeded one worker's rate**. Every one entered on its first attempt, so
+datacenter addresses are plainly not refused at the door. Then:
+
+```
+20:23  shard 1 joins  135.232.208.131   -> 1 concurrent
+20:53  shard 2 joins  20.3.215.36       -> 2 concurrent
+21:23  shard 3 joins  20.102.46.202     -> 3 concurrent
+21:34:36  shard 2 blocked --,  FOURTEEN seconds apart   -> back to 1
+21:34:50  shard 3 blocked --'
+21:53  shard 4 joins  20.81.47.119      -> 2 concurrent
+23:39:22  shard 1 blocked --,  EIGHTEEN seconds apart   -> 0
+23:39:40  shard 4 blocked --'
+```
+
+Holding the rate constant changed nothing: sessions on **unrelated addresses were cut down in
+near-simultaneous pairs**, the same signature as the earlier trial. So the verdict is applied to
+the range, and it is triggered by concurrent sessions rather than by request rate alone.
+
+And the throughput is *worse than one worker*, because each shard pays the ×N pacing tax and gets
+culled anyway:
+
+| | wall clock | causa opens |
+|---|---|---|
+| 1 shard at 1x | 38 min | 42 (**1.11/min**) |
+| 4 shards at x4 | 196 min | **130 total** |
+| 1 shard extrapolated | 196 min | ~218 |
+
+⇒ **Remote means ONE worker.** Chain it with a cool-off rather than sharding it. The parallelism
+that works is local, where separate sessions on one residential address ran four-wide all day.
+Two concurrent runners did survive 1h46m against 11 minutes for three, so if you must have two,
+expect to be culled in pairs and make sure every runner ingests before it dies.
 
 ### ⚠️ Keep concurrent workers out of lockstep
 

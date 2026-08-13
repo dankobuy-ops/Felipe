@@ -20,16 +20,23 @@ name: PJUD — censo remoto (por demanda)
 # same minute were untouched, and the three together produced 214 causa opens against 226 for one
 # shard alone. Whatever else is true, extra runners do NOT buy extra allowance.
 #
-# ⚠️ BUT THAT TRIAL CONFOUNDED CONCURRENCY WITH RATE, so "sharding is pointless" is not yet
-# earned. Each of those three shards ran at the SINGLE-worker gap of 20 s, and a runner has its
-# own machine and its own link — none of the mutual slowing that makes four LOCAL workers add up
-# to the traffic of one. Three shards at 20 s is ~9 result requests/min, about five times
-# anything measured safe. So the range may have been objecting to the RATE, not to the concurrent
-# sessions, and we could not tell which.
-# The `base_search_gap`/`base_causa_gap` inputs now scale per runner (gap x shards), holding the
-# AGGREGATE at one worker's rate whatever the shard count. Combined with `ramp_min`, which lets
-# each runner prove itself for half an hour before the next joins, a failure can finally be
-# attributed. Until that test has run, assume one worker and treat extra shards as the experiment.
+# ⚠️★ SETTLED 2026-08-12 — IT IS THE CONCURRENT SESSIONS, NOT THE RATE. USE shards=1.
+# The earlier trial confounded the two (every shard ran at the single-worker 20 s gap, ~9 result
+# requests/min), so it was re-run properly: four runners joining 30 min apart, each paced x4 so
+# the AGGREGATE never exceeded one worker's rate. Every one entered on its first attempt —
+# datacenter addresses are not refused at the door — and then:
+#     20:23 s1 joins .. 20:53 s2 .. 21:23 s3   -> 3 concurrent
+#     21:34:36 s2 blocked / 21:34:50 s3 blocked   FOURTEEN seconds apart
+#     21:53 s4 joins                            -> 2 concurrent
+#     23:39:22 s1 blocked / 23:39:40 s4 blocked   EIGHTEEN seconds apart
+# Unrelated addresses cut down in near-simultaneous pairs with rate held constant. And the
+# throughput is WORSE than one worker, because each shard pays the x N pacing tax and is culled
+# anyway: 4 shards produced 130 causa opens in 196 min, against ~218 for one shard extrapolated
+# from its measured 1.11 opens/min. Same shape as the 214-vs-226 of 2026-08-11.
+# ⇒ Remote means ONE worker, chained with a cool-off. The parallelism that works is LOCAL.
+# `shards` and `ramp_min` are kept because they are how the experiment was run and how it would
+# be re-run if the site changes — not because more runners help. Two runners did survive 1h46m
+# against 11 minutes for three, so if you ever want two, expect to be culled in pairs.
 #
 # A census alone is ~3.3 h for 230 tribunales on one worker; WITH detail (open every bank causa
 # and fetch its ebook) it is far longer — locally that runs at roughly one causa a minute. So a
