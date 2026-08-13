@@ -458,6 +458,10 @@ class PgEntryLock:
         # 12-shard queue (the plan job's cap) with slow walk-ins and still sits far below the
         # 300-minute lifespan.
         self.holder, self.stale, self.timeout = str(holder), stale, timeout
+        # Holders are named "slot<N>-<run id>"; the run id is what tells a live neighbour from a
+        # corpse left by a cancelled run. Kept as its own field so acquire() does not have to
+        # re-parse its own name.
+        self.run_id = str(os.environ.get("GITHUB_RUN_ID", "local"))
         self.held = False
         self.conn = None
         try:
@@ -479,12 +483,26 @@ class PgEntryLock:
         while time.time() - t0 < self.timeout:
             try:
                 with self.conn.cursor() as c:
+                    # ⚠️ A HOLDER FROM ANOTHER RUN IS A CORPSE, NOT A NEIGHBOUR. Workers are killed
+                    # outright when a workflow run is cancelled, so atexit never fires and the row
+                    # stays held. The workflow's `concurrency` group guarantees ONE run at a time,
+                    # so a holder naming a different run cannot possibly be alive — yet the stale
+                    # timer made the next run wait 7 minutes for it anyway. Measured 2026-08-13:
+                    # a fresh control run sat on `slot1-31713822960`, a run cancelled minutes
+                    # earlier. Break those on sight; only wait out holders from our own run.
                     c.execute(
                         "UPDATE entry_gate SET holder=%s, ts=now() "
                         "WHERE id=1 AND (holder IS NULL OR holder=%s "
-                        "               OR ts < now() - make_interval(secs => %s)) "
+                        "               OR ts < now() - make_interval(secs => %s) "
+                        # ⚠️ LAST field, not the second. Holders are "slot1-<run>" but ALSO
+                        # "slot3-swap-<run>", and split_part(...,2) reads 'swap' out of the
+                        # second shape — so a LIVE swap holder from our own run would look
+                        # foreign and be broken on sight, letting two workers in at once. That is
+                        # the exact thing the gate exists to prevent, introduced by the fix for
+                        # a different gate bug.
+                        "               OR regexp_replace(holder,'^.*-','') <> %s) "
                         "RETURNING holder",
-                        (self.holder, self.holder, self.stale))
+                        (self.holder, self.holder, self.stale, self.run_id))
                     if c.fetchone():
                         self.held = True
                         atexit.register(self.release)
