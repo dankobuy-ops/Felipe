@@ -55,6 +55,22 @@ on:
         description: "1. worker B sobre 2 causas — ¿escribe documentos? (documentos=0 hoy)"
         required: false
         default: "true"
+      run_b_smoke_fast:
+        description: "1b. worker B a 8s/13s sobre 6 causas — ¿aguanta el ritmo rápido?"
+        required: false
+        default: "true"
+      b_fast_causa_gap:
+        description: "Gap entre aperturas para 1b (8 = el medido remoto)"
+        required: false
+        default: "8"
+      b_fast_search_gap:
+        description: "Gap entre búsquedas para 1b (13 = la X medida remota)"
+        required: false
+        default: "13"
+      b_fast_limit:
+        description: "Cuántas causas en 1b"
+        required: false
+        default: "6"
       run_probe_pace:
         description: "2. probe RITMO: junio, idx 0, causa_gap 8 (una variable vs los bloqueados)"
         required: false
@@ -144,13 +160,67 @@ jobs:
         working-directory: felipe/pjud/scraper
         run: python -u night_check.py --stage after --label b_smoke --require-docs 1
 
+  # ── 1b ────────────────────────────────────────────────────────────────────────
+  # Worker B at the pace actually MEASURED on a runner, over more causas.
+  #
+  # b_smoke ran at worker A's LOCAL defaults (20 s search / 25 s causa) because worker B had no
+  # gap flags at all and silently inherited them — the same "a number measured elsewhere is not
+  # measured here" habit that had the remote sweep at half speed for days. It cost 89 s per causa,
+  # of which only 53 s was work: 35 s was our own pause. Meanwhile a worker A run at causa gap 8
+  # did 221 opens / 179 MB / 131 min clean.
+  #
+  # So this asks the obvious question that b_smoke could not: does B hold up at 8 s / 13 s? Six
+  # causas rather than two, because two can pass by luck and the point is to see whether the pace
+  # survives a sequence.
+  #
+  # ⚠️ THE CHECK IS --require-full 6, NOT "documents were written". A run refused on causa two
+  # still writes causa one's documents — B commits per causa, not at the end — so "documentos
+  # grew" is true of a run that mostly failed. Finishing the list is the actual claim.
+  b_smoke_fast:
+    needs: b_smoke
+    if: ${{ !cancelled() && inputs.run_b_smoke_fast == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "true"
+          port: "9222"
+          profile: "pjud_bf"
+
+      - name: Count what exists BEFORE
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage before --label b_smoke_fast
+
+      - name: worker B — ${{ inputs.b_fast_limit }} causas a ${{ inputs.b_fast_causa_gap }}s/${{ inputs.b_fast_search_gap }}s
+        working-directory: felipe/pjud/scraper
+        run: |
+          set -o pipefail
+          python -u worker_b.py --port 9222 --select where \
+            --where "${{ inputs.b_where }}" \
+            --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
+            --limit ${{ inputs.b_fast_limit }} --max-recover 1 \
+            --causa-gap ${{ inputs.b_fast_causa_gap }} \
+            --search-gap ${{ inputs.b_fast_search_gap }} 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Did all of them finish?
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          python -u night_check.py --stage after --label b_smoke_fast \
+            --require-full ${{ inputs.b_fast_limit }}
+
   # ── 2 ─────────────────────────────────────────────────────────────────────────
   # ONE VARIABLE off the blocked set: same June window, same start at index 0, same search gap —
   # causa gap 25 -> 8. Past ~85 opens and the pace was what mattered, which would make "fix the
   # behaviour and you get speed back" true for the third time in this repo. Dead at ~77 in
   # Antofagasta again and the count was never the thing.
   probe_pace:
-    needs: b_smoke
+    needs: b_smoke_fast
     if: ${{ !cancelled() && inputs.run_probe_pace == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 200
@@ -347,7 +417,7 @@ jobs:
   # ⚠️ `if: always()` — the whole point is that this runs when tests have FAILED. A summary that
   # only appears on a clean night is a summary you never read on the night you needed it.
   report:
-    needs: [b_smoke, probe_pace, probe_position, b_real, c_smoke, c_real]
+    needs: [b_smoke, b_smoke_fast, probe_pace, probe_position, b_real, c_smoke, c_real]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -373,6 +443,7 @@ jobs:
             echo "| prueba | estado |"
             echo "|---|---|"
             echo "| 1. b_smoke (¿escribe documentos?) | ${{ needs.b_smoke.result }} |"
+            echo "| 1b. b_smoke_fast (${{ inputs.b_fast_limit }} causas a ${{ inputs.b_fast_causa_gap }}s) | ${{ needs.b_smoke_fast.result }} |"
             echo "| 2. probe_pace (junio idx0 gap 8) | ${{ needs.probe_pace.result }} |"
             echo "| 3. probe_position (junio idx16 gap 25) | ${{ needs.probe_position.result }} |"
             echo "| 4. b_real (sesión completa) | ${{ needs.b_real.result }} |"

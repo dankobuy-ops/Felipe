@@ -64,6 +64,10 @@ def main():
     ap.add_argument("--slot", type=int, default=1)
     ap.add_argument("--require-docs", type=int, default=0,
                     help="fail unless documentos grew by at least this many")
+    ap.add_argument("--require-full", type=int, default=0,
+                    help="fail unless this many causas reached fill_status='full'. This is the "
+                         "real success criterion for a worker B run: 'some documents were "
+                         "written' can be true of a run that was refused on causa two.")
     a = ap.parse_args()
     snap = SNAP / f"night_{a.label}.json"
 
@@ -122,6 +126,13 @@ def main():
                   f"{a.require_docs}.** El worker abrio causas pero no guardo ningun documento - "
                   f"que es exactamente el estado en que estaba todo antes de esta noche "
                   f"(documentos=0 con 45.701 filas de cuadernos). No sirve seguir a b_real."])
+        rc = 1
+
+    if a.require_full and delta["causas_full"] < a.require_full:
+        emit(["", f"**FALLO: solo {delta['causas_full']} causa(s) llegaron a 'full', se pedian "
+                  f"{a.require_full}.** El worker se detuvo antes de terminar su lista - "
+                  f"bloqueo, o el ritmo no aguanta. Los documentos que si alcanzo a guardar estan "
+                  f"en Neon igual: B escribe por causa, no al final."])
         rc = 1
 
     if a.stage == "after-c":

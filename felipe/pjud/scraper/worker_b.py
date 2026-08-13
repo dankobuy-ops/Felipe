@@ -260,7 +260,24 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="cap the work-list (for a first probe)")
     ap.add_argument("--max-causas", type=int, default=0)
     ap.add_argument("--max-recover", type=int, default=6)
+    # B paces itself off worker A's module constants, so without these it silently inherits A's
+    # LOCAL defaults (20 s / 25 s) on a runner. That is the exact habit that had the remote sweep
+    # running at half speed for days: a number measured in one environment is not measured in the
+    # other. Measured remotely 2026-08-13: search 13 s, and causa 8 s ran 221 opens clean.
+    # ASCII only in help strings - a non-ASCII character here crashes --help on Windows cp1252.
+    ap.add_argument("--search-gap", type=float, default=0.0,
+                    help="override SEARCH_GAP (every result request: searches AND page advances)")
+    ap.add_argument("--causa-gap", type=float, default=0.0, help="override CAUSA_GAP")
+    ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
     a = ap.parse_args()
+
+    if a.search_gap:
+        A.SEARCH_GAP = a.search_gap
+    if a.causa_gap:
+        A.CAUSA_GAP = a.causa_gap
+    if a.post_causa:
+        A.POST_CAUSA = a.post_causa
+    note(f"pacing: search {A.SEARCH_GAP}s  causa {A.CAUSA_GAP}s  post {A.POST_CAUSA}s")
 
     for label, val in (("--desde", a.desde), ("--hasta", a.hasta)):
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):

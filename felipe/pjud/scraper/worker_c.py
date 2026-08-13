@@ -209,7 +209,20 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-causas", type=int, default=0)
     ap.add_argument("--max-recover", type=int, default=6)
+    # Same reason as worker B: without these, C inherits worker A's LOCAL defaults on a runner.
+    # ASCII only in help strings.
+    ap.add_argument("--search-gap", type=float, default=0.0, help="override SEARCH_GAP")
+    ap.add_argument("--causa-gap", type=float, default=0.0, help="override CAUSA_GAP")
+    ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
     a = ap.parse_args()
+
+    if a.search_gap:
+        A.SEARCH_GAP = a.search_gap
+    if a.causa_gap:
+        A.CAUSA_GAP = a.causa_gap
+    if a.post_causa:
+        A.POST_CAUSA = a.post_causa
+    note(f"pacing: search {A.SEARCH_GAP}s  causa {A.CAUSA_GAP}s  post {A.POST_CAUSA}s")
 
     for label, val in (("--desde", a.desde), ("--hasta", a.hasta)):
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
