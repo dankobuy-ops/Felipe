@@ -112,14 +112,29 @@ jobs:
       - name: Ramp until it trips
         working-directory: felipe/pjud/scraper
         run: |
-          # ⚠️ Do NOT fail the job when the probe stops: ending in a refusal IS the result. The
-          # step must stay green so the report below always publishes.
+          # ⚠️ A REFUSAL IS THE RESULT; A CRASH IS NOT. The first version wrapped this in
+          # `|| echo "a refusal here is the measurement"`, which swallowed two consecutive
+          # SETUP failures — a missing form and then a missing data/ directory — and reported
+          # both as green runs that had measured something. That is the same `|| echo` trap the
+          # censo workflow warns about for the ingest step, re-made here.
+          # The honest test is whether the probe WROTE ROWS. If it did, whatever ended it is the
+          # measurement and the job is green. If it did not, nothing was learned and the job must
+          # go red, loudly.
           ARGS=()
           if [ "${{ inputs.detail }}" = "true" ]; then ARGS+=(--detail); fi
+          set +e
           python -u speed_probe.py --port 9222 \
             --levels "${{ inputs.levels }}" --per-level ${{ inputs.per_level }} \
             --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}" \
-            --out speed_remote.json "${ARGS[@]}" || echo "probe ended (a refusal here is the measurement)"
+            --out speed_remote.json "${ARGS[@]}"
+          rc=$?
+          set -e
+          if [ -s speed_remote.json ] && [ "$(jq 'length' speed_remote.json)" -gt 0 ]; then
+            echo "probe wrote $(jq 'length' speed_remote.json) level(s) — exit $rc, and whatever ended it IS the measurement"
+            exit 0
+          fi
+          echo "::error::the probe measured NOTHING (exit $rc, no rows). This is a setup failure, not a site verdict."
+          exit 1
 
       - name: Report X
         if: always()

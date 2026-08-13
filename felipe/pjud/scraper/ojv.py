@@ -346,6 +346,15 @@ class EntryLock:
     def acquire(self):
         t0 = time.time()
         waited = False
+        # ⚠️ THE DIRECTORY MAY NOT EXIST. data/ is gitignored, so on a fresh checkout — every CI
+        # runner — it is simply absent, and os.open(O_CREAT) raises FileNotFoundError on the
+        # PARENT, not the file. worker_a survives only by accident: it mkdirs its pdfs/ path
+        # first. Any other caller of enter_and_setup() dies at the gate, which is how the remote
+        # speed probe crashed on 2026-08-12 before taking a single measurement.
+        try:
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        except OSError:
+            pass
         while time.time() - t0 < self.timeout:
             try:
                 fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
