@@ -1,0 +1,156 @@
+name: PJUD — velocidad remota (¿cuál es la X de un runner?)
+
+# What is the fastest a SINGLE runner can go before the site refuses it?
+#
+# ⚠️ WE NEVER MEASURED THIS, AND ASSUMED IT. Locally, speed_probe.py ramped the gaps down and
+# never tripped: result requests 45 -> 4 s across 51 of them, causa opens 90 -> 8 s across 18.
+# The floor turned out to be the SITE'S OWN RESPONSE TIME (12-26 s), not a rate limit — call that
+# speed X. Every remote run since has simply inherited the local numbers (20 s / 25 s) without
+# anyone asking whether a runner's X is the same. It may well not be: a runner sits in a
+# datacenter range that has already shown it treats sessions differently from a residential
+# address, and its link to PJUD is measurably worse (ebook fetches up to 9.8 s against ~1 s).
+#
+# So: ramp ONE runner down until it trips, exactly as the local probe did, and read X off the
+# result. Only then is there a number to test TWO runners at — testing concurrency at a pace we
+# never validated is how the 2026-08-11 trial confounded rate with concurrency and had to be
+# thrown away.
+#
+# ⚠️ THIS RUN IS DESIGNED TO END IN A BLOCK. That is the measurement, not a failure. It uses its
+# own profile and touches no production state, so nothing is lost when it trips.
+#
+# ⚠️ HEADED UNDER XVFB, NEVER HEADLESS — F5's challenge tests document.visibilityState.
+
+on:
+  workflow_dispatch:
+    inputs:
+      levels:
+        description: "Gaps a probar, de mayor a menor (segundos, separados por coma)"
+        required: false
+        default: "45,35,28,22,17,13,10,8,6"
+      per_level:
+        description: "Cuántos requests por nivel antes de bajar al siguiente"
+        required: false
+        default: "4"
+      detail:
+        description: "false = ritmo de búsquedas | true = ritmo de aperturas de causa"
+        required: false
+        default: "false"
+      desde:
+        description: "Desde (dd/mm/aaaa)"
+        required: false
+        default: "01/06/2026"
+      hasta:
+        description: "Hasta (dd/mm/aaaa)"
+        required: false
+        default: "30/06/2026"
+
+# Never alongside a censo run: a second live session on the range would make the result
+# meaningless, which is the whole reason this workflow exists.
+concurrency:
+  group: pjud-censo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  velocidad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install playwright psycopg2-binary requests \
+                      google-auth google-auth-oauthlib google-api-python-client
+          playwright install chromium --with-deps
+
+      - name: Xvfb (headed, never headless)
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb >/dev/null 2>&1 || true
+          Xvfb :99 -screen 0 1440x900x24 >/dev/null 2>&1 &
+          sleep 2
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Restore config (Neon + Drive ids)
+        working-directory: felipe/pjud/scraper
+        env:
+          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
+        run: printf '%s' "$PJUD_CONFIG" > pjud_config.json
+
+      - name: Google credentials (the detail ramp fetches ebooks)
+        if: ${{ inputs.detail == 'true' }}
+        working-directory: felipe/pjud/scraper
+        env:
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_TOKEN_JSON:    ${{ secrets.GOOGLE_TOKEN_JSON }}
+        run: |
+          printf '%s' "$GOOGLE_CLIENT_SECRET" > client_secret.json
+          printf '%s' "$GOOGLE_TOKEN_JSON"    > token.json
+
+      - name: Launch Chrome (headed, own profile)
+        working-directory: felipe/pjud/scraper
+        run: |
+          # --no-sandbox is mandatory in a CI container; without it Chrome dies before it opens
+          # the debugging port, which reads as a WAF refusal and is nothing of the kind.
+          CHROME=$(python -c "from playwright.sync_api import sync_playwright;\
+            p=sync_playwright().start();print(p.chromium.executable_path)")
+          "$CHROME" --remote-debugging-port=9222 --user-data-dir="$HOME/pjud_speed" \
+            --no-sandbox --disable-dev-shm-usage --disable-gpu \
+            --no-first-run --no-default-browser-check --window-size=1440,900 \
+            https://www.pjud.cl/ >/dev/null 2>chrome.err &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:9222/json/version >/dev/null && break || sleep 1
+          done
+          curl -sf http://127.0.0.1:9222/json/version | head -c 120 || (echo "CDP DOWN"; tail -20 chrome.err; exit 1)
+          echo "runner public IP: $(curl -s --max-time 10 https://api.ipify.org || echo unknown)"
+
+      - name: Ramp until it trips
+        working-directory: felipe/pjud/scraper
+        run: |
+          # ⚠️ Do NOT fail the job when the probe stops: ending in a refusal IS the result. The
+          # step must stay green so the report below always publishes.
+          ARGS=()
+          if [ "${{ inputs.detail }}" = "true" ]; then ARGS+=(--detail); fi
+          python -u speed_probe.py --port 9222 \
+            --levels "${{ inputs.levels }}" --per-level ${{ inputs.per_level }} \
+            --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}" \
+            --out speed_remote.json "${ARGS[@]}" || echo "probe ended (a refusal here is the measurement)"
+
+      - name: Report X
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          f = pathlib.Path("speed_remote.json")
+          print("### Velocidad de UN runner\n")
+          if not f.exists():
+              print("- el probe no alcanzó a escribir resultados"); raise SystemExit
+          rows = json.loads(f.read_text(encoding="utf-8"))
+          print("| gap objetivo | ciclo real | activo | ocioso | veredicto |")
+          print("|---|---|---|---|---|")
+          for r in rows:
+              print(f"| {r.get('gap')} s | {r.get('cycle')} s | {r.get('active')} s "
+                    f"| {r.get('idle')} s | {r.get('verdict', r.get('kind', '-'))} |")
+          ok = [r for r in rows if not str(r.get("verdict", "")).lower().startswith(("block", "rej"))]
+          if ok:
+              fastest = min(r["gap"] for r in ok)
+              cyc = min(r["cycle"] for r in ok)
+              print(f"\n**X (runner) = gap {fastest} s, ciclo real {cyc} s sin bloqueo.**")
+              print("\nEse es el número con el que hay que probar DOS runners — no el local.")
+          PY
+          cat speed_remote.json 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: speed-remote-${{ github.run_id }}
+          path: |
+            felipe/pjud/scraper/speed_remote.json
+            felipe/pjud/scraper/chrome.err
+          if-no-files-found: warn

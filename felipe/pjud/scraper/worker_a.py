@@ -709,6 +709,13 @@ def main():
     ap.add_argument("--hasta", default="07/08/2026")
     ap.add_argument("--max-causas", type=int, default=0,
                     help="stop after N causa opens (0 = no limit). For probing the budget.")
+    ap.add_argument("--max-minutes", type=float, default=0.0,
+                    help="LIFESPAN. Stop cleanly after this many minutes, record progress and "
+                         "exit 7 so a supervisor or workflow can hand the job to a fresh runner. "
+                         "0 = no limit. This is OUR limit, deliberately set below the platform's: "
+                         "a hosted GitHub job is killed at 6 h, and a kill loses whatever the "
+                         "current tribunal had in flight and gives no chance to say where it got "
+                         "to. Stopping ourselves first turns a hard kill into a handover.")
     ap.add_argument("--no-detail", action="store_true", help="census only, open nothing")
     ap.add_argument("--max-recover", type=int, default=6,
                     help="how many times a block may be cleared by re-entry before giving up. "
@@ -873,6 +880,7 @@ def main():
         recoveries = 0
         clean_since_block = 0
         swaps = 0
+        blocks_seen = 0
         start_ip = ojv.public_ip()
         note(f"public IP at start: {start_ip}")
 
@@ -1029,11 +1037,43 @@ def main():
         # limit: a throttle that costs two opens per court simply moved on to the next
         # one, degrading for hours without a single detector firing (2026-08-08).
         consec_fail = 0
+        t_start = time.time()
+
+        def lifespan_over():
+            return a.max_minutes and (time.time() - t_start) / 60.0 >= a.max_minutes
+
+        def finish(reason, finished, code):
+            """Record how this run ended, where it got to, and what it cost.
+
+            ⚠️ The CHAIN reads this, so it must be written on EVERY exit path. A continuation that
+            cannot tell "the window is complete" from "this runner was cut down at tribunal 140"
+            either stops with the country half-swept or relaunches for ever against a finished
+            job. The state artifact is the only thing that survives a runner, so the verdict has
+            to live in it — not in an exit code the next run never sees.
+            """
+            st["meta"].update({
+                "finished": finished, "reason": reason,
+                "stopped_at_idx": idx, "ran_minutes": round((time.time() - t_start) / 60.0, 1),
+                "blocks": blocks_seen, "recoveries": recoveries, "swaps": swaps,
+                "opens": tally["opens"], "ebooks": tally["ebooks"],
+                "skipped": [{"idx": i, "id": v, "name": n} for i, v, n in skipped],
+            })
+            save()
+            note(f"RUN REPORT: {reason} | finished={finished} idx={idx} "
+                 f"blocks={blocks_seen} recoveries={recoveries} swaps={swaps} "
+                 f"opens={tally['opens']} ebooks={tally['ebooks']}")
+            return code
+
         idx = a.start - 1
         while True:
             idx += 1
             if idx >= len(tl) or (a.end and idx > a.end):
                 break
+            if lifespan_over():
+                note(f"*** lifespan of {a.max_minutes:.0f} min reached at idx {idx} — stopping "
+                     f"cleanly so a fresh runner can take over from here")
+                tally_line("TALLY at lifespan:")
+                return finish("lifespan", False, 7)
             tgt = tl[idx]
             done = st["tribunales"].get(tgt["v"])
             if done and done.get("complete") and not done.get("undercount"):
@@ -1089,7 +1129,7 @@ def main():
                         continue
                     note(f"  *** a replacement browser did not help either — stopping. "
                          f"resume with --start {idx}")
-                    return 5
+                    return finish("form-loss", False, 5)
                 continue
             select_fails = 0
             ojv.click_away(p)
@@ -1121,13 +1161,14 @@ def main():
                      f"— releasing the entry lock, next worker may come in")
                 boot_lock.release()
             if hit:
+                blocks_seen += 1
                 note(f"  *** BLOCKED at idx {idx} ({tgt['v']} {tgt['t'][:28]}) {why}")
                 save()
                 tally_line("TALLY at block:")
                 if recover(idx):
                     idx -= 1          # re-enter puts us back before this tribunal
                     continue
-                return 3
+                return finish("blocked", False, 3)
             if kind in ("stale", "timeout"):
                 note(f"  [{idx}/{len(tl)}] {tgt['v']:>5} {tgt['t'][:34]:36} {kind.upper()} "
                      f"after {el:.1f}s — never proved fresh, NOT recording")
@@ -1139,7 +1180,7 @@ def main():
                     if recover(idx):
                         idx -= 1
                     else:
-                        return 3
+                        return finish("throttled", False, 3)
                 continue
 
             consec_fail = 0                      # a search that proved fresh clears it too
@@ -1185,7 +1226,7 @@ def main():
                             note(f"  --max-causas {a.max_causas} reached — stopping cleanly")
                             save()
                             tally_line("TALLY at cap:")
-                            return 0
+                            return finish("max-causas", False, 0)
                         time.sleep(gap_for(CAUSA_GAP))
                         tally["opens"] += 1
                         try:
@@ -1197,6 +1238,7 @@ def main():
                             rec = None
                         hit, why = ojv.blocked(p, net)
                         if hit:
+                            blocks_seen += 1
                             note(f"  *** BLOCKED on detail, idx {idx} causa {c['rol']} — {why}")
                             save()
                             tally_line("TALLY at block:")
@@ -1277,7 +1319,7 @@ def main():
                 if recover(idx):
                     idx -= 1
                     continue
-                return 3
+                return finish("blocked", False, 3)
             ent["complete"] = not stuck
             ent["undercount"] = total is not None and seen < total
             save()
@@ -1304,8 +1346,8 @@ def main():
             note(f"  *** {len(skipped)} tribunal(es) were NEVER SEARCHED — not incomplete, ABSENT: "
                  f"{[f'{i}:{v}' for i, v, _ in skipped]}")
             note(f"  *** re-run this slot to pick them up. NOT a clean finish.")
-            return 5
-        return 0
+            return finish("skipped-tribunales", False, 5)
+        return finish("range complete", True, 0)
 
 
 if __name__ == "__main__":

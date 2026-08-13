@@ -84,10 +84,18 @@ on:
         description: "true = continuar el state de la corrida anterior de esta MISMA ventana"
         required: false
         default: "true"
+      lifespan_min:
+        description: "Minutos de vida de cada runner antes de entregar la posta (0 = sin límite)"
+        required: false
+        default: "300"
       chain:
-        description: "Cuántas veces puede relanzarse sola al bloquearse (0 = ninguna)"
+        description: "Tope duro de relanzamientos (freno de emergencia, no la condición de parada)"
         required: false
         default: "0"
+      max_blocks:
+        description: "Bloqueos en una corrida por encima de los cuales la cadena se detiene"
+        required: false
+        default: "8"
       cooloff_min:
         description: "Minutos de espera antes de relanzarse (la IP nueva vive en el mismo rango)"
         required: false
@@ -281,7 +289,13 @@ jobs:
           SG=$(python -c "print(round(${{ inputs.base_search_gap }} * $N, 1))")
           CG=$(python -c "print(round(${{ inputs.base_causa_gap }}  * $N, 1))")
           echo "shards=$N -> search gap ${SG}s, causa gap ${CG}s per runner (aggregate = 1 worker)"
-          ARGS=(--max-recover 1 --launch-chrome --search-gap "$SG" --causa-gap "$CG")
+          # ⚠️ OUR lifespan, deliberately BELOW the platform's 350-minute timeout. A job killed by
+          # timeout-minutes loses whatever the current tribunal had in flight and, worse, never
+          # writes its run report — so the chain cannot tell "the window is finished" from "this
+          # runner was cut off at tribunal 140". Stopping ourselves first turns a hard kill into a
+          # handover: state saved, verdict recorded, exit 7.
+          ARGS=(--max-recover 1 --launch-chrome --search-gap "$SG" --causa-gap "$CG"
+                --max-minutes ${{ inputs.lifespan_min }})
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
           python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \
@@ -365,19 +379,64 @@ jobs:
   # shards — nine runs, then twenty-seven. `needs: censo` runs this exactly once, after every
   # shard has finished, so the baton is passed by one hand.
   #
-  # The stop conditions, all of which must hold to continue:
-  #   * !cancelled()  — you cancelled the run, so cancelling means STOP. (It also means a job
-  #     killed by timeout-minutes does not chain; re-dispatch by hand for that. Stopping when
-  #     unsure beats a loop nobody asked for.)
-  #   * censo did not succeed — success means every shard reached DONE and there is nothing left.
-  #   * chain > 0 — a hard, decrementing bound. Even a run that achieves nothing at all can only
-  #     repeat `chain` times, so no progress check can turn into an infinite loop.
+  # ⚠️ THE STOP CONDITION IS THE WORK, NOT A HOP COUNT (operator, 2026-08-12): keep going while
+  # the window is unfinished AND the blocks stay within range. A fixed number of hops either
+  # stops with the country half-swept or keeps firing at a job that is already done — it cannot
+  # know which, because it never looks at what happened.
+  #
+  # It looks at the STATE ARTIFACTS, which is the only thing that survives a runner. worker_a
+  # writes a verdict into meta on every exit path — finished / reason / blocks / stopped_at_idx —
+  # precisely so a continuation can read it. `censo.result` cannot substitute: a shard that hits
+  # its lifespan exits 7 and the job goes red, which says nothing about whether work remains.
+  #
+  # Still bounded:
+  #   * !cancelled() — cancelling means STOP, and that is how you end a chain by hand.
+  #   * chain > 0 — a hard decrementing backstop. The condition above is the real brake; this is
+  #     the one that cannot be fooled by a bug in it. A run that achieves nothing can still only
+  #     repeat `chain` times.
+  #   * blocks <= max_blocks — if the range is refusing us this hard, more hops will not help,
+  #     and hammering it is exactly what a person would not do.
   chain:
     needs: censo
-    if: ${{ !cancelled() && needs.censo.result != 'success' && inputs.chain != '0' && inputs.chain != '' }}
+    if: ${{ !cancelled() && inputs.chain != '0' && inputs.chain != '' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Read what the runners actually reported
+        id: verdict
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The state artifacts are the only thing that outlives a runner, and worker_a writes its
+          # verdict into meta on every exit path. Aggregate across shards: the window is finished
+          # only when EVERY shard says so, and the blocks are the sum.
+          D=$(echo "${{ inputs.desde }}" | tr '/' '-'); H=$(echo "${{ inputs.hasta }}" | tr '/' '-')
+          mkdir -p /tmp/st && UNFIN=0 && BLOCKS=0 && SEEN=0
+          for slot in $(seq 1 ${{ inputs.shards }}); do
+            NAME="state-${D}_${H}-s${slot}"
+            if gh run download ${{ github.run_id }} -R "$GITHUB_REPOSITORY" -n "$NAME" -D "/tmp/st/$slot" 2>/dev/null \
+               && [ -f "/tmp/st/$slot/state.json" ]; then
+              SEEN=$((SEEN+1))
+              FIN=$(jq -r '.meta.finished // false' "/tmp/st/$slot/state.json")
+              B=$(jq -r '.meta.blocks // 0'   "/tmp/st/$slot/state.json")
+              R=$(jq -r '.meta.reason // "?"' "/tmp/st/$slot/state.json")
+              I=$(jq -r '.meta.stopped_at_idx // "?"' "/tmp/st/$slot/state.json")
+              echo "shard $slot: finished=$FIN reason=$R stopped_at_idx=$I blocks=$B"
+              [ "$FIN" = "true" ] || UNFIN=$((UNFIN+1))
+              BLOCKS=$((BLOCKS+B))
+            else
+              echo "shard $slot: NO STATE ARTIFACT — treating as unfinished"
+              UNFIN=$((UNFIN+1))
+            fi
+          done
+          # ⚠️ No artifact at all means we learned nothing, NOT that the job is done. Stopping on
+          # ignorance would abandon the window silently; continuing on ignorance would loop for
+          # ever. The hard `chain` bound covers the second, so err toward continuing.
+          echo "aggregate: unfinished=$UNFIN blocks=$BLOCKS (max ${{ inputs.max_blocks }}), artifacts seen=$SEEN"
+          echo "unfinished=$UNFIN" >> "$GITHUB_OUTPUT"
+          echo "blocks=$BLOCKS"    >> "$GITHUB_OUTPUT"
+
       - name: Hand over to a fresh runner
+        if: ${{ steps.verdict.outputs.unfinished != '0' && steps.verdict.outputs.blocks <= inputs.max_blocks }}
         env:
           # GITHUB_TOKEN deliberately cannot trigger workflow_dispatch — that is GitHub's own
           # loop guard — so the chain needs a real PAT.
@@ -385,7 +444,9 @@ jobs:
         run: |
           set -euo pipefail
           LEFT=$(( ${{ inputs.chain }} - 1 ))
-          echo "censo finished as '${{ needs.censo.result }}' — work remains, ${LEFT} hop(s) left after this"
+          echo "${{ steps.verdict.outputs.unfinished }} shard(s) unfinished, "
+          echo "${{ steps.verdict.outputs.blocks }} block(s) — within range, so continuing. "
+          echo "${LEFT} hard-bound hop(s) left after this."
           if [ -z "${GH_TOKEN:-}" ]; then
             echo "::error::DISPATCH_PAT is empty — cannot hand over. Re-dispatch by hand."
             exit 1
@@ -414,12 +475,34 @@ jobs:
             -f only_proc="${{ inputs.only_proc }}" \
             -f resume="true" \
             -f chain="$LEFT" \
+            -f max_blocks="${{ inputs.max_blocks }}" \
+            -f lifespan_min="${{ inputs.lifespan_min }}" \
+            -f ramp_min="${{ inputs.ramp_min }}" \
+            -f base_search_gap="${{ inputs.base_search_gap }}" \
+            -f base_causa_gap="${{ inputs.base_causa_gap }}" \
             -f cooloff_min="${{ inputs.cooloff_min }}"
           echo "handed over — the new run resumes from this window's state artifact on a new IP"
           {
             echo "### Relanzado automáticamente"
             echo ""
-            echo "- censo terminó como \`${{ needs.censo.result }}\`"
-            echo "- quedan **${LEFT}** relanzamientos"
+            echo "- shards sin terminar: **${{ steps.verdict.outputs.unfinished }}**"
+            echo "- bloqueos en esta corrida: **${{ steps.verdict.outputs.blocks }}** (tope ${{ inputs.max_blocks }})"
+            echo "- quedan **${LEFT}** relanzamientos de tope duro"
             echo "- la nueva corrida continúa desde el artefacto de esta ventana, en otra IP"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop the chain, and say why
+        if: ${{ steps.verdict.outputs.unfinished == '0' || steps.verdict.outputs.blocks > inputs.max_blocks }}
+        run: |
+          {
+            echo "### Cadena detenida"
+            echo ""
+            if [ "${{ steps.verdict.outputs.unfinished }}" = "0" ]; then
+              echo "- **la ventana está completa** — todos los shards reportaron finished=true"
+            else
+              echo "- **demasiados bloqueos**: ${{ steps.verdict.outputs.blocks }} > ${{ inputs.max_blocks }}."
+              echo "  Seguir insistiendo contra un rango que nos rechaza así no es algo que haría una persona."
+              echo "  Quedan shards sin terminar: relanzar a mano cuando el rango se haya enfriado."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
