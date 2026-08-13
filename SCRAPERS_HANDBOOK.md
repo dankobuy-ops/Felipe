@@ -485,8 +485,60 @@ It was never checked against a **solo baseline**. When one was finally measured:
 | 2 runners | 75, 72 | 147 | 66 min |
 | 3 runners | 74, 72, 70 | **216** | 65 min |
 
-**A session gets ~70–77 requests-with-documents and is then refused, whether it is alone or one of
-three.** Nothing is shared. Yield scales linearly with runners.
+~~**A session gets ~70–77 requests-with-documents and is then refused, whether it is alone or one
+of three.**~~ **Overturned 2026-08-13 — there is no per-session budget at all** (see the box below).
+What survives from this table is the part that matters: **nothing is shared, and yield scales
+linearly with runners.**
+
+### ★★ OVERTURNED 2026-08-13: the "session budget" was our own bug, and there is no counter
+
+Six sessions clustering at 73–85 opens looked exactly like a quota. It was not one. The full set,
+once the *blocked* runs were compared against each other instead of against the one that fit:
+
+| run | causa gap | searches | opens | pdf bytes | life | outcome |
+|---|---|---|---|---|---|---|
+| solo control | 25 s | 8 | 77 | **136.5 MB** | 68 min | blocked |
+| — | 25 s | 2 | 77 | **62.6 MB** | — | blocked |
+| — | 25 s | 3 | 85 | 80.2 MB | — | blocked |
+| — | 25 s | 3 | 74 | 69.8 MB | 70 min | blocked |
+| after the entry fix | **8 s** | 7 | **162** | **139.9 MB** | **96 min** | clean |
+
+Every candidate dies on this table. **Opens**: 74–85 blocked, 162 clean. **Bytes**: blocked at
+62.6 MB, clean at 139.9 MB — and the blocked runs alone span 29.5–136.5 MB, a 4× spread.
+**Elapsed**: 68–70 vs 96 min. **Searches**: 2–8 in *both* groups.
+
+**The cause is still open, and two candidate causes were killed writing this section.** First a
+byte ceiling (above). Then "the blocked runs predate removing the direct-navigation fallback" —
+which fit the timestamps perfectly and was **wrong**: grepping the logs for the fallback's own log
+line found it fired **zero times in five blocked runs**. It was dead code in every one of them.
+Removing it was still right — a referrer-less arrival at a deep URL is a Part 0 violation — but it
+explains nothing here.
+
+What the blocked runs actually share, and the clean one does not: the **same June window**, the
+**same sweep from index 0**, and a **25 s causa gap (~47 s cycle)**. All of them died in the same
+stretch of large Antofagasta civil courts (1041–1043, 349–373 results each) at index 16–18. The
+clean run changed window, range **and** pace at once, so it is not a controlled comparison — it
+proves the ceiling is not fixed, and nothing more.
+
+⇒ The one-variable probe that would settle it: **same June window, same start at index 0, causa
+gap 8 s.** Past ~85 opens ⇒ it was the pace, and *faster is safer*. Dead at ~77 in Antofagasta
+again ⇒ it is positional, and the counters were always a coincidence of where 75 opens lands.
+
+Traps, all of which fired here at once:
+
+- **A cluster is not a quota.** Runs sharing a pace *and* a bug run down together. Six agreeing
+  numbers are one measurement repeated, not six.
+- **Compare the failures with each other, not with the success.** The two blocked runs at 62.6 MB
+  and 136.5 MB refute a byte ceiling by themselves. I had been comparing one blocked run to one
+  clean run and finding a suspiciously close pair — of course I did; a 4× spread contains any
+  number you like.
+- **The counter you are hunting may not exist.** Before modelling the target's budget, diff your
+  own code against the run timestamps — but then **check the suspect code actually ran.** A commit
+  landing between a failure and a success is a coincidence until a log line proves execution. One
+  `grep -c` for the fallback's own message would have saved the wrong conclusion above, and it is
+  the same discipline as taking a verdict from the response instead of the UI.
+- **A run that differs in three ways is not a control.** Window, range and pace all changed here.
+  That is enough to refute a fixed ceiling and not enough to name a cause.
 
 And the "coordinated cull" dissolves: three sessions started within three minutes of each other,
 each spending an identical allowance at an identical rate, **arrive at zero together**. Simultaneous
