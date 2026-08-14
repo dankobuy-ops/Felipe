@@ -792,6 +792,13 @@ def main():
                          "single-worker pace spend about double the ceiling.")
     ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
     # ASCII only in help strings - a non-ASCII char here crashes --help on Windows cp1252.
+    ap.add_argument("--entry-route", choices=("auto", "home", "direct"), default="auto",
+                    help="which door to take from www.pjud.cl. MEASURED 2026-08-14: residential "
+                         "searches fine after the DIRECT link (136 opens, 0 blocks); a datacenter "
+                         "session enters just as cleanly by it and then cannot complete a SINGLE "
+                         "search (rejF=1, 0 opens, twice, different IPs, quiet range). Runners "
+                         "should use 'home' - the guest-gate route, the only one that has ever "
+                         "searched remotely. Both links are still offered to a runner.")
     ap.add_argument("--idle-motion", action="store_true",
                     help="emit small pointer drift during the pacing waits, the way a resting "
                          "hand does. TESTED 2026-08-14 AND IT CHANGED NOTHING: two runner arms, "
@@ -862,6 +869,7 @@ def main():
     if a.post_causa:
         POST_CAUSA = a.post_causa
     C.IDLE_MOTION = a.idle_motion
+    ojv.ENTRY_ROUTE = a.entry_route
     if a.slot:
         DATA = HERE.parent / "data" / f"worker_a{a.slot}"
         PDFS = DATA / "pdfs"

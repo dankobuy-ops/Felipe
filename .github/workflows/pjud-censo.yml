@@ -366,8 +366,15 @@ jobs:
           # separate "the counter counts OPENS" from "the counter counts REQUESTS": at ~73 opens
           # both models agree, because an open and its ebook move together. Drop the document and
           # they diverge — ~73 opens says opens, ~145 says requests.
+          # ⚠️ --entry-route home ON RUNNERS. MEASURED 2026-08-14: a datacenter session that takes
+          # the DIRECT link lands on the form perfectly and then cannot complete a single search —
+          # rejF=1, ZERO causa opens, reproduced twice an hour apart on different IPs with the
+          # range quiet for 57 minutes. Every remote run that has ever searched went through
+          # /home/ and the guest gate first. Residential is the opposite: the direct link is what
+          # made local entry work at all (136 opens, 0 blocks), after nine failed clicks.
+          # Both links are still offered to a runner (entry_probe.py), so this is a choice.
           ARGS=(--max-recover 1 --launch-chrome --gate db --search-gap "$SG" --causa-gap "$CG"
-                --max-minutes ${{ inputs.lifespan_min }})
+                --entry-route home --max-minutes ${{ inputs.lifespan_min }})
           if [ "${{ inputs.no_ebook }}" = "true" ]; then ARGS+=(--no-ebook); fi
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi

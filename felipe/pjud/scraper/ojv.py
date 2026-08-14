@@ -309,6 +309,12 @@ def find_form(ctx):
 
 OJV_HOST = "oficinajudicialvirtual.pjud.cl"
 
+# Which door to take from www.pjud.cl. See _reach_ojv for the measurements.
+#   auto   — prefer the direct link (residential: measured good, 136 opens clean)
+#   home   — prefer /home/ + the guest gate (runners: the ONLY route that has ever searched)
+#   direct — force the direct link, for testing
+ENTRY_ROUTE = "auto"
+
 # ── WHERE AM I? ──────────────────────────────────────────────────────────────
 # Operator's call, 2026-08-14, after the site quietly changed its entry route under us: a worker
 # should recognise WHERE IT IS and act accordingly, instead of running a fixed script and
@@ -418,13 +424,30 @@ def _reach_ojv(ctx, start, wait=60.0):
     # fallback for whatever still serves it. Half the entry folklore in this file — the flaky
     # gate-1 click, "every fresh profile fails its first entry", the two-buttons mess — lives on a
     # path a human may no longer take at all.
+    # ⚠️ THE ROUTE IS PER-ENVIRONMENT, AND THAT IS MEASURED, NOT ASSUMED (2026-08-14).
+    #   residential : the direct link lands on the form and searches fine — 136 opens, 0 blocks.
+    #   datacenter  : the direct link lands on the form just as cleanly and then CANNOT COMPLETE A
+    #                 SINGLE SEARCH — rejF=1, 0 opens, twice, an hour apart, different IPs, on a
+    #                 range quiet for 57 minutes. Every remote run that DID search today went
+    #                 through /home/ and the guest gate first.
+    # A runner is still OFFERED both links (entry_probe.py, 2026-08-14), so this is a choice we
+    # can make rather than a door that closed.
+    # ⚠️ And the reason it is a FLAG: I set one global ranking from a scan of ONE machine, which
+    # showed only the direct link here, and pushed it for both environments. The runner failed its
+    # first search minutes later. Two environments already known to be served different pages do
+    # not get one hardcoded preference.
     def _rank(c):
         h = (c["h"] or "").lower()
-        if "consultaunificada" in h or "sesion-consulta" in h:
-            return 0
-        return 1 if "/home" not in h else 2
+        direct = "consultaunificada" in h or "sesion-consulta" in h
+        home = "/home" in h
+        if ENTRY_ROUTE == "home":
+            return 0 if home else (2 if direct else 1)
+        if ENTRY_ROUTE == "direct":
+            return 0 if direct else (2 if home else 1)
+        return 0 if direct else (1 if not home else 2)      # auto: as before
     hits.sort(key=_rank)
     best = hits[0]
+    note(f"    entry route '{ENTRY_ROUTE}' -> {best['h'][:70]}")
     note(f"    click -> {best['t'][:44]!r}")
     before = set(ctx.pages)
     C.human_click(start, start.locator(f"a[href='{best['h']}']").first)
