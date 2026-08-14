@@ -64,6 +64,19 @@ def snapshot(path, tries=6):
 def as_causa(rec):
     """worker A record -> the shape ingest_cdp.build() consumes."""
     cuads = rec.get("cuadernos") or ["1 - Principal"]
+    # ⚠️ EACH HISTORIA MUST CARRY ITS OWN CUADERNO LABEL. ingest_cdp derives the row id from that
+    # label — `<causa>-c<n>-<folio>-<k>` via _cuaderno_num — so filing cuaderno 2's historia under
+    # cuads[0] would stamp it `-c1-` and COLLIDE with the real cuaderno-1 rows: worker B's data
+    # silently overwritten, and worker C's skip lists keyed to ids that mean the wrong thing.
+    # Nothing would look wrong at any point.
+    # Only the cuadernos actually READ are emitted. Claiming the rest exist with empty historia
+    # would read as "we checked and there was nothing", the opposite of the truth.
+    books = []
+    if rec.get("historia_c1"):
+        books.append({"cuaderno": cuads[0], "historia": rec["historia_c1"]})
+    if rec.get("historia_c2"):
+        books.append({"cuaderno": rec.get("cuaderno_c2") or (cuads[1] if len(cuads) > 1 else "2"),
+                      "historia": rec["historia_c2"]})
     return {
         "rol": rec["rol"],
         "tribunalId": rec["tribunal_id"],
@@ -71,9 +84,7 @@ def as_causa(rec):
         "corte": "",                     # Corte=Todos: worker A genuinely does not know it
         "header": rec.get("header") or {},
         "litigantes": rec.get("litigantes") or [],
-        # Only cuaderno 1 was read. Claiming the others exist with empty historia would look
-        # like "we checked and there was nothing", which is the opposite of the truth.
-        "cuadernos": [{"cuaderno": cuads[0], "historia": rec.get("historia_c1") or []}],
+        "cuadernos": books,
         "escritos": rec.get("escritos") or [],
         "receptor": [],
         "ebook": rec.get("_ebook_url", ""),
@@ -174,6 +185,12 @@ def main():
         rule evaluated from the data cannot be lost that way.
         """
         if rec.get("skipped_proc"):
+            return False
+        # The header ETAPA gate, re-evaluated from the harvested data for the same reason as
+        # above: the flag in state.json is not trustworthy on its own, but the etapa we actually
+        # read is. Terminada / Incidentes / "tengase por no presentada" are never stored.
+        if rec.get("skipped_etapa") or run.etapa_rejected(
+                (rec.get("header") or {}).get("etapa", "")):
             return False
         if not a.only_proc:
             return True

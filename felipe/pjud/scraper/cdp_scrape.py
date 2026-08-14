@@ -169,13 +169,48 @@ def human_scroll(page, notches=None, down=True, settle=True):
 
     Deltas vary, the gaps vary, and roughly a third of the time there is a small correction
     upwards — the overshoot people make when they scroll past what they wanted.
+
+    ⚠️ PARK THE POINTER OVER THE CONTENT FIRST, or the wheel telemetry is only half the story.
+    Operator's observation 2026-08-14: a person scrolling a results list holds the pointer still
+    in SCREEN space while the page moves underneath, so row after row passes beneath the cursor
+    and fires mouseover/mouseout. Playwright's virtual mouse starts at (0,0), so wheeling without
+    positioning scrolls from the top-left corner — a place no hand ever rests — and touches
+    nothing. MEASURED on a live causa, same wheel events both ways:
+
+        pointer not positioned   ->   0 mouseover,  0 mouseout,  0 rows
+        pointer over the table   ->  12 mouseover, 12 mouseout,  2 rows
+
+    An empty channel is the same class of tell as never scrolling at all, which is the bug this
+    function was written to fix. One mouse.move() closes it, and it costs nothing.
     """
     try:
         n = notches if notches is not None else random.randint(3, 7)
+        # Somewhere a reader's pointer would plausibly be: over the main table, off-centre.
+        try:
+            spot = page.evaluate(
+                """() => {
+                    const el = document.querySelector('#historiaCiv table')
+                           || document.querySelector('#dtaTableDetalleFecha')
+                           || document.querySelector('table');
+                    const r = el ? el.getBoundingClientRect() : null;
+                    if (!r || r.width < 40 || r.height < 40) return null;
+                    return {x: r.left + r.width * (0.25 + Math.random() * 0.5),
+                            y: r.top + Math.min(r.height * 0.5, 120 + Math.random() * 220)};
+                }""")
+            if spot:
+                page.mouse.move(spot["x"], spot["y"])
+                page.wait_for_timeout(random.randint(80, 200))
+        except Exception:
+            spot = None
         for i in range(n):
             dy = random.uniform(90, 340) * (1 if down else -1)
             page.mouse.wheel(0, dy)
             page.wait_for_timeout(random.uniform(70, 260))
+            # A hand resting on a mouse is never perfectly still between notches.
+            if spot and random.random() < 0.5:
+                spot["x"] += random.uniform(-9, 9)
+                spot["y"] += random.uniform(-7, 7)
+                page.mouse.move(spot["x"], spot["y"])
             if random.random() < 0.3:                 # overshoot, then correct
                 page.mouse.wheel(0, -dy * random.uniform(0.15, 0.4))
                 page.wait_for_timeout(random.uniform(90, 300))
@@ -183,6 +218,47 @@ def human_scroll(page, notches=None, down=True, settle=True):
             page.wait_for_timeout(random.uniform(150, 500))
     except Exception:
         pass                                          # scrolling must never break a run
+
+
+IDLE_MOTION = False      # --idle-motion: emit hand-jitter during the waits. UNPROVEN, see below.
+
+
+def human_idle(page, secs):
+    """Wait `secs`, emitting the small pointer drift a resting hand cannot help producing.
+
+    ⚠️ THIS IS A HYPOTHESIS UNDER TEST, NOT A KNOWN FIX. It is off by default and gated behind
+    --idle-motion precisely so it can be A/B'd against the current behaviour. "More human-looking"
+    is exactly the sort of claim that feels obviously true and has been wrong here before — the
+    90-minute range-fatigue theory felt obvious too.
+
+    The reasoning it is testing: `mouse.wheel()` dispatches NO mousemove, and we never move the
+    pointer except to click. So between actions our pointer is perfectly, inhumanly still for
+    20-25 s at a stretch, while a real hand resting on a mouse emits continuous low-amplitude
+    motion. Hover-on-scroll was the same shape of gap and was real (measured 0 vs 12 events).
+
+    Falls back to a plain sleep on any error: idling must never break a run.
+    """
+    if not IDLE_MOTION or secs <= 0:
+        time.sleep(max(0.0, secs))
+        return
+    end = time.time() + secs
+    try:
+        pos = page.evaluate("() => ({x: innerWidth * 0.45, y: innerHeight * 0.5})")
+        x, y = pos["x"], pos["y"]
+        while time.time() < end:
+            time.sleep(min(random.uniform(0.8, 2.6), max(0.0, end - time.time())))
+            if time.time() >= end:
+                break
+            # A few pixels, a couple of steps — this is a hand resting, not a hand travelling.
+            for _ in range(random.randint(1, 3)):
+                x += random.uniform(-6, 6)
+                y += random.uniform(-5, 5)
+                page.mouse.move(x, y)
+                page.wait_for_timeout(random.randint(15, 60))
+    except Exception:
+        left = end - time.time()
+        if left > 0:
+            time.sleep(left)
 
 
 def human_click(page, target, timeout=8000):

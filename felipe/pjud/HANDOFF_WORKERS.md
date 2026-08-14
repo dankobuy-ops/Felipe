@@ -659,3 +659,105 @@ settled it.** Size the smoke test to the question, and gate the full session on 
 
 ⚠️ `documentos` keys on **`cuaderno_id`**, not `causa_id` — a row belongs to a historia row
 (`<causa>-c<n>-<folio>-<k>`), not to the causa. Worth remembering when writing an ad-hoc query.
+
+---
+
+# Worker A REDEFINED — metadata only, gated on the caratulado (2026-08-14)
+
+Settled with the operator driving a live browser while the session was recorded. Everything below
+is **measured on the wire**, not inferred from the DOM.
+
+## What worker A does now
+
+1. Open the causa.
+2. **Parse the header ALONE, and gate on its `Etapa`.** Reject → close, and do **not** open a
+   single book. *"If the header doesn't match, ditch that causa; there's no need to go into its
+   books."*
+3. Free harvest (no requests): litigantes, escritos, historia of book 1, cuaderno list.
+4. `--only-proc` gate, as before.
+5. **Switch to cuaderno 2** and take its historia **and its own header**.
+6. Close. **No documents, ever, under any flag.**
+
+`--no-ebook` is still accepted so the workflows keep parsing, and is ignored. A buys nothing.
+
+## The measured request sequence
+
+A full human run, recorded 2026-08-14:
+
+```
+GET   indexN.php                     entry (clicked through from www.pjud.cl)
+GET   consultaUnificada.php
+POST  combosJSON/leeCorte.php        codCompetencia=3 codCorte=0 tipoBusqueda=1
+POST  combosJSON/leeTrib.php
+POST  ADIR_871/civil/consultaFechaCivil.php    THE SEARCH — 23 s
+        g-recaptcha-response-fecha  (1,358 chars)
+        action=validate_captcha_fecha  fecDesde  fecHasta
+        fecCompetencia=3  fecTribunal=<id>  corteFec=0
+POST  ADIR_871/civil/modal/causaCivil.php     open causa   dtaCausa len 621 + token
+POST  ADIR_871/civil/modal/causaCivil.php     switch book  dtaCausa len 508 + same token
+```
+
+★ **EVERY cuaderno switch costs one `causaCivil.php` POST — measured, no longer assumed.** Seven
+POSTs were recorded across one open and six toggles, alternating `dtaCausa` 509 (book 1) / 508
+(book 2) with the session token constant. Worker A's visit is therefore **2 requests per causa**.
+
+★ **Neither request touches `docuS.php`**, the document endpoint that refused 16 and 19 times on
+2026-08-13. That is the whole point of the redefinition: A stays clear of the thing that blocks.
+
+★ Litigantes, escritos and book-1 historia generate **zero** requests — confirmed by their absence
+from the recording, not assumed from the DOM.
+
+## ⚠️⚠️ The header is PER-CUADERNO
+
+The same causa, same modal, seconds apart:
+
+```
+book 1 - Principal   ->   Etapa: 1 Notificación demanda y su proveído   (9 historia rows)
+book 2 - Apremio     ->   Etapa: 1 Mandamiento                          (2 historia rows)
+```
+
+Switching books re-renders the whole caratulado. Consequences, all live:
+
+- The header **must** be parsed while book 1 is displayed — which is what the modal opens on — or
+  `causas.etapa` silently becomes the Apremio stage and the gate judges the wrong field.
+- `scrape_causa` (workers B and C) already parses the header before its cuaderno loop. **Keep it
+  that way.** There is now a ⚠️ at both sites.
+- Every `causas.etapa` value in Neon is a **book-1** stage, because A never switched books before.
+  The 11.3% Terminada figure is therefore consistent with the gate.
+- Book 2's header is captured as `header_c2` now: once the switch is paid for, its Etapa is free,
+  and the Apremio stage is exactly what a human sorting these needs. **It has no column yet.**
+
+⚠️ Both books number their stage `1`. The ordinal is scoped to the book, not a global enumeration.
+
+## The Etapa gate — `run.etapa_rejected()`
+
+Discards `Terminada`, `Incidentes`, `Téngase por no presentada`. Shared by worker A and the
+ingest, and worker C will use it too.
+
+⚠️ **It strips the leading ordinal and folds case/accents, and it has to.**
+- The ten values in Neon run 0,1,2,3,4,5,6,7,8,**12** — sparse, so "Incidentes" cannot be
+  predicted; we have no example of it yet.
+- `dbstore.FILL_SKIP_ETAPAS` hardcodes `"6 Terminada"`, which **does not exist**: 6 is
+  *Impugnación de Sentencia*, Terminada is 8. That entry has matched nothing since it was written.
+- The site abbreviates: the one stored instance is *"Téngase por no presentada la **dda** por
+  apercibimiento"*. An exact match on the full phrase finds nothing — and reports success.
+
+Verified to discard `8 Terminada` / `6 Terminada` / bare `Terminada` / `1 Incidentes` /
+`N Incidentes` / both spellings of the téngase, while keeping `6 Impugnación de Sentencia`,
+`12 Incompetencia`, `1 Mandamiento` and `4 Término Probatorio`.
+
+## ⚠️ The ingest trap this created
+
+`ingest_worker_a.as_causa()` used to hardcode
+`cuadernos: [{cuaderno: cuads[0], historia: historia_c1}]`. Feeding book 2's historia through that
+would stamp its rows **`-c1-`** — colliding with the real book-1 rows, overwriting worker B's data
+and pointing worker C's skip lists at ids that mean something else. Nothing would have looked
+wrong. Each historia now carries its own cuaderno label, and only books actually READ are emitted.
+Verified: `29-C-10301-2026-c1-1-1` and `29-C-10301-2026-c2-1-1` coexist, 0 Documentos rows.
+
+## Pending decisions
+
+- `header_c2` has nowhere to live — needs an `etapa_c2` column if humans will sort on it.
+- The ~4,460 existing causas have no book 2 and were never screened: they need an A re-pass.
+  **Open question: delete the causas the gate rejects, or mark them?**
+- Worker C's two modes wait on the five human categories (3 actionable, 2 not).

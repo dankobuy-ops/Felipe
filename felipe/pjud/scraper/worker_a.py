@@ -43,6 +43,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import cdp_scrape as C
 import ojv
+import run                       # etapa_rejected: the header gate, shared with C and ingest
 from ojv import note
 from settle import Settler
 from playwright.sync_api import sync_playwright
@@ -324,9 +325,18 @@ def proc_matches(rec, pattern):
     return re.search(pattern, got, re.I) is not None
 
 
-def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=True, only_proc=""):
-    """Open the causa, take everything free, take the ebook, close. Returns the record or None
-    if the modal never opened (which is NOT by itself a block — the caller checks that)."""
+def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=False, only_proc=""):
+    """METADATA ONLY. Open the causa, gate on the caratulado's Etapa, take what is free plus the
+    historia of cuaderno 2, close. Returns the record, or None if the modal never opened (which is
+    NOT by itself a block — the caller checks that).
+
+    Redefined 2026-08-14 (operator). Worker A takes header, litigantes, escritos, historia of
+    book 2 and — because it is already rendered and therefore free — historia of book 1. It
+    fetches NO documents whatsoever; every PDF belongs to worker B.
+
+    `want_ebook` is retained only so the existing --no-ebook call sites keep working. It is
+    ignored: A does not buy documents under any flag.
+    """
     causa_id = f"{trib_id}-{row['rol']}"
     note(f"    open {causa_id}  {row['car'][:52]}")
     C.human_click(p, p.locator("#dtaTableDetalleFecha tbody tr").nth(row["i"])
@@ -348,11 +358,41 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=True, only_proc=""
     p.wait_for_timeout(1500)                  # let the tabs inside the modal finish rendering
     C.human_scroll(p, notches=random.randint(2, 5))   # the modal is long; nobody reads it static
 
-    # ---- free harvest: all of this is already in the DOM, none of it costs a request ----
     rec = {"causa_id": causa_id, "tribunal_id": trib_id, "tribunal": trib_name,
            "rol": row["rol"], "caratulado": row["car"], "fecha_ing": row.get("fecha", ""),
            "opened_at": time.strftime("%Y-%m-%d %H:%M:%S")}
-    for key, fn in (("header", C.parse_header), ("litigantes", C.parse_litigantes),
+
+    # ---- gate 1: the caratulado's Etapa, read before anything else is touched ----
+    # ⚠️⚠️ THE HEADER IS PER-CUADERNO. Measured live 2026-08-14: the SAME causa reads
+    #     book 1  ->  "Etapa: 1 Notificación demanda y su proveído"   (9 historia rows)
+    #     book 2  ->  "Etapa: 1 Mandamiento"                          (2 historia rows)
+    # Switching books re-renders the whole caratulado. So the header MUST be parsed while book 1
+    # is still displayed — which is what the modal opens on — or `causas.etapa` silently becomes
+    # the Apremio stage and the gate judges the wrong thing. Every caller that walks cuadernos
+    # (scrape_causa in worker B and C) already parses the header before its loop; keep it that way.
+    # ⚠️ Note both books number their etapa "1". The ordinal is per-book, NOT a global stage
+    # enumeration, which is why run.etapa_rejected() matches the label and strips the number.
+    # ⚠️ THE HEADER IS PARSED ALONE, AND THE GATE FIRES BEFORE THE FREE HARVEST AND BEFORE ANY
+    # CUADERNO IS OPENED (operator, 2026-08-14: "if the header doesn't match, ditch that causa;
+    # there's no need to go into its books"). The open itself is unavoidable — the caratulado only
+    # exists inside the modal — but everything after it is not. A discarded causa costs one open.
+    try:
+        rec["header"] = C.parse_header(p)
+    except Exception as e:
+        rec["header"] = None
+        note(f"      [warn] header: {str(e)[:60]}")
+    etapa = (rec.get("header") or {}).get("etapa", "")
+    if run.etapa_rejected(etapa):
+        rec["skipped_etapa"] = etapa
+        rec["ebook"] = {"bytes": 0, "skipped_etapa": True}
+        note(f"      etapa {etapa[:44]!r} is not wanted — closing without opening its books")
+        C.close_modal(p, "#modalDetalleCivil")
+        p.wait_for_timeout(1200)
+        C.clear_stuck_modal(p)
+        return rec
+
+    # ---- free harvest: already in the DOM, none of it costs a request ----
+    for key, fn in (("litigantes", C.parse_litigantes),
                     ("escritos", C.parse_escritos), ("historia_c1", C.parse_historia)):
         try:
             rec[key] = fn(p)
@@ -364,29 +404,53 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=True, only_proc=""
     except Exception:
         rec["cuadernos"] = []
     proc = (rec.get("header") or {}).get("procedimiento", "")
-    note(f"      {len(rec.get('litigantes') or [])} litigantes · "
-         f"{len(rec.get('historia_c1') or [])} historia c1 · "
-         f"{len(rec['cuadernos'])} cuadernos · {proc[:40]}")
 
     if only_proc and not proc_matches(rec, only_proc):
-        # Recorded, so it is never re-opened, but flagged so nothing downstream stores it and no
-        # document is bought for it.
+        # Recorded, so it is never re-opened, but flagged so nothing downstream stores it.
         rec["skipped_proc"] = True
         rec["ebook"] = {"bytes": 0, "skipped_proc": True}
-        note(f"      procedimiento {proc[:40]!r} does not match — no document, not stored")
+        note(f"      procedimiento {proc[:40]!r} does not match — not stored")
         C.close_modal(p, "#modalDetalleCivil")
         p.wait_for_timeout(1200)
         C.clear_stuck_modal(p)
         return rec
-    if want_ebook:
-        time.sleep(EBOOK_GAP)
-        rec["ebook"] = grab_doc(p, causa_id, "ebook", "newebook")
-    else:
-        rec["ebook"] = {"bytes": 0, "skipped": True}
-    # worker B's queue: what we deliberately did NOT take while we were in here
-    rec["docs_pending"] = ["texto_demanda", "certificado", "ingreso_demanda_c1"] + \
-                          (["mandamiento_c2"] if len(rec["cuadernos"]) > 1 else []) + \
-                          ([] if rec["ebook"].get("bytes") else ["ebook"])
+
+    # ---- cuaderno 2 (Apremio): its historia is the point of the visit ----
+    # This is the ONLY part of the harvest that may cost a request. Cuaderno 1's historia is
+    # already rendered when the modal opens; switching books may or may not hit the server, which
+    # is unmeasured — do not restate the old "one AJAX per switch" claim as fact.
+    rec["historia_c2"], rec["cuaderno_c2"] = None, ""
+    if len(rec["cuadernos"]) > 1:
+        try:
+            if C.select_cuaderno(p, 1):
+                p.wait_for_timeout(900)
+                rec["historia_c2"] = C.parse_historia(p)
+                rec["cuaderno_c2"] = rec["cuadernos"][1]
+                # Book 2 re-renders the caratulado, so its own Etapa (e.g. "1 Mandamiento") is
+                # sitting there for free once we have paid for the switch. Captured because the
+                # Apremio stage is exactly what a human sorting these needs, and re-opening the
+                # causa later to get it would cost two POSTs all over again.
+                try:
+                    rec["header_c2"] = C.parse_header(p)
+                except Exception:
+                    rec["header_c2"] = None
+            else:
+                note("      [warn] could not switch to cuaderno 2")
+        except Exception as e:
+            note(f"      [warn] historia_c2: {str(e)[:60]}")
+
+    # ⚠️ WORKER A FETCHES NO DOCUMENTS AT ALL (operator, 2026-08-14). Not the ebook, not the
+    # mandamiento, nothing. Measured 2026-08-13: A did 306 opens / 131 min with zero blocks while
+    # B, which fetches ~14 documents per causa, was refused on its THIRD causa twice over at two
+    # different pacings. The refusals come from the document endpoint, so keeping A away from it
+    # entirely is what lets A sweep freely. Every PDF is worker B's job now.
+    rec["ebook"] = {"bytes": 0, "metadata_only": True}
+    rec["docs_pending"] = ["texto_demanda", "certificado", "ebook", "ingreso_demanda_c1"] + \
+                          (["mandamiento_c2"] if len(rec["cuadernos"]) > 1 else [])
+    note(f"      {len(rec.get('litigantes') or [])} litigantes · "
+         f"{len(rec.get('historia_c1') or [])} hist c1 · "
+         f"{len(rec.get('historia_c2') or [])} hist c2 · "
+         f"{len(rec['cuadernos'])} cuadernos · {proc[:34]}")
     C.close_modal(p, "#modalDetalleCivil")
     p.wait_for_timeout(1500)
     C.clear_stuck_modal(p)
@@ -727,6 +791,12 @@ def main():
                          "costs two (the open plus its document), so two workers at the "
                          "single-worker pace spend about double the ceiling.")
     ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
+    # ASCII only in help strings - a non-ASCII char here crashes --help on Windows cp1252.
+    ap.add_argument("--idle-motion", action="store_true",
+                    help="emit small pointer drift during the pacing waits, the way a resting "
+                         "hand does. UNPROVEN: mouse.wheel dispatches no mousemove, so between "
+                         "actions our pointer is perfectly still for 20-25s at a time. Off by "
+                         "default so it can be A/B tested against the current behaviour.")
     ap.add_argument("--launch-chrome", action="store_true",
                     help="this worker starts its OWN Chrome, inside the entry lock, so no two "
                          "brand-new sessions ever appear at the same moment.")
@@ -790,6 +860,7 @@ def main():
         CAUSA_GAP = a.causa_gap
     if a.post_causa:
         POST_CAUSA = a.post_causa
+    C.IDLE_MOTION = a.idle_motion
     if a.slot:
         DATA = HERE.parent / "data" / f"worker_a{a.slot}"
         PDFS = DATA / "pdfs"
@@ -1355,7 +1426,7 @@ def main():
                             save()
                             tally_line("TALLY at cap:")
                             return finish("max-causas", False, 0)
-                        time.sleep(gap_for(CAUSA_GAP))
+                        C.human_idle(p, gap_for(CAUSA_GAP))
                         tally["opens"] += 1
                         try:
                             rec = harvest_causa(ctx, p, tgt["v"], tgt["t"], c,
@@ -1420,7 +1491,7 @@ def main():
                             note_health(2, "apm-challenge")
                         save()
                         tally_line("      running:")
-                        time.sleep(gap_for(POST_CAUSA))
+                        C.human_idle(p, gap_for(POST_CAUSA))
 
                 if blocked_here:
                     break

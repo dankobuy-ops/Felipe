@@ -32,6 +32,7 @@ import random
 import re
 import subprocess
 import sys
+import unicodedata
 import time
 import unicodedata
 import urllib.request
@@ -944,6 +945,39 @@ def _cuaderno_num(cuaderno_txt, fallback):
     """'1 - Principal' -> '1', '2 - Apremio…' -> '2'; else the 1-based fallback."""
     m = re.match(r"\s*(\d+)\s*-", cuaderno_txt or "")
     return m.group(1) if m else str(fallback)
+
+
+# ── the header ETAPA gate (operator, 2026-08-14) ─────────────────────────────
+# Causas at these stages are not wanted at all: discard them the moment the modal renders its
+# caratulado, BEFORE opening any cuaderno or buying any document. About 11% of what we already
+# hold (505 of 4,460) is Terminada alone.
+ETAPA_SKIP = (
+    "terminada",
+    "incidentes",
+    "tengase por no presentada",
+)
+
+
+def etapa_rejected(etapa):
+    """True if this header Etapa means 'do not bother with this causa'.
+
+    ⚠️ MATCH THE LABEL, NOT THE STRING. Header etapas carry a leading ordinal — '1 Notificación
+    demanda y su proveído', '8 Terminada' — and the numbering is BOTH sparse and unstable: the ten
+    values in Neon run 0,1,2,3,4,5,6,7,8,12, and dbstore.FILL_SKIP_ETAPAS hardcodes '6 Terminada',
+    which does not exist (6 is 'Impugnación de Sentencia'; Terminada is 8). That entry has been
+    matching nothing since it was written. Stripping the ordinal fixes it and makes the rule work
+    for 'Incidentes' whatever number it turns out to carry -- we have no example of it yet.
+
+    ⚠️ FOLD ACCENTS AND CASE. The site mixes them freely ('NOTIFICACIÓN' vs 'Notificación'), and
+    it abbreviates: the one instance in our data reads 'Téngase por no presentada la dda por
+    apercibimiento' -- 'dda', not 'demanda'. An exact match on the full phrase finds nothing and
+    reports the filter working perfectly, which is the worst possible failure.
+    """
+    if not etapa:
+        return False
+    s = unicodedata.normalize("NFKD", str(etapa)).encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"^\s*\d+\s*", "", s).strip()
+    return any(k in s for k in ETAPA_SKIP)
 
 
 def _first_date(s):

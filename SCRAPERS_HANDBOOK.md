@@ -231,6 +231,46 @@ glances away. Reproduce both (`_kbd_pause`: gaussian around a base, plus a rando
 Parsing the DOM directly means the session produces **no wheel telemetry at all** while
 "reading" a 100-row table. Emit real wheel events (`human_scroll`) before and during reads.
 
+### ★★ Ask what telemetry a human could not SUPPRESS — and check you emit it
+
+The sharpest question in this file, and it came from the operator watching himself scroll
+(PJUD, 2026-08-14): *when a person scrolls a results list, the pointer sits still in screen space
+while the page moves underneath, so row after row passes under the cursor.* Those `mouseover` /
+`mouseout` events are not something a human chooses to produce. They are unavoidable.
+
+We produced **none of them**. Playwright's virtual mouse starts at `(0,0)`, and `human_scroll`
+wheeled without ever positioning it — so every scroll happened from the top-left corner of the
+viewport, a place no hand ever rests, with nothing beneath it. Measured live, identical wheel
+events both ways:
+
+```
+pointer not positioned   ->    0 mouseover,  0 mouseout,  0 rows touched
+pointer over the table   ->   12 mouseover, 12 mouseout,  2 rows touched
+```
+
+The fix is one `mouse.move()` before the first notch, plus a few pixels of drift between notches,
+because a hand resting on a mouse is never perfectly still. It costs nothing.
+
+⇒ **Generalise the question.** "Does my action look human?" is the weaker form. The stronger one
+is **"what does a human emit involuntarily while doing this, and is my channel empty?"** An empty
+channel cannot be explained away by unusual-but-legitimate behaviour — every real user fills it.
+
+Channels worth auditing on any behaviour-scoring site, each of which we have now been caught
+leaving silent at least once:
+
+| channel | filled by a human when… | how we left it empty |
+|---|---|---|
+| wheel events | reading any long list | parsed the DOM, never scrolled |
+| `mouseover`/`mouseout` | scrolling with the pointer over content | scrolled from `(0,0)` |
+| pointer approach path | moving to anything clickable | `page.click()` teleports |
+| keystroke rhythm | typing | fixed 60/70 ms metronome |
+| **`mousemove` while idle** | **hand resting on the mouse** | **still empty — wheel does not emit it** |
+
+That last row is open, and recorded as open: `mouse.wheel()` dispatches no `mousemove`, so idle
+hand-jitter is a channel we still do not fill. Marked as speculation until it is tested against a
+control — which is the only honest way to add motion, since "more human-looking" is exactly the
+kind of claim that feels obviously true and has been wrong here before.
+
 ### ⚠️ Never click a covered target
 
 Driving raw mouse coordinates loses Playwright's actionability check, so if a backdrop or sticky
@@ -903,6 +943,48 @@ about.
 skip list is matched by id; if the id scheme changes on either side, nothing matches, every skip
 list is empty, and the refresh silently becomes the deep worker again. Test it by refreshing a
 record you finished *minutes* ago — anything re-fetched there is drift, not news.
+
+### ★ Reject the record at the cheapest point that can decide
+
+The scarce act buys a decision as well as data. Once PJUD's causa modal is open its header says
+whether the causa is wanted at all — so the discard happens **there**, before any sub-view is
+opened or any document bought (operator, 2026-08-14: *"if the header doesn't match, ditch that
+causa; there's no need to go into its books"*). A rejected record costs one open and nothing more;
+about 11% of the corpus goes on one rule.
+
+⇒ **Order the work so the cheapest disqualifying test runs first**, with the expensive harvest
+strictly after it. "Grab everything while we are here" is right for *free* data and wrong for
+anything costing a request.
+
+### ⚠️ A "record-level" field may be a sub-view field in disguise
+
+PJUD's causa header shows `Etapa: …`, which reads like a property of the causa. It is not — it
+belongs to the **currently displayed cuaderno**, and switching books re-renders it:
+
+```
+book 1 - Principal   ->   Etapa: 1 Notificación demanda y su proveído   (9 rows)
+book 2 - Apremio     ->   Etapa: 1 Mandamiento                          (2 rows)
+```
+
+Parse the header after switching sub-views and you store the wrong value into a column named for
+the record — and gate on it too. Nothing looks broken at any point. **Read record-level fields
+before touching any sub-view, and leave the reason in a comment where the next person will reach.**
+
+⚠️ Both books numbered their stage **1**: ordinals are scoped to the sub-view, so an enumeration
+inferred from one view does not hold across the record.
+
+### ⚠️ Never match an enumerated label by its full string
+
+PJUD stages arrive as `"8 Terminada"`, `"1 Notificación demanda y su proveído"`. A skip list of
+exact strings looked obvious and was quietly broken: it held `"6 Terminada"`, which **does not
+exist** (6 is *Impugnación de Sentencia*; Terminada is 8), so that entry matched nothing for as
+long as it existed — and the ordinals are sparse (0–8, then 12) *and* per-sub-view.
+
+⇒ **Strip the ordinal, fold case and accents, match a substring.** Sites abbreviate: the single
+stored instance of "Téngase por no presentada la demanda" actually reads *"…la **dda** por
+apercibimiento"*. An exact match finds nothing while reporting the filter working perfectly —
+**a filter that silently passes everything is indistinguishable from one that correctly matched
+nothing.** Count what you dropped and log it, or you cannot tell the two apart.
 
 ### Pagination: harvest each page before advancing
 
