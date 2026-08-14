@@ -187,29 +187,43 @@ def human_scroll(page, notches=None, down=True, settle=True):
         n = notches if notches is not None else random.randint(3, 7)
         # Somewhere a reader's pointer would plausibly be: over the main table, off-centre.
         try:
+            # ⚠️ CLAMP TO THE VIEWPORT. A physical pointer cannot leave the window — the OS stops
+            # it at the edge — so a mouse.move() to a negative or past-the-edge coordinate is
+            # something no human can produce, on a site that scores exactly this. A table scrolled
+            # above the fold has a NEGATIVE getBoundingClientRect().top, and the first version of
+            # this code fed that straight to mouse.move(). Clamp with a margin so the pointer
+            # always sits somewhere a hand could actually put it.
             spot = page.evaluate(
                 """() => {
                     const el = document.querySelector('#historiaCiv table')
                            || document.querySelector('#dtaTableDetalleFecha')
                            || document.querySelector('table');
                     const r = el ? el.getBoundingClientRect() : null;
-                    if (!r || r.width < 40 || r.height < 40) return null;
-                    return {x: r.left + r.width * (0.25 + Math.random() * 0.5),
-                            y: r.top + Math.min(r.height * 0.5, 120 + Math.random() * 220)};
+                    const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+                    if (!r || r.width < 40 || r.height < 40) {
+                        return {x: innerWidth * (0.35 + Math.random() * 0.3),
+                                y: innerHeight * (0.35 + Math.random() * 0.3)};
+                    }
+                    return {x: cl(r.left + r.width * (0.25 + Math.random() * 0.5), 8, innerWidth - 8),
+                            y: cl(r.top + Math.min(r.height * 0.5, 120 + Math.random() * 220),
+                                  8, innerHeight - 8)};
                 }""")
+            vw, vh = page.evaluate("() => [innerWidth, innerHeight]")
             if spot:
                 page.mouse.move(spot["x"], spot["y"])
                 page.wait_for_timeout(random.randint(80, 200))
         except Exception:
-            spot = None
+            spot, vw, vh = None, 1440, 900
         for i in range(n):
             dy = random.uniform(90, 340) * (1 if down else -1)
             page.mouse.wheel(0, dy)
             page.wait_for_timeout(random.uniform(70, 260))
             # A hand resting on a mouse is never perfectly still between notches.
             if spot and random.random() < 0.5:
-                spot["x"] += random.uniform(-9, 9)
-                spot["y"] += random.uniform(-7, 7)
+                # Drift, but never off the window: unbounded accumulation over many notches walks
+                # the pointer out of the viewport for the same impossible-position reason.
+                spot["x"] = min(max(spot["x"] + random.uniform(-9, 9), 8), vw - 8)
+                spot["y"] = min(max(spot["y"] + random.uniform(-7, 7), 8), vh - 8)
                 page.mouse.move(spot["x"], spot["y"])
             if random.random() < 0.3:                 # overshoot, then correct
                 page.mouse.wheel(0, -dy * random.uniform(0.15, 0.4))

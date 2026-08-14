@@ -309,6 +309,86 @@ def find_form(ctx):
 
 OJV_HOST = "oficinajudicialvirtual.pjud.cl"
 
+# ── WHERE AM I? ──────────────────────────────────────────────────────────────
+# Operator's call, 2026-08-14, after the site quietly changed its entry route under us: a worker
+# should recognise WHERE IT IS and act accordingly, instead of running a fixed script and
+# reporting what failed to happen.
+#
+# ⚠️ THIS IS THE FIX FOR A WHOLE CLASS OF WASTED HOURS. Every entry failure message we had said
+# what did NOT happen — "objetivo tapado", "no form after attempt 1", "could not reach the OJV" —
+# and none said where the worker actually was. On 2026-08-14 the worker sat ON THE FORM refusing
+# to click a guest-entry button it had already passed, and the log could not tell us. The code's
+# own comments admit "covered" had already meant three different things on three different days.
+#
+# Add new states here rather than adding another special case at a call site: the point is that
+# there is ONE place that knows what the site can look like.
+PAGE_STATES = ("form", "results", "gate", "aviso", "captcha", "blocked", "www", "ojv-other",
+               "blank", "elsewhere")
+
+
+def locate(page):
+    """Name the page the worker is standing on. Never raises; returns 'unknown' if it cannot tell.
+
+    Order matters: the most specific and most ACTIONABLE states are tested first. A page can be
+    several things at once (a form WITH a results table, a gate WITH an aviso over it) and the
+    caller wants the one that decides what to do next.
+    """
+    try:
+        url = (page.url or "").lower()
+    except Exception:
+        return "unknown"
+    if not url or url in ("about:blank", "chrome://newtab/"):
+        return "blank"
+    try:
+        d = page.evaluate("""() => ({
+            form:    !!document.querySelector('#fecCompetencia'),
+            results: !!document.querySelector('#dtaTableDetalleFecha tbody tr'),
+            modal:   !!document.querySelector('#modalDetalleCivil.in'),
+            gate:    document.querySelectorAll(
+                       "[onclick*='accesoConsultaCausas'],[onclick*='accesoInvitado']").length,
+            aviso:   !!document.querySelector('#no-disponible'),
+            body:    (document.body ? document.body.innerText : '').slice(0, 400)
+        })""")
+    except Exception:
+        return "unknown"                      # mid-navigation; the caller should just retry
+    low = (d.get("body") or "").lower()
+    if "code is in the image" in low or captcha_frame(page):
+        return "captcha"
+    # Use the STRUCTURAL detector the rest of the file trusts, not a text list of my own: there is
+    # no module-level rejection vocabulary, and inventing a second one is how duplicated block
+    # detectors drifted apart before. rej_frames() needs no `net`, so it works from a bare page.
+    try:
+        if rej_frames(page):
+            return "blocked"
+    except Exception:
+        pass
+    if d["modal"]:
+        return "modal"
+    if d["form"]:
+        return "results" if d["results"] else "form"
+    if d["aviso"]:
+        return "aviso"
+    if d["gate"]:
+        return "gate"
+    if OJV_HOST in url:
+        return "ojv-other"
+    if "pjud.cl" in url:
+        return "www"
+    return "elsewhere"
+
+
+def locate_ctx(ctx):
+    """(state, page) for the most useful page in the context — the one a caller should act on."""
+    best, best_page = "elsewhere", None
+    rank = {"modal": 0, "results": 1, "form": 2, "captcha": 3, "blocked": 4,
+            "aviso": 5, "gate": 6, "ojv-other": 7, "www": 8, "blank": 9,
+            "elsewhere": 10, "unknown": 11}
+    for q in list(ctx.pages):
+        st = locate(q)
+        if best_page is None or rank.get(st, 99) < rank.get(best, 99):
+            best, best_page = st, q
+    return best, best_page
+
 
 def _reach_ojv(ctx, start, wait=60.0):
     """Click through from www.pjud.cl to the OJV, FOCUSING the tab it opens.
@@ -329,7 +409,21 @@ def _reach_ojv(ctx, start, wait=60.0):
     if not hits:
         note(f"    no <a href*='{OJV_HOST}'> on {start.url[:50]}")
         return None
-    hits.sort(key=lambda c: 0 if "/home" in c["h"].lower() else 1)
+    # ⚠️ DO NOT PREFER /home. This used to sort "/home" first, which walked us into the guest-entry
+    # gate on purpose. Measured 2026-08-14 with the operator clicking by hand: www.pjud.cl now
+    # offers exactly ONE OJV anchor — includes/sesion-consultaunificada.php, tooltip "Sección que
+    # permite la revisión de causas" — and it lands STRAIGHT ON THE FORM (indexN.php,
+    # #fecCompetencia present, zero accesoConsultaCausas buttons). No /home, no gate.
+    # So prefer the session/consulta route a person actually gets, and keep /home only as a
+    # fallback for whatever still serves it. Half the entry folklore in this file — the flaky
+    # gate-1 click, "every fresh profile fails its first entry", the two-buttons mess — lives on a
+    # path a human may no longer take at all.
+    def _rank(c):
+        h = (c["h"] or "").lower()
+        if "consultaunificada" in h or "sesion-consulta" in h:
+            return 0
+        return 1 if "/home" not in h else 2
+    hits.sort(key=_rank)
     best = hits[0]
     note(f"    click -> {best['t'][:44]!r}")
     before = set(ctx.pages)
@@ -346,9 +440,16 @@ def _reach_ojv(ctx, start, wait=60.0):
                 except Exception:
                     pass
             try:
+                # ⚠️ ARRIVING ON THE FORM IS SUCCESS. This used to accept only the GATE's own
+                # markers, so when the click landed directly on indexN.php — which is what the
+                # site now does — none of them matched, and _reach_ojv waited out its full 60 s
+                # and reported failure while sitting on exactly the page it was sent to fetch.
+                # Then walk_in went hunting for a guest-entry button that does not exist there,
+                # found a stale one, and logged "objetivo tapado" nine times. That whole cascade
+                # was one missing selector. #fecCompetencia is what find_form() uses; use it here.
                 if OJV_HOST in (q.url or "") and q.query_selector(
-                        "[onclick*='accesoConsultaCausas'], [onclick*='accesoInvitado'], "
-                        "#no-disponible"):
+                        "#fecCompetencia, [onclick*='accesoConsultaCausas'], "
+                        "[onclick*='accesoInvitado'], #no-disponible"):
                     return q
             except Exception:
                 pass
@@ -665,7 +766,8 @@ def walk_in(ctx):
         page = _reach_ojv(ctx, start, wait=60.0)
         if page is not None:
             break
-        note(f"could not reach the OJV by click-through (attempt {attempt}/3)")
+        note(f"could not reach the OJV by click-through (attempt {attempt}/3) "
+             f"[state={locate_ctx(ctx)[0]}]")
         if not internet_up():
             if not wait_for_internet()[0]:
                 return None
@@ -684,7 +786,16 @@ def walk_in(ctx):
         except Exception:
             pass
     if page is None:
-        note("could not reach the OJV by clicking through, and we do NOT type the URL — stopping")
+        # ⚠️ Before giving up, ask where we ended up. _reach_ojv returning None has meant "we are
+        # sitting on the form it was sent to fetch" — it only ever recognised the GATE's markers,
+        # so a click-through that succeeded too well read as a failure (2026-08-14).
+        st, pg = locate_ctx(ctx)
+        if st in ("form", "results") and pg is not None:
+            note(f"  _reach_ojv gave up, but we ARE on the {st} — taking it")
+            pg.bring_to_front()
+            return pg
+        note("could not reach the OJV by clicking through, and we do NOT type the URL — "
+             f"stopping [state={st}]")
         return None
     page.bring_to_front()
     page.wait_for_timeout(4000)
@@ -695,6 +806,15 @@ def walk_in(ctx):
     if "code is in the image" in body.lower() or captcha_frame(page):
         note("*** TIER-3 IMAGE CAPTCHA — needs the operator. Not attempting to bypass. ***")
         return None
+    # ⚠️ ARE WE ALREADY IN? find_form() is checked at the TOP of walk_in, before we navigate, and
+    # never again — so a click-through that lands straight on the form fell through to the
+    # guest-entry loop below and spent nine refusals on a gate it had already passed. Ask again
+    # here, now that we have actually arrived somewhere.
+    already = find_form(ctx)
+    if already is not None:
+        note("    landed straight on the form — no guest gate on this route")
+        already.bring_to_front()
+        return already
     _dismiss_aviso(page)
     # GATE 1 IS FLAKY, NOT REFUSING. Every fresh profile on 2026-08-06 failed its first entry
     # click and succeeded on a retry seconds later with nothing changed. Treating one timeout as a
@@ -745,9 +865,15 @@ def walk_in(ctx):
         }""", sel)
         pick = next((c["i"] for c in cov if c["hit"]), None)
         if pick is None:
-            # Say WHAT is on top. This line has meant three different things on three different
-            # days, and "covered" alone sent the diagnosis to the WAF every time.
-            note(f"  entry button covered ({cov}) — not clicking")
+            # Say WHAT is on top, AND WHERE WE ARE. "covered" alone has meant three different
+            # things on three different days and sent the diagnosis to the WAF every time; on
+            # 2026-08-14 it meant "we are already past this gate", which locate() says in a word.
+            note(f"  entry button covered ({cov}) — not clicking [state={locate(page)}]")
+            here = find_form(ctx)
+            if here is not None:
+                note("  ...and the form is already open — taking it instead of fighting the gate")
+                here.bring_to_front()
+                return here
             page.wait_for_timeout(5000)
             continue
         # Re-centre the one we picked: the loop above left the LAST candidate scrolled into view.
@@ -771,6 +897,112 @@ def walk_in(ctx):
     return find_form(ctx)
 
 
+# Overlays we must NEVER close: they are the work, not an obstacle.
+PROTECTED_OVERLAYS = ("modalDetalleCivil", "modalReceptorCivil", "modalGeoReferenciaCivil",
+                      "modalAnexoSolicitudCivil")
+
+
+def blocking_overlay(page, sel=None):
+    """What, if anything, is covering `sel` (or the middle of the page)? None if nothing is.
+
+    ⚠️ BY HIT-TEST, NOT BY ID. `_dismiss_aviso` knows `#no-disponible` and `page_busy` knows
+    `.jquery-loading-modal__bg`, and each was written the day that particular overlay cost us a
+    run. A NEW one is invisible to both — the worker sees only "objetivo tapado" and cannot say
+    what or even that it is an overlay. Asking the browser what is actually on top needs no
+    vocabulary and survives the site inventing another.
+
+    Returns {id, cls, z, text, tag, protected, dismissers} or None.
+    """
+    JS = """(sel) => {
+        const prot = %s;
+        let x = innerWidth / 2, y = innerHeight / 2, target = null;
+        if (sel) {
+            const t = [...document.querySelectorAll(sel)]
+                .find(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+            if (t) { const r = t.getBoundingClientRect();
+                     x = r.left + r.width / 2; y = r.top + r.height / 2; target = t; }
+        }
+        if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return null;
+        const top = document.elementFromPoint(x, y);
+        if (!top) return null;
+        if (target && (top === target || target.contains(top) || top.contains(target))) return null;
+        // Walk up to the thing that behaves like an OVERLAY: taken out of normal flow, and big
+        // enough to be a sheet rather than a widget.
+        // ⚠️ NO FALLBACK TO `top`. The first version returned whatever was on top when it found
+        // no overlay ancestor, so a search button sitting under a <select> in normal flow was
+        // reported as "covered by SELECT#conTribunal" — and clear_overlay would have gone looking
+        // for a dismiss button on a dropdown. If nothing overlay-like is above the target, the
+        // honest answer is "no overlay"; the target being unhittable is then a LAYOUT problem,
+        // which is a different diagnosis and must not be disguised as this one.
+        let o = top;
+        while (o && o !== document.body) {
+            const s = getComputedStyle(o), r = o.getBoundingClientRect();
+            const floating = (s.position === 'fixed' || s.position === 'absolute');
+            const sheet = r.width > 120 && r.height > 60;
+            const dialogish = o.getAttribute('role') === 'dialog'
+                           || /(^|\\s)(modal|overlay|backdrop|popup|aviso)/i.test(
+                                (o.className || '').toString());
+            if ((floating && sheet) || dialogish) break;
+            o = o.parentElement;
+        }
+        if (!o || o === document.body) return null;
+        const id = o.id || '';
+        const dis = [...o.querySelectorAll('button,a,[role=button],span.close,i.close')]
+            .filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; })
+            .map(e => ({txt: (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0, 30),
+                        dd: e.getAttribute('data-dismiss') || '',
+                        cls: (e.className || '').toString().slice(0, 40)}))
+            .slice(0, 6);
+        return {tag: o.tagName, id: id, cls: (o.className || '').toString().slice(0, 60),
+                z: getComputedStyle(o).zIndex,
+                text: (o.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 120),
+                protected: prot.some(p => id === p || o.closest('#' + p) !== null),
+                dismissers: dis};
+    }""" % (repr(list(PROTECTED_OVERLAYS)).replace("'", '"'),)
+    try:
+        return page.evaluate(JS, sel)
+    except Exception:
+        return None
+
+
+def clear_overlay(page, sel=None, tries=3):
+    """Clear whatever is covering `sel`. (cleared?, description) — never closes our own modals.
+
+    Tries the overlay's OWN dismiss controls, chosen by what they say rather than by a hardcoded
+    id, so a new aviso is handled the first time it appears instead of after it costs a run.
+    ⚠️ It refuses to touch PROTECTED_OVERLAYS: closing #modalDetalleCivil to 'clear an overlay'
+    would throw away the causa we are standing in.
+    """
+    for _ in range(tries):
+        ov = blocking_overlay(page, sel)
+        if not ov:
+            return True, "nothing covering"
+        who = f"{ov['tag']}#{ov['id'] or '-'}.{(ov['cls'] or '-')[:30]} z={ov['z']}"
+        if ov["protected"]:
+            return False, f"protected overlay, not touching: {who}"
+        pick = None
+        for d in ov["dismissers"]:
+            hay = f"{d['txt']} {d['dd']} {d['cls']}".lower()
+            if any(k in hay for k in ("modal", "close", "cerrar", "aceptar", "entendido",
+                                      "continuar", "ok", "×", "x")):
+                pick = d
+                break
+        note(f"  overlay covering target: {who} | text={ov['text'][:60]!r}")
+        if pick is None:
+            return False, f"no dismiss control found on {who}"
+        try:
+            root = f"#{ov['id']}" if ov["id"] else None
+            loc = (page.locator(root).locator("button,a,[role=button]") if root
+                   else page.locator("button,a,[role=button]"))
+            C.human_click(page, loc.filter(has_text=pick["txt"]).first if pick["txt"]
+                          else loc.first, timeout=6000)
+        except Exception as e:
+            return False, f"click on dismisser failed: {str(e)[:50]}"
+        page.wait_for_timeout(900)
+    ov = blocking_overlay(page, sel)
+    return (ov is None), ("cleared" if ov is None else "still covered")
+
+
 def _dismiss_aviso(page):
     """The #no-disponible AVISO. Operator: "it comes and goes. dont conclude just because you
     dont see it now" — so always check, never assume. This overlay covering the entry button is
@@ -787,6 +1019,16 @@ def _dismiss_aviso(page):
             page.wait_for_timeout(300)
             if not page.evaluate(vis):
                 return
+    except Exception:
+        pass
+    # ⚠️ AND ANYTHING ELSE THAT IS IN THE WAY. The block above knows exactly one overlay by id,
+    # because that is the one that cost us a fortnight. clear_overlay() asks the browser what is
+    # actually on top of the entry button and uses whatever dismiss control that thing offers, so
+    # the NEXT aviso is handled the first time it appears rather than after a post-mortem.
+    try:
+        ok, why = clear_overlay(page, "[onclick*='accesoConsultaCausas'],[onclick*='accesoInvitado']")
+        if not ok and "nothing covering" not in why:
+            note(f"  [!] entry still obstructed: {why}")
     except Exception:
         pass
 

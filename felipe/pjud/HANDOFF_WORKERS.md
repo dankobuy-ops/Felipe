@@ -761,3 +761,116 @@ Verified: `29-C-10301-2026-c1-1-1` and `29-C-10301-2026-c2-1-1` coexist, 0 Docum
 - The ~4,460 existing causas have no book 2 and were never screened: they need an A re-pass.
   **Open question: delete the causas the gate rejects, or mark them?**
 - Worker C's two modes wait on the five human categories (3 actionable, 2 not).
+
+---
+
+# ENTRY REWRITTEN — the site moved the door (2026-08-14)
+
+Found with the operator clicking by hand while a network recorder ran. **The worker could not enter
+from the residential IP at all**: nine refused clicks across three attempts, then exit.
+
+## What actually happened
+
+`www.pjud.cl` now offers exactly **one** anchor to the OJV:
+
+```
+href="https://oficinajudicialvirtual.pjud.cl/includes/sesion-consultaunificada.php"
+tooltip: "Sección que permite la revisión de causas"
+```
+
+and it lands **straight on the search form**:
+
+```
+GET indexN.php            #fecCompetencia present, #btnConConsultaFec present
+GET consultaUnificada.php  accesoConsultaCausas count: 0
+```
+
+**No `/home/`. No guest-entry gate.** Three assumptions in `ojv.py` were each fatal on their own:
+
+1. `_reach_ojv` sorted candidate links to put **`/home` FIRST** — deliberately walking into the
+   gate.
+2. `_reach_ojv` only recognised arrival by the **gate's own markers**
+   (`accesoConsultaCausas` / `accesoInvitado` / `#no-disponible`). Landing on the form matched
+   none of them, so it waited out its full 60 s and reported failure **while standing on exactly
+   the page it was sent to fetch**.
+3. `walk_in` called `find_form()` once, at the top, *before* navigating — and never again. So the
+   click-through succeeded, `_reach_ojv` "failed", and the code went hunting for a guest button
+   that does not exist there, found a stale one, and logged `objetivo tapado` nine times.
+
+⇒ Fixed: rank `sesion-consultaunificada` first and `/home` last; accept `#fecCompetencia` as
+arrival; re-check `find_form()` after arriving; and on "covered", check whether the form is
+already open and take it. **Result: entry in 16 seconds, first attempt.**
+
+```
+[15:53:16]  click -> 'Sección que permite la revisión de causas'
+[15:53:24]  landed straight on the form — no guest gate on this route
+```
+
+⚠️ **Half the entry folklore in this repo may live on a path humans no longer take.** The flaky
+gate-1 click, "every fresh profile fails its first entry", the two-`accesoConsultaCausas`-buttons
+mess — all of that is `/home/` behaviour. Do not port it forward without re-checking.
+
+## `locate()` — a worker that knows where it is
+
+Operator's call: *"we might need to add a way for a worker to recognise where it is and act
+accordingly."* Every entry failure message we had said what did NOT happen — `objetivo tapado`,
+`no form after attempt 1`, `could not reach the OJV` — and none said where the worker was standing.
+
+`ojv.locate(page)` returns one of: `form`, `results`, `modal`, `gate`, `aviso`, `captcha`,
+`blocked`, `www`, `ojv-other`, `blank`, `elsewhere`, `unknown`. Never raises; `unknown` mid-nav.
+`ojv.locate_ctx(ctx)` returns `(state, page)` for the most actionable tab.
+
+It is wired into the three paths that failed, and each **recovers** rather than merely reporting:
+covered-button checks for an already-open form; `_reach_ojv` returning None checks the same; and
+every give-up line now carries `[state=…]`.
+
+⚠️ Built on the existing `rej_frames()` detector. The first draft invented a `REJECT_TEXT` list —
+a second rejection vocabulary is precisely how the duplicated block detectors drifted apart.
+
+## Overlays: detected by HIT-TEST, not by id
+
+`_dismiss_aviso` knew `#no-disponible`; `page_busy` knew `.jquery-loading-modal__bg`. Each was
+written the day that particular overlay cost a run, and **a new one was invisible to both**.
+
+`ojv.blocking_overlay(page, sel)` asks the browser what is actually on top of a target, walks up to
+the nearest floating/dialog-ish container, and returns its id, class, z-index, text and its own
+dismiss controls. `ojv.clear_overlay(page, sel)` clicks whichever control says
+close/cerrar/aceptar/entendido/continuar/ok/×, then verifies.
+
+Proven end-to-end against an injected overlay with an id nothing in the codebase knows:
+
+```
+overlay covering target: DIV#aviso-mantencion-x z=99999 | text='Sistema en mantencion Aceptar'
+clear_overlay -> (True, 'nothing covering')
+```
+
+⚠️ `PROTECTED_OVERLAYS` — never closes `#modalDetalleCivil` and friends. Closing the causa modal
+"to clear an overlay" would throw away the causa we are standing in.
+
+⚠️ **A target that is merely unhittable is NOT an overlay.** The first version fell back to
+"whatever is on top", so a search button under a `<select>` in normal flow was reported as
+*covered by SELECT#conTribunal* — and the cleaner would have hunted for a dismiss button on a
+dropdown. It now returns `None`: unhittable is a LAYOUT problem, a different diagnosis, and
+disguising one as the other is how `covered` came to mean three different things in a week.
+
+## ⚠️ Where the metadata-only worker A stands — UNRESOLVED
+
+| run | code | opens | outcome |
+|---|---|---:|---|
+| probe_pace 08-13 | old | **306** | clean, ended on our own `--max-minutes` |
+| A/B control 08-14 | new | **10** | blocked, causa `2-C-1251-2026` |
+| A/B motion 08-14 | new + `--idle-motion` | **10** | blocked, SAME causa, same signature |
+| remote control 08-14 | old | — | ran **>54 min** vs the arms' 10.5 |
+| local 08-14 | new + all fixes | 25+ | clean, residential |
+
+**`--idle-motion` changed nothing** — same causa, same count. Clean negative; the mousemove theory
+buys nothing here. (Hover-on-scroll was different: measured 0 vs 12 events directly.)
+
+⚠️ The A/B "control" was **not a control**: it changed four things at once versus the 306-open
+baseline (no ebook, +1 POST for cuaderno 2, the etapa gate, pointer-positioned scrolling) and ran
+at a different hour. The remote old-code run is the real comparison and it points at the code.
+Bisect order when it lands: pointer scrolling, cuaderno switch, etapa gate, absent ebook.
+
+⚠️ Local surviving proves little — residential has always been the forgiving environment
+(730+ opens/day vs a small runner session). It rules out "catastrophically broken", not "worse on
+runners".

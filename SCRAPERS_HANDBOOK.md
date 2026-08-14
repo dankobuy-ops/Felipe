@@ -271,6 +271,57 @@ hand-jitter is a channel we still do not fill. Marked as speculation until it is
 control — which is the only honest way to add motion, since "more human-looking" is exactly the
 kind of claim that feels obviously true and has been wrong here before.
 
+### ★★ A worker must know WHERE IT IS, not just what it failed to do
+
+Operator's call, 2026-08-14, after the site quietly moved its entry route: *a worker should
+recognise where it is and act accordingly.* Every entry failure message we had described what did
+**not** happen — "target covered", "no form after attempt 1", "could not reach the site" — and
+none said where the worker was standing. It was standing **on the form it had been sent to
+fetch**, refusing to click a gate button it had already passed, and the log could not say so.
+
+The cost of that omission was an hour of chasing the WAF. The fix is one function:
+
+```
+locate(page) -> form | results | modal | gate | aviso | captcha | blocked | www | blank | unknown
+```
+
+Rules that make it worth having:
+
+- **Never raises.** Mid-navigation returns `unknown` — "I could not tell" must be a state, not an
+  exception, and must not be confused with "nothing is wrong".
+- **Order by what is actionable.** A page can be several things at once (a form *with* results, a
+  gate *under* an aviso); return the one that decides the next move.
+- **Wire it into the give-up paths, and make them RECOVER.** Every "I am stuck" line should carry
+  the state — and where the state says the job is already done, take it instead of failing.
+- **One place knows what the site can look like.** Add a state here, not another special case at a
+  call site.
+
+⇒ Related failure: a scripted path that only recognises success by the OBSTACLE'S markers. Ours
+accepted arrival only if the gate's buttons were present, so a click-through that landed *past*
+the gate read as a failure. **Detect the destination, not the hurdle.**
+
+### ★ Detect overlays by hit-test, never by id
+
+Two functions in this repo each knew exactly one overlay by name, and each was written the day
+that overlay cost a run. A third overlay would have been invisible to both — the worker could only
+report "target covered", with no idea it was an overlay at all.
+
+Asking the browser what is genuinely on top needs no vocabulary and survives the site inventing
+another one: `elementFromPoint` at the target's centre, walk up to the nearest floating/dialog-ish
+container, read its id, z-index, text **and its own dismiss controls**, then click whichever says
+close/cerrar/aceptar/ok/×. Verified against an injected overlay with an id nothing in the codebase
+had ever seen — detected and cleared first time.
+
+⚠️ **Protect your own modals.** A generic overlay-closer will happily close the record you are
+standing in. Keep an explicit allow-list of overlays that are the work rather than an obstacle.
+
+⚠️ **"Unhittable" is not "covered".** The first version fell back to "whatever is on top", so a
+button sitting under a `<select>` in normal flow was reported as covered by a dropdown — and the
+cleaner would have hunted for a dismiss control on it. If nothing overlay-like is above the
+target, say so: an unhittable target is a **layout** problem, a different diagnosis with a
+different fix. Disguising one as the other is how "covered" came to mean three different things in
+a single week.
+
 ### ⚠️ Never click a covered target
 
 Driving raw mouse coordinates loses Playwright's actionability check, so if a backdrop or sticky
