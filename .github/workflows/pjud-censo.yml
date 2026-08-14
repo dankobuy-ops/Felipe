@@ -105,6 +105,10 @@ on:
         description: "true = abre la causa y toma la metadata, pero NO baja el ebook"
         required: false
         default: "false"
+      no_cuaderno2:
+        description: "true = NO abrir el cuaderno 2 (prueba de una variable para el muro de 10 aperturas)"
+        required: false
+        default: "false"
       only_proc:
         description: "Regex de procedimiento a conservar (vacío = todos)"
         required: false
@@ -376,6 +380,10 @@ jobs:
           ARGS=(--max-recover 1 --launch-chrome --gate db --search-gap "$SG" --causa-gap "$CG"
                 --entry-route home --max-minutes ${{ inputs.lifespan_min }})
           if [ "${{ inputs.no_ebook }}" = "true" ]; then ARGS+=(--no-ebook); fi
+          # One-variable test for the remote 10-open wall. The cuaderno-2 switch is the only
+          # change in the metadata-only worker that ADDS a request, and remote dies at exactly 10
+          # opens three times over while local passes 150 on the very same causas.
+          if [ "${{ inputs.no_cuaderno2 }}" = "true" ]; then ARGS+=(--no-cuaderno2); fi
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
           python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \

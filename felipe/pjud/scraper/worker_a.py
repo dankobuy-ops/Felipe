@@ -99,6 +99,12 @@ GAP_JITTER = 0.15      # ±15% on every inter-request gap
 CAUSA_GAP = 25.0       # between causa opens
 EBOOK_GAP = 4.0        # after the modal renders, before asking for the pdf
 POST_CAUSA = 10.0      # after closing a causa, before anything else
+
+# --no-cuaderno2: skip the switch to book 2. It is the ONLY change in the metadata-only worker
+# that ADDS a request — a second causaCivil.php POST per causa, measured 2026-08-14 — and it is
+# the prime suspect for the remote 10-open wall: remote+old code did 306 opens, remote+new code
+# dies at 10 three times running, local+new code passes 150 with the same causas.
+CUADERNO2 = True
 # A block is a RATE verdict, so the one thing that must not happen after one is walking straight
 # back in at the same pace. Multiplied by the recovery number, so repeat blocks wait ever longer.
 COOL_OFF = 180.0
@@ -420,7 +426,7 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=False, only_proc="
     # already rendered when the modal opens; switching books may or may not hit the server, which
     # is unmeasured — do not restate the old "one AJAX per switch" claim as fact.
     rec["historia_c2"], rec["cuaderno_c2"] = None, ""
-    if len(rec["cuadernos"]) > 1:
+    if CUADERNO2 and len(rec["cuadernos"]) > 1:
         try:
             if C.select_cuaderno(p, 1):
                 p.wait_for_timeout(900)
@@ -792,6 +798,12 @@ def main():
                          "single-worker pace spend about double the ceiling.")
     ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
     # ASCII only in help strings - a non-ASCII char here crashes --help on Windows cp1252.
+    ap.add_argument("--no-cuaderno2", action="store_true",
+                    help="do NOT switch to book 2. One-variable test for the remote 10-open wall: "
+                         "the switch is the only change that adds a request (a second "
+                         "causaCivil.php POST per causa). Remote+old code did 306 opens; "
+                         "remote+new code stops at 10 three times; local+new code passes 150 on "
+                         "the same causas.")
     ap.add_argument("--entry-route", choices=("auto", "home", "direct"), default="auto",
                     help="which door to take from www.pjud.cl. MEASURED 2026-08-14: residential "
                          "searches fine after the DIRECT link (136 opens, 0 blocks); a datacenter "
@@ -860,7 +872,7 @@ def main():
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
             raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy — refusing to search with it")
 
-    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA, GATE_KIND
+    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA, GATE_KIND, CUADERNO2
     GATE_KIND = a.gate
     if a.search_gap:
         SEARCH_GAP = a.search_gap
@@ -870,6 +882,7 @@ def main():
         POST_CAUSA = a.post_causa
     C.IDLE_MOTION = a.idle_motion
     ojv.ENTRY_ROUTE = a.entry_route
+    CUADERNO2 = not a.no_cuaderno2
     if a.slot:
         DATA = HERE.parent / "data" / f"worker_a{a.slot}"
         PDFS = DATA / "pdfs"
