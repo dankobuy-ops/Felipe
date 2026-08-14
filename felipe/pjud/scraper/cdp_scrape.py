@@ -284,6 +284,47 @@ def human_idle(page, secs):
             time.sleep(left)
 
 
+def human_scroll_to(page, el, timeout=8000):
+    """Bring `el` into view the way a person does — with the WHEEL — and only fall back to the
+    instant jump if the wheel could not get there.
+
+    ⚠️ scroll_into_view_if_needed() IS A TELEPORT FOR THE PAGE. It fires a `scroll` event and
+    NOTHING else: no wheel events, no pointer motion, no hover changes on the rows it passes. It
+    ran before EVERY click, so filling the search form — click a field, jump, click the next,
+    jump — produced a page that moved repeatedly with an entirely empty input channel. The
+    operator spotted it watching the browser: a person does not scroll between filling one input
+    and the next, and when they do scroll it is with the wheel.
+
+    Same family as the two gaps already fixed here: "we never scrolled at all" and "we scrolled
+    from (0,0)". This is the third — we scrolled without touching an input device. The form is
+    also where the reCAPTCHA token is minted, so it is the worst place to look synthetic.
+    """
+    try:
+        if el.is_visible() and page.evaluate(
+                """(b) => b && b.y >= 0 && b.y + b.height <= innerHeight""", el.bounding_box()):
+            return                                  # already in view: a person would not scroll
+    except Exception:
+        pass
+    for _ in range(6):
+        try:
+            box = el.bounding_box()
+            if not box:
+                break
+            vh = page.evaluate("() => innerHeight")
+            centre = box["y"] + box["height"] / 2
+            delta = centre - vh / 2
+            if abs(delta) < vh * 0.35:              # close enough that a reader would stop
+                break
+            # One notch at a time, in the direction a hand would turn it.
+            human_scroll(page, notches=1, down=delta > 0, settle=False)
+        except Exception:
+            break
+    try:                                            # belt and braces: correctness beats elegance
+        el.scroll_into_view_if_needed(timeout=timeout)
+    except Exception:
+        pass
+
+
 def human_click(page, target, timeout=8000):
     """THE click. `target` is a selector, Locator or ElementHandle.
 
@@ -299,10 +340,9 @@ def human_click(page, target, timeout=8000):
     """
     el = page.locator(target) if isinstance(target, str) else target
     box = None
-    try:
-        el.scroll_into_view_if_needed(timeout=timeout)
-    except Exception:
-        pass
+    # ⚠️ Wheel, not teleport — and it does NOTHING when the target is already in view, which is
+    # the common case on the search form. See human_scroll_to.
+    human_scroll_to(page, el, timeout=timeout)
     try:
         box = el.bounding_box()
     except Exception:
@@ -343,7 +383,7 @@ def human_click(page, target, timeout=8000):
             clear_stuck_modal(page)                      # usually a left-open modal's backdrop
         wait_idle(page)
         try:
-            el.scroll_into_view_if_needed(timeout=timeout)
+            human_scroll_to(page, el, timeout=timeout)   # wheel here too — same reason
             box = el.bounding_box() or box
         except Exception:
             pass
