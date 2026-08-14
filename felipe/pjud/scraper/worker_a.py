@@ -100,6 +100,46 @@ CAUSA_GAP = 25.0       # between causa opens
 EBOOK_GAP = 4.0        # after the modal renders, before asking for the pdf
 POST_CAUSA = 10.0      # after closing a causa, before anything else
 
+SHOTS = None           # --shots DIR: capture what the worker is ACTUALLY looking at when it fails
+_shot_n = [0]
+
+
+def shot(page, tag):
+    """Save a screenshot + the visible text, so a remote failure can be SEEN and not just counted.
+
+    ⚠️ WHY THIS EXISTS. A runner has no screen. Four sessions died at the same causa with
+    "modal did not open after 90s" and rejF=2 — and nobody could say what was on the page during
+    those ninety seconds: a spinner, a rejection interstitial, an overlay, an empty modal, or a
+    perfectly normal page whose one element never rendered. Each of those has a different fix, and
+    we have been guessing between them from counters. The operator asked the right question: is
+    there a way to LOOK at what the worker is doing?
+
+    Cheap and bounded: only fires on failure paths, writes into the run's artifact directory.
+    """
+    if not SHOTS:
+        return
+    try:
+        _shot_n[0] += 1
+        base = Path(SHOTS) / f"{_shot_n[0]:03d}-{tag}"
+        base.parent.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(base) + ".png", full_page=False)
+        txt = page.evaluate("()=>({url:location.href,"
+                            " body:(document.body?document.body.innerText:'').slice(0,3000),"
+                            " modal:!!document.querySelector('#modalDetalleCivil'),"
+                            " modalIn:!!document.querySelector('#modalDetalleCivil.in'),"
+                            " spinners:[...document.querySelectorAll('[id^=loadPre]')]"
+                            "   .map(e=>({id:e.id,html:e.innerHTML.trim().length})),"
+                            " overlays:[...document.querySelectorAll('.modal-backdrop,"
+                            "   .jquery-loading-modal__bg,.jquery-loading-modal')].length,"
+                            " iframes:[...document.querySelectorAll('iframe')]"
+                            "   .map(f=>f.id||f.name||f.src.slice(0,60))})")
+        Path(str(base) + ".json").write_text(json.dumps(txt, ensure_ascii=False, indent=1),
+                                             encoding="utf-8")
+        note(f"      [shot] {base.name} — modal={txt['modal']} in={txt['modalIn']} "
+             f"overlays={txt['overlays']} iframes={txt['iframes'][:3]}")
+    except Exception as e:
+        note(f"      [shot] failed: {str(e)[:60]}")
+
 # --no-cuaderno2: skip the switch to book 2. It is the ONLY change in the metadata-only worker
 # that ADDS a request — a second causaCivil.php POST per causa, measured 2026-08-14 — and it is
 # the prime suspect for the remote 10-open wall: remote+old code did 306 opens, remote+new code
@@ -349,8 +389,12 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=False, only_proc="
                   .locator("a[onclick*='detalleCausaCivil']").first, timeout=8000)
     t0 = time.time()
     opened = False
+    marks = [8.0, 30.0, 60.0]          # snapshot the hang WHILE it hangs, not only after
     while time.time() - t0 < 90:
         p.wait_for_timeout(400)
+        el = time.time() - t0
+        if SHOTS and marks and el >= marks[0]:
+            shot(p, f"waiting-{int(marks.pop(0))}s-{row['rol']}")
         try:
             if p.evaluate("(rol)=>{const m=document.querySelector('#modalDetalleCivil');"
                           "return !!m && m.innerText.indexOf(rol)>=0;}", row["rol"]):
@@ -360,6 +404,7 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=False, only_proc="
             pass
     if not opened:
         note(f"    modal did not open after {time.time()-t0:.0f}s")
+        shot(p, f"modal-never-opened-{row['rol']}")
         return None
     p.wait_for_timeout(1500)                  # let the tabs inside the modal finish rendering
     C.human_scroll(p, notches=random.randint(2, 5))   # the modal is long; nobody reads it static
@@ -798,6 +843,8 @@ def main():
                          "single-worker pace spend about double the ceiling.")
     ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
     # ASCII only in help strings - a non-ASCII char here crashes --help on Windows cp1252.
+    ap.add_argument("--shots", default="",
+                    help="directory for failure screenshots plus page state. A runner has no screen: four sessions died at the same causa with 'modal did not open after 90s' and nobody could say WHAT was on the page. Fires only on failure paths and during the hang itself.")
     ap.add_argument("--no-cuaderno2", action="store_true",
                     help="do NOT switch to book 2. One-variable test for the remote 10-open wall: "
                          "the switch is the only change that adds a request (a second "
@@ -872,7 +919,7 @@ def main():
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
             raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy — refusing to search with it")
 
-    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA, GATE_KIND, CUADERNO2
+    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA, GATE_KIND, CUADERNO2, SHOTS
     GATE_KIND = a.gate
     if a.search_gap:
         SEARCH_GAP = a.search_gap
@@ -883,6 +930,7 @@ def main():
     C.IDLE_MOTION = a.idle_motion
     ojv.ENTRY_ROUTE = a.entry_route
     CUADERNO2 = not a.no_cuaderno2
+    SHOTS = a.shots or None
     if a.slot:
         DATA = HERE.parent / "data" / f"worker_a{a.slot}"
         PDFS = DATA / "pdfs"
@@ -1461,6 +1509,7 @@ def main():
                         if hit:
                             blocks_seen += 1
                             note(f"  *** BLOCKED on detail, idx {idx} causa {c['rol']} — {why}")
+                            shot(p, f"blocked-detail-{c['rol']}")
                             save()
                             tally_line("TALLY at block:")
                             blocked_here = True

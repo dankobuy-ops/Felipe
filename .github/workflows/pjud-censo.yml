@@ -384,6 +384,12 @@ jobs:
           # change in the metadata-only worker that ADDS a request, and remote dies at exactly 10
           # opens three times over while local passes 150 on the very same causas.
           if [ "${{ inputs.no_cuaderno2 }}" = "true" ]; then ARGS+=(--no-cuaderno2); fi
+          # A runner has no screen. Capture what the worker is ACTUALLY looking at when a modal
+          # never opens -- during the hang, not only after it -- and upload it. Four sessions died
+          # at the same causa and we could not say whether the page held a spinner, a rejection
+          # interstitial, an overlay, or a perfectly normal page missing one element. Each has a
+          # different fix and we were guessing between them from counters.
+          ARGS+=(--shots "$GITHUB_WORKSPACE/felipe/pjud/data/shots")
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
           python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \
@@ -448,6 +454,13 @@ jobs:
       - name: Collect Chrome stderr
         if: always()
         run: cp "$HOME/chrome_9222.err" felipe/pjud/scraper/chrome.err 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots-s${{ matrix.slot }}-${{ github.run_id }}
+          path: felipe/pjud/data/shots
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         if: always()
