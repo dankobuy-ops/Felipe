@@ -794,9 +794,10 @@ def main():
     # ASCII only in help strings - a non-ASCII char here crashes --help on Windows cp1252.
     ap.add_argument("--idle-motion", action="store_true",
                     help="emit small pointer drift during the pacing waits, the way a resting "
-                         "hand does. UNPROVEN: mouse.wheel dispatches no mousemove, so between "
-                         "actions our pointer is perfectly still for 20-25s at a time. Off by "
-                         "default so it can be A/B tested against the current behaviour.")
+                         "hand does. TESTED 2026-08-14 AND IT CHANGED NOTHING: two runner arms, "
+                         "one variable, both blocked at exactly 10 opens on the SAME causa with "
+                         "the same signature. Kept off by default and kept at all only so the "
+                         "negative result is not rebuilt from scratch.")
     ap.add_argument("--launch-chrome", action="store_true",
                     help="this worker starts its OWN Chrome, inside the entry lock, so no two "
                          "brand-new sessions ever appear at the same moment.")

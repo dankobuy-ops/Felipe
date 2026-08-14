@@ -234,16 +234,25 @@ def human_scroll(page, notches=None, down=True, settle=True):
         pass                                          # scrolling must never break a run
 
 
-IDLE_MOTION = False      # --idle-motion: emit hand-jitter during the waits. UNPROVEN, see below.
+IDLE_MOTION = False      # --idle-motion: hand-jitter during the waits. TESTED, BOUGHT NOTHING.
 
 
 def human_idle(page, secs):
     """Wait `secs`, emitting the small pointer drift a resting hand cannot help producing.
 
-    ⚠️ THIS IS A HYPOTHESIS UNDER TEST, NOT A KNOWN FIX. It is off by default and gated behind
-    --idle-motion precisely so it can be A/B'd against the current behaviour. "More human-looking"
-    is exactly the sort of claim that feels obviously true and has been wrong here before — the
-    90-minute range-fatigue theory felt obvious too.
+    ★ TESTED 2026-08-14, AND IT MADE NO DIFFERENCE. Two runner arms, same window, same range, same
+    pacing, one variable: with and without --idle-motion. Both blocked at EXACTLY 10 causa opens,
+    on the SAME causa (2-C-1251-2026), with the same rejF=2 hardRej=1 signature and the same failed
+    recovery. Whatever ends those sessions, idle pointer motion does not touch it.
+
+    Kept, off by default, because a negative result that is deleted gets rebuilt — and this one is
+    worth remembering next to its sibling, which WAS real: scrolling from (0,0) produced 0
+    mouseover events where a positioned pointer produced 12, measured directly rather than inferred
+    from an outcome. The difference between the two is the lesson. Hover-on-scroll was a channel
+    proven empty by counting events; idle jitter was a plausible story about a channel, and
+    plausible stories about this site have been wrong more often than right.
+
+    Do NOT re-run this experiment without a reason the 08-14 pair does not already cover.
 
     The reasoning it is testing: `mouse.wheel()` dispatches NO mousemove, and we never move the
     pointer except to click. So between actions our pointer is perfectly, inhumanly still for
