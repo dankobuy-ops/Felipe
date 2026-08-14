@@ -476,6 +476,28 @@ def select_cuaderno(page, index):
         cur = next((o["i"] for o in opts if o["sel"]), 0)
         if cur == index:
             return True
+        # ⚠️ REACH THE CONTROL WITH THE POINTER FIRST. `.focus()` alone is a TELEPORT for the
+        # caret: focus materialises inside a dropdown the mouse never approached, and keystrokes
+        # start arriving from nowhere. The keys themselves are trusted and humanly paced — it is
+        # the ARRIVAL that is synthetic, which is the exact finding this file is built on
+        # ("it is the pointer's MOTION, not isTrusted", human_click).
+        #
+        # It went unseen because worker A never switched cuadernos. The metadata-only worker A
+        # switches on EVERY causa, and three runner sessions then died at the same point — the
+        # causa where the switch had fired often enough to matter — while the identical code and
+        # the identical causas ran clean residentially (166 opens). Operator's question: "could it
+        # be something about HOW the runner is fetching the second book?" Yes.
+        #
+        # Hover, do not click: clicking a <select> opens Chrome's native popup, which is an OS
+        # surface the arrow keys below cannot be trusted to drive. press=False gives the approach
+        # path and the dwell without that risk — the helper exists for precisely this.
+        try:
+            b = page.locator("#selCuaderno").bounding_box()
+            if b:
+                _human_pointer(page, b["x"] + b["width"] * random.uniform(0.3, 0.7),
+                               b["y"] + b["height"] / 2, press=False)
+        except Exception:
+            pass
         page.locator("#selCuaderno").focus()
         key = "ArrowDown" if index > cur else "ArrowUp"
         for _ in range(abs(index - cur)):
