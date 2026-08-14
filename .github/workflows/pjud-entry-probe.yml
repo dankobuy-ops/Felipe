@@ -1,0 +1,46 @@
+name: PJUD — ¿qué puerta le ofrecen a un runner?
+
+# ONE QUESTION, TWO PAGE LOADS. Does www.pjud.cl offer a datacenter IP the same OJV links it
+# offers a residential browser, and where does each land?
+#
+# NO SEARCH, no causa, no document. It cannot spend a session's allowance, which is the whole
+# point: the alternative is guessing, and each guess has been costing a whole runner session.
+#
+# ⚠️ WHY. The site changed its entry route on 2026-08-14 — www.pjud.cl went from
+# "Plataforma para el ingreso de causas y escritos" (-> /home/, guest gate) to a single anchor
+# "Sección que permite la revisión de causas" (-> straight to indexN.php). Following it fixed
+# RESIDENTIAL entry (16 s, after nine failed clicks). But two runners in a row then entered
+# perfectly by that route and could not complete a SINGLE search — rejF=1, 0 opens, an hour apart,
+# different IPs, quiet range. Every remote run that DID search today went through /home/ first.
+#
+# So: is /home/ still on offer to a runner? If yes, prefer it remotely and keep direct locally.
+# If no, the gate route is gone and we cannot get it back, because we do not type deep URLs.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: pjud-censo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          launch_chrome: "true"
+          port: "9222"
+          profile: "pjud_entryprobe"
+
+      - name: Which doors is this runner offered?
+        working-directory: felipe/pjud/scraper
+        run: |
+          set -o pipefail
+          python -u entry_probe.py --port 9222 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
