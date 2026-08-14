@@ -1,0 +1,206 @@
+name: PJUD — A/B ritmo + movimiento del puntero (worker A nuevo)
+
+# TWO QUESTIONS, ONE DISPATCH, STRICTLY SEQUENTIAL.
+#
+# 1. SPEED OF THE NEW WORKER A. It is metadata-only now: it opens the causa, gates on the header
+#    Etapa, takes what is free, switches to cuaderno 2 for its historia, and fetches NO documents.
+#    That is 2 causaCivil.php POSTs per causa instead of 1 open + 1 ebook — measured on the wire
+#    2026-08-14 — and neither of them touches docuS.php, the endpoint that refused 16 and 19 times
+#    on 08-13. Doubling the POSTs to the modal endpoint is exactly the kind of thing that should be
+#    measured rather than assumed to be fine.
+#
+# 2. THE MOUSEMOVE THEORY. mouse.wheel() dispatches no mousemove, and we never move the pointer
+#    except to click — so between actions our pointer is perfectly, inhumanly still for 20-25 s at
+#    a stretch. --idle-motion emits the drift a resting hand makes. It is OFF by default and
+#    UNPROVEN. The sibling observation WAS real and measured (scrolling from (0,0) produced 0
+#    mouseover events where a positioned pointer produced 12), which is a reason to test this, not
+#    a reason to believe it.
+#
+# ⚠️ ONE VARIABLE. Both jobs run the SAME window, the SAME index range and the SAME pacing. The
+#   only difference is --idle-motion. Anything else changed here makes the comparison worthless —
+#   which is how three trials and two days once went into a concurrency conclusion that a single
+#   control run reversed.
+#
+# ⚠️ THE BASELINE IS A REAL PRIOR RUN, NOT A GUESS. probe_pace on 2026-08-13 ran June idx 0-40 at
+#   causa gap 8 / search gap 13 and reached 306 opens / 526 MB / 193 min with ZERO blocks, ending
+#   on our own --max-minutes rather than a refusal. Same window, same range, same gaps here, so
+#   the control is directly comparable to it and isolates "what did making A metadata-only do".
+#
+# ⚠️ NO STATE ARTIFACT IS RESTORED. A resumed run skips causas it already banked, and a run that
+#   skips opens measures nothing. Fresh runners have no state.json, so every causa is opened —
+#   which is also what fills cuaderno 2's historia for causas already in Neon.
+#
+# NO CRON. Manual dispatch only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Ventana (desde) — junio para comparar con probe_pace"
+        required: false
+        default: "01/06/2026"
+      hasta:
+        required: false
+        default: "30/06/2026"
+      idx_from:
+        description: "Índice de tribunal inicial (0 = igual que probe_pace)"
+        required: false
+        default: "0"
+      idx_to:
+        required: false
+        default: "40"
+      causa_gap:
+        description: "Segundos entre aperturas (8 = el medido)"
+        required: false
+        default: "8"
+      search_gap:
+        description: "Segundos entre búsquedas (13 = la X medida)"
+        required: false
+        default: "13"
+      minutes:
+        description: "Vida de cada corrida en minutos"
+        required: false
+        default: "150"
+      run_control:
+        description: "Correr el control (sin movimiento del puntero)"
+        required: false
+        default: "true"
+      run_motion:
+        description: "Correr el brazo con --idle-motion"
+        required: false
+        default: "true"
+
+concurrency:
+  group: pjud-censo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  control:
+    if: ${{ inputs.run_control == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "false"          # worker A opens its own; fresh_browser cannot repair one it did not open
+
+      - name: Neon BEFORE
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage before --label ab_control
+
+      - name: worker A — control (sin idle-motion)
+        working-directory: felipe/pjud/scraper
+        run: |
+          python -u worker_a.py --port 9222 --slot 1 --chrome-profile "$HOME/pjud_ab1" \
+            --launch-chrome --gate db --max-recover 1 \
+            --start ${{ inputs.idx_from }} --end ${{ inputs.idx_to }} \
+            --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}" \
+            --search-gap ${{ inputs.search_gap }} --causa-gap ${{ inputs.causa_gap }} \
+            --max-minutes ${{ inputs.minutes }} --only-proc "obligaci.*dar"
+
+      - name: Ingest (this is what fills cuaderno 2 in Neon)
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u ingest_worker_a.py --slot 1 --shells --no-upload
+
+      - name: Verdict
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          python -u night_check.py --stage probe --label "AB control (sin motion)" --slot 1
+          python -u night_check.py --stage after --label ab_control
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ab-control-state
+          path: felipe/pjud/data/worker_a1/state.json
+          if-no-files-found: warn
+
+  motion:
+    needs: control
+    if: ${{ !cancelled() && inputs.run_motion == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pjud-setup
+        with:
+          pjud_config: ${{ secrets.PJUD_CONFIG }}
+          google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google_token_json: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          launch_chrome: "false"
+
+      - name: Neon BEFORE
+        working-directory: felipe/pjud/scraper
+        run: python -u night_check.py --stage before --label ab_motion
+
+      - name: worker A — con --idle-motion
+        working-directory: felipe/pjud/scraper
+        run: |
+          # ⚠️ IDENTICAL to the control but for --idle-motion. Do not "improve" anything here.
+          python -u worker_a.py --port 9222 --slot 2 --chrome-profile "$HOME/pjud_ab2" \
+            --launch-chrome --gate db --max-recover 1 --idle-motion \
+            --start ${{ inputs.idx_from }} --end ${{ inputs.idx_to }} \
+            --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}" \
+            --search-gap ${{ inputs.search_gap }} --causa-gap ${{ inputs.causa_gap }} \
+            --max-minutes ${{ inputs.minutes }} --only-proc "obligaci.*dar"
+
+      - name: Ingest
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u ingest_worker_a.py --slot 2 --shells --no-upload
+
+      - name: Verdict
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          python -u night_check.py --stage probe --label "AB motion (--idle-motion)" --slot 2
+          python -u night_check.py --stage after --label ab_motion
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ab-motion-state
+          path: felipe/pjud/data/worker_a2/state.json
+          if-no-files-found: warn
+
+  compare:
+    needs: [control, motion]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/download-artifact@v4
+        with: { pattern: "ab-*-state", path: /tmp/ab }
+      - name: Side by side
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          print("## A/B — worker A nuevo (solo metadata)\n")
+          print("Baseline probe_pace 2026-08-13, misma ventana/rango/ritmo, worker A VIEJO:")
+          print("**306 opens · 526 MB · 193 min · 0 bloqueos** (terminó por --max-minutes).\n")
+          print("| corrida | opens | reason | blocks | tribunales |")
+          print("|---|---:|---|---:|---:|")
+          for name, d in (("control (sin motion)", "ab-control-state"),
+                          ("motion (--idle-motion)", "ab-motion-state")):
+              f = pathlib.Path("/tmp/ab") / d / "state.json"
+              if not f.exists():
+                  print(f"| {name} | - | SIN ESTADO | - | - |"); continue
+              st = json.loads(f.read_text(encoding="utf-8"))
+              m = st.get("meta", {})
+              print(f"| {name} | {len(st.get('causas', {}))} | {m.get('reason','?')} "
+                    f"| {m.get('blocks','?')} | {len(st.get('tribunales', {}))} |")
+          print("\n⚠️ Una sola corrida por brazo. Si los bloqueos son 0 en ambos, esto NO prueba "
+                "que el movimiento sirva: prueba que ninguno se bloqueó, que es lo que ya hacía "
+                "el worker viejo. La señal útil sería un brazo bloqueado y el otro no.")
+          PY
