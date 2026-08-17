@@ -1049,6 +1049,59 @@ def blocking_overlay(page, sel=None):
         return None
 
 
+CLOSE_WORDS = ("cerrar", "close", "aceptar", "entendido", "continuar", "ok", "×")
+
+
+def _close_any_dialog(page):
+    """Close a visible notice dialog anywhere on the page, by its own control. True if one was
+    clicked. Never touches PROTECTED_OVERLAYS — closing #modalDetalleCivil to 'clear an overlay'
+    would throw away the causa we are standing in."""
+    try:
+        found = page.evaluate(
+            "(prot) => {"
+            # ⚠️ NEVER offsetParent FOR A DIALOG. It is null for every position:fixed element, and
+            # a modal is always fixed — so the obvious visibility test excludes exactly the things
+            # this function exists to find. Caught by the reproduction, not by reading the code.
+            " const vis = e => { const s = getComputedStyle(e), r = e.getBoundingClientRect();"
+            "   return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0'"
+            "          && r.width > 150 && r.height > 80"
+            "          && r.bottom > 0 && r.right > 0 && r.top < innerHeight; };"
+            " const vis2 = e => { const s = getComputedStyle(e), r = e.getBoundingClientRect();"
+            "   return s.display !== 'none' && s.visibility !== 'hidden'"
+            "          && r.width > 0 && r.height > 0; };"
+            " const dialogs = [...document.querySelectorAll("
+            "   '.modal, [role=dialog], .ui-dialog, .swal2-popup')].filter(vis)"
+            "   .filter(d => !prot.some(pp => d.id === pp || d.closest('#' + pp)));"
+            " for (const d of dialogs) {"
+            "   const ctrls = [...d.querySelectorAll('button,a,[role=button],span,i')].filter(vis2);"
+            "   for (const c of ctrls) {"
+            "     const hay = ((c.innerText || '') + ' ' + (c.getAttribute('data-dismiss') || '')"
+            "                  + ' ' + (c.getAttribute('aria-label') || '')"
+            "                  + ' ' + (c.className || '')).toLowerCase();"
+            "     if (%s.some(w => hay.includes(w))) {"
+            "       c.setAttribute('data-h-close', '1');"
+            "       return {dialog: d.id || d.className.slice(0, 40),"
+            "               txt: (c.innerText || '').trim().slice(0, 20)};"
+            "     }"
+            "   }"
+            " }"
+            " return null; }" % (list(CLOSE_WORDS),), list(PROTECTED_OVERLAYS))
+        if not found:
+            return False
+        note(f"  closing dialog {found['dialog']!r} via its own control {found['txt']!r}")
+        # Clicked like anything else: an arc, a dwell, a press. The marker attribute is how we
+        # hand the exact element we chose to human_click without re-deriving it by text.
+        ok = C.human_click(page, page.locator("[data-h-close='1']").first, timeout=6000)
+        try:
+            page.eval_on_selector_all("[data-h-close]", "es=>es.forEach(e=>e.removeAttribute('data-h-close'))")
+        except Exception:
+            pass
+        return bool(ok)
+    except Exception as e:
+        note(f"  [warn] could not close a dialog: {str(e)[:60]}")
+        return False
+
+
 def clear_overlay(page, sel=None, tries=3):
     """Clear whatever is covering `sel`. (cleared?, description) — never closes our own modals.
 
@@ -1073,7 +1126,20 @@ def clear_overlay(page, sel=None, tries=3):
                 break
         note(f"  overlay covering target: {who} | text={ov['text'][:60]!r}")
         if pick is None:
-            return False, f"no dismiss control found on {who}"
+            # ⚠️ THE THING COVERING YOU AND THE THING WITH THE CLOSE BUTTON ARE OFTEN DIFFERENT
+            # ELEMENTS. A Bootstrap aviso is a `.modal-backdrop` that covers the whole page and
+            # contains NO controls, plus a sibling dialog that holds the "Cerrar" button. Searching
+            # only inside the covering element therefore finds the backdrop, reports "no dismiss
+            # control found", and leaves an AVISO up that a person would close in one click —
+            # measured 2026-08-17 on oficinajudicialvirtual.pjud.cl/home/index.php, an aviso about
+            # Juzgados de Garantía with a plain Cerrar button, while workers queued behind it.
+            # So: ask the page for any VISIBLE DIALOG and use its own close control. This is what
+            # the operator does — they read the notice and click Cerrar, and they do not care which
+            # div technically owns the pixel under the button they were aiming at.
+            if _close_any_dialog(page):
+                page.wait_for_timeout(900)
+                continue
+            return False, f"no dismiss control found on {who}, and no dismissible dialog on the page"
         try:
             root = f"#{ov['id']}" if ov["id"] else None
             loc = (page.locator(root).locator("button,a,[role=button]") if root
