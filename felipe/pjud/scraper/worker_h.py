@@ -1121,6 +1121,7 @@ def main():
             # — the same under-collection page-1-only census produced. Harvest the page, THEN
             # advance: a row index belongs to the page it was read from, and clicking page-1
             # indices with the last page on screen opens the WRONG causas.
+            recovered_here = False
             while want and not stop and page < a.max_pages:
                 found = {r["rol"] for r in rows}
                 for r in found:
@@ -1151,9 +1152,27 @@ def main():
                     tally["opens"] += 1
                     court["opens"] += 1
                     if rec is None:
+                        # ⚠️ THE SAME FAILURE HAS TWO CALL SITES AND I FIXED ONE. Recovery was
+                        # wired into the main causa loop and NOT into this pagination loop, so a
+                        # worker that hit a dead modal while paging through a court died on the
+                        # spot — 107 opens in, with three recoveries unused. A failure path
+                        # duplicated is a failure path half-repaired; the giveaway was a worker
+                        # reporting `modal-never-opened` one second after the symptom, with no
+                        # cool-off in between.
                         note(f"  modal never opened — where={ojv.locate(p)} "
                              f"blocked={ojv.blocked(p, net)}")
-                        stop = "modal-never-opened"
+                        ok, q, st2 = recover("modal never opened (paging)")
+                        if not ok:
+                            stop = "modal-never-opened (recovery failed)"
+                            break
+                        p, settler = q, st2
+                        consec_bad_search = consec_select_fail = 0
+                        # ⚠️ ESCAPE BOTH LOOPS. After a re-entry the paginator state belongs to a
+                        # page that no longer exists, so advancing it would ask a fresh session for
+                        # "page 3" of a search it never ran. Re-search the court instead; `want`
+                        # still lists exactly what it owes us.
+                        ti -= 1
+                        recovered_here = True
                         break
                     got.append(rec)
                     tally["gated" if rec.get("skipped_etapa") or rec.get("skipped_proc")
@@ -1163,8 +1182,10 @@ def main():
                                         encoding="utf-8")
                     save_state()
                     read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
-                if stop:
+                if stop or recovered_here:
                     break
+            if recovered_here:
+                continue
             if want:
                 court["unreached"] = len(want)
             save_state()
