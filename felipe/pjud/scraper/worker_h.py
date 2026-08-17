@@ -182,6 +182,16 @@ def set_select_mouse(page, sel, value=None, index=None, settle=4.0):
     # element to be actionable, and it spent every one of them on a #fecCompetencia sitting inside
     # a COLLAPSED accordion — then the run aborted with "not the national tribunal list". Thirty
     # seconds of silence followed by a misleading verdict, for a panel that needed reopening.
+    # ⚠️ WAIT FOR THE PAGE TO BE IDLE FIRST. select_option waits for the control to be
+    # ACTIONABLE, and a select the site has disabled while a request is in flight is not — so a
+    # busy page turns into "8000ms exceeded" and then into "the form is wedged". Asking page_busy
+    # first costs nothing and removes the commonest cause of that verdict.
+    try:
+        t0 = time.time()
+        while C.page_busy(page) and time.time() - t0 < 15.0:
+            page.wait_for_timeout(400)
+    except Exception:
+        pass
     hover(page, sel)
     for attempt in (1, 2):
         try:
@@ -194,6 +204,29 @@ def set_select_mouse(page, sel, value=None, index=None, settle=4.0):
             note(f"    [warn] select {sel}="
                  f"{index if index is not None else str(value)[:16]}: {str(e)[:60]}")
             if attempt == 2:
+                # ⚠️ SAY WHY, NOT JUST THAT. "wedged form" was my LABEL for "select_option timed
+                # out", and a worker burned all three recoveries against it while I could not name
+                # the cause — each re-entry rebuilt the form perfectly and it re-wedged inside two
+                # minutes, which already tells us the session was never the problem. Ask the page.
+                try:
+                    d = page.evaluate(
+                        "(s)=>{const e=document.querySelector(s);"
+                        " return e ? {opts:e.options.length, disabled:e.disabled,"
+                        "  ro:e.hasAttribute('readonly'), vis:!!(e.offsetWidth||e.offsetHeight),"
+                        "  pe:getComputedStyle(e).pointerEvents,"
+                        "  spinners:[...document.querySelectorAll('[id^=loadPre]')]"
+                        "    .filter(x=>x.innerHTML.trim()).map(x=>x.id),"
+                        "  sheets:document.querySelectorAll('.jquery-loading-modal,"
+                        "    .modal-backdrop').length} : null;}", sel)
+                except Exception:
+                    d = None
+                cov = None
+                try:
+                    cov = ojv.blocking_overlay(page, sel)
+                except Exception:
+                    pass
+                note(f"      [why] busy={C.page_busy(page)} select={d} covered_by={cov} "
+                     f"where={ojv.locate(page)}")
                 return False
             try:
                 C.open_fecha_panel(page)      # the usual reason: the panel closed under us
