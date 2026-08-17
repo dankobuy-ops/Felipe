@@ -53,6 +53,33 @@ def note(m):
         print(f"[{s}] {m.encode('ascii', 'replace').decode('ascii')}", flush=True)
 
 
+WAIT_PRESENCE = None
+# callable(page, seconds): keeps a hand on the page while the SITE is answering. Installed by a
+# worker; None means the waits below are byte-for-byte what they always were.
+#
+# ⚠️ WHY IT MATTERS. Worker H measured 1,046 causa opens with the pointer alive at ~16 events/s
+# throughout — and then 72 searches x ~20 s in which the pointer did not move at all: 23 of 150
+# minutes, 15% of the session, with a dead input channel. That is the same shape as every
+# empty-channel defect this project has found. A person watching a slow search does not freeze.
+#
+# ⚠️ AND WHY IT IS NOT FREE. wait_results classifies a search only after EMPTY_QUIET (10 s) of DOM
+# SILENCE. If pointer motion mutates the DOM — a hover class on a row would do it — the quiet
+# window never closes and every search becomes 'stale'. Verify searches still return 'results' at
+# normal elapsed times after installing this; do not assume it.
+
+
+def _hold(p, ms):
+    """Wait `ms`, letting any installed presence keep the pointer alive. Falls back to the plain
+    wait on any error: a hand is never worth a search."""
+    if WAIT_PRESENCE is None:
+        p.wait_for_timeout(ms)
+        return
+    try:
+        WAIT_PRESENCE(p, ms / 1000.0)
+    except Exception:
+        p.wait_for_timeout(ms)
+
+
 def _wait(page, ms):
     """`wait_for_timeout` in slices, so a watcher (cdp_scrape.IDLE_HOOK) gets a look in.
 
@@ -1162,7 +1189,7 @@ def wait_results(p, S, net):
             # flight. The site had simply slowed from 11-35 s to over 75 s, and we were throwing
             # away valid slow searches (including Los Angeles, 11 causas).
             if busy and el < HARD_CAP * 3:
-                p.wait_for_timeout(500)
+                _hold(p, 500)
                 continue
             return ("stale" if not got_resp else "timeout"), el
-        p.wait_for_timeout(250)
+        _hold(p, 250)

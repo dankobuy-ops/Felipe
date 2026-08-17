@@ -397,18 +397,45 @@ def human_click(page, target, timeout=8000):
     # whatever sat underneath — a backdrop, a stale row — at coordinates where the intended
     # element was not. On 2026-07-22 that correlated perfectly with getting F5-blocked:
     # 0 covered clicks -> survived 50 causas; 1 -> blocked at 23; 2 -> blocked at 4.
+    # ⚠️ LOOK FOR A POINT THAT WORKS; DO NOT SAMPLE ONE AND GIVE UP. This used to pick a single
+    # random point in the middle 40% of the element and, if that point was covered, wait a second
+    # and pick another from the same range — eight times. An element covered over PART of itself
+    # then failed at random: on 2026-08-17 the OJV entry tile refused three whole entry attempts
+    # because `.gallery-item-info`, the caption sitting over the lower half of the tile as a
+    # SIBLING of the link, kept winning the coin toss. Partial cover is not cover.
+    #
+    # A person looking at that tile sees the caption over half of it and clicks the other half.
+    # So: offer the browser a spread of candidate points and take the first one where OUR element
+    # is genuinely on top. The rule that matters — never click where something else would receive
+    # the click — is unchanged and is still decided by the hit-test, not by hope.
+    CANDIDATES = [(0.5, 0.5), (0.5, 0.28), (0.3, 0.4), (0.7, 0.4), (0.5, 0.72),
+                  (0.22, 0.5), (0.78, 0.5), (0.35, 0.7), (0.65, 0.7), (0.5, 0.15)]
+    HIT_JS = """(e, pts) => {
+        const r = e.getBoundingClientRect();
+        for (const pt of pts) {
+            const x = r.left + r.width * pt[0], y = r.top + r.height * pt[1];
+            if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;
+            const top = document.elementFromPoint(x, y);
+            if (top && (top === e || e.contains(top) || top.contains(e))) return [x, y];
+        }
+        return null;
+    }"""
     x = y = None
     covered = False
     for attempt in range(8):
-        x = box["x"] + box["width"] * random.uniform(0.3, 0.7)
-        y = box["y"] + box["height"] * random.uniform(0.3, 0.7)
+        # Centre first (what a person aims at), then a scatter, shuffled so we do not hammer the
+        # same pixel of the same control on every visit.
+        pts = [CANDIDATES[0]] + random.sample(CANDIDATES[1:], len(CANDIDATES) - 1)
+        pts = [(fx + random.uniform(-0.04, 0.04), fy + random.uniform(-0.04, 0.04))
+               for fx, fy in pts]
         try:
-            hit = el.evaluate(
-                "(e, pt) => {const top = document.elementFromPoint(pt[0], pt[1]);"
-                " return !!top && (top === e || e.contains(top) || top.contains(e));}", [x, y])
+            hit = el.evaluate(HIT_JS, pts)
         except Exception:
-            break                                        # can't hit-test (iframe etc.) — go
+            x = box["x"] + box["width"] * 0.5            # can't hit-test (iframe etc.) — go
+            y = box["y"] + box["height"] * 0.5
+            break
         if hit:
+            x, y = hit
             covered = False
             break
         covered = True

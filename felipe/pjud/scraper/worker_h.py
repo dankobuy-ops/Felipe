@@ -173,12 +173,28 @@ def set_select_mouse(page, sel, value=None, index=None, settle=4.0):
     # plainly worked (the diagnostic printed the selected option as "2 - Apremio Ejecutivo
     # Obligación de Dar" while the check said no). Two causas' worth of book 2 was thrown away
     # for it. Verify by INDEX, which is what we actually meant.
+    # ⚠️ A SHORT TIMEOUT AND ONE RECOVERY. select_option's default is 30 s of waiting for the
+    # element to be actionable, and it spent every one of them on a #fecCompetencia sitting inside
+    # a COLLAPSED accordion — then the run aborted with "not the national tribunal list". Thirty
+    # seconds of silence followed by a misleading verdict, for a panel that needed reopening.
     hover(page, sel)
-    try:
-        page.select_option(sel, index=index) if index is not None             else page.select_option(sel, value)
-    except Exception as e:
-        note(f"    [warn] select {sel}={index if index is not None else value}: {str(e)[:70]}")
-        return False
+    for attempt in (1, 2):
+        try:
+            if index is not None:
+                page.select_option(sel, index=index, timeout=8000)
+            else:
+                page.select_option(sel, value, timeout=8000)
+            break
+        except Exception as e:
+            note(f"    [warn] select {sel}="
+                 f"{index if index is not None else str(value)[:16]}: {str(e)[:60]}")
+            if attempt == 2:
+                return False
+            try:
+                C.open_fecha_panel(page)      # the usual reason: the panel closed under us
+            except Exception:
+                pass
+            page.wait_for_timeout(800)
     t0 = time.time()
     while time.time() - t0 < settle:
         page.wait_for_timeout(200)
@@ -546,6 +562,15 @@ def main():
     ap.add_argument("--max-causas", type=int, default=0,
                     help="stop after N causa opens (0 = no limit)")
     ap.add_argument("--only-proc", default="")
+    ap.add_argument("--gate", choices=("file", "none"), default="file",
+                    help="serialise ARRIVALS through a lock file so concurrent workers never open "
+                         "fresh browsers in the same instant. Released on the first confirmed "
+                         "search, never on merely reaching the form.")
+    ap.add_argument("--no-search-presence", action="store_true",
+                    help="leave the pointer FROZEN during searches, as every worker before this "
+                         "one did. The control arm for the search-presence fix, and the escape "
+                         "hatch if pointer motion ever stops searches settling (wait_results "
+                         "needs 10 s of DOM silence to classify one).")
     ap.add_argument("--ramp-every", type=int, default=0,
                     help="SPEED TEST: after every N causa opens, cut the reading times by "
                          "--ramp-step. Ramps ONE variable -- the acts, their order, the pointer "
@@ -573,12 +598,25 @@ def main():
     if RAMP_EVERY:
         note(f"SPEED RAMP: x{RAMP_STEP} on the reading times every {RAMP_EVERY} opens")
     OUT.mkdir(parents=True, exist_ok=True)
-    out_file = OUT / f"h-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    # ⚠️ THE PORT IS IN THE NAME. Timestamped to the second, two workers launched together
+    # write to the SAME file and silently overwrite each other's records — and a parallelism test
+    # whose output is half-missing looks like a scraping failure.
+    out_file = OUT / f"h-{time.strftime('%Y%m%d-%H%M%S')}-p{a.port}.json"
     got = []
     net = []
     t_start = time.time()
 
     with sync_playwright() as pw:
+        # ⚠️ ONE WORKER WALKS IN AT A TIME. Six fresh browsers launched together and only ONE got
+        # in; the same happens locally when two load pjud.cl in the same second. A burst of
+        # brand-new sessions is itself the trigger, independently of request rate — so the gate is
+        # held across launching Chrome, walking in, AND the first confirmed search. Being on the
+        # form proves nothing: four workers once reached a page and not one could search.
+        gate = None
+        if a.gate != "none":
+            gate = ojv.EntryLock(HERE.parent / "data" / "h-entry.lock")
+            note("waiting for the entry gate")
+            gate.acquire()
         if a.launch:
             # ⚠️ ONE PROFILE PER PORT. Chrome treats a --user-data-dir as a SINGLETON: launch a
             # second browser on a dir another Chrome still holds and the two fight — ours came up,
@@ -614,6 +652,8 @@ def main():
 
         p = ojv.walk_in(ctx)
         if p is None:
+            if gate is not None:
+                gate.release()    # nothing to confirm; holding it would strand the queue
             raise SystemExit("could not reach the OJV")
         note(f"in: {p.url[:70]}")
         p.on("response", ojv.make_tap(net))
@@ -624,6 +664,11 @@ def main():
             pass
 
         pres = human_motion.Presence(p, rate=a.rate)
+        # ⚠️ A HAND ON THE PAGE WHILE THE SITE ANSWERS. Without this the worker is motionless for
+        # the ~20 s of every search — 15% of a 150-minute session with an empty input channel,
+        # measured on the 1,046-open run. See ojv.WAIT_PRESENCE for the risk this carries.
+        if not a.no_search_presence:
+            ojv.WAIT_PRESENCE = lambda page, secs: pres.run(secs)
         lst = build_form_mouse(p, settler,
                                None if a.use_form_dates else a.desde,
                                None if a.use_form_dates else a.hasta)
@@ -674,7 +719,7 @@ def main():
             note(f"sweeping {len(targets)} tribunal(es), page 1 of each")
         tally = {"opens": 0, "kept": 0, "gated": 0, "searches": 0, "courts": 0}
         state = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "courts": [], "verdict": ""}
-        state_file = OUT / f"h-{time.strftime('%Y%m%d-%H%M%S')}-state.json"
+        state_file = OUT / f"h-{time.strftime('%Y%m%d-%H%M%S')}-p{a.port}-state.json"
 
         def save_state(verdict=""):
             state["verdict"] = verdict or state["verdict"]
@@ -701,6 +746,9 @@ def main():
                 continue
             ojv.click_away(p)
             pres.travel_to(p, "#btnConConsultaFec")
+            # Where the hand waits while the results come back: over the table they will appear
+            # in, which is where a person looks.
+            pres.aim(p, "#dtaTableDetalleFecha")
 
             # ⚠️ NO hasattr FALLBACKS. The first version guessed at three function names and hid
             # the guesses behind `hasattr(...) else (...)`. `C.result_rows` does not exist, so it
@@ -714,6 +762,14 @@ def main():
             kind, el = ojv.wait_results(p, settler, net)
             hit, why = ojv.blocked(p, net)
             tally["searches"] += 1
+            if gate is not None and gate.held:
+                # ⚠️ RELEASED ON A VERDICT, GOOD OR BAD — and on a SEARCH, not on reaching the
+                # form. Four workers once all reached a page and not one could search, so
+                # releasing on the form would have opened the gate on the strength of nothing.
+                # And a worker that cannot search must not hold the others behind it all night.
+                note(f"  first search {'CONFIRMED' if kind == 'results' and not hit else 'did NOT confirm'}"
+                     f" — releasing the entry gate, next worker may come in")
+                gate.release()
             if hit:
                 note(f"  *** BLOCKED ON SEARCH after {tally['opens']} opens / "
                      f"{tally['searches']} searches — {why}")

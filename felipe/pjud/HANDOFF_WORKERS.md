@@ -1159,3 +1159,52 @@ dead input channel** — 15% of the session. The recorded human session cannot s
 does there because they searched exactly once. This is the same shape as every empty-channel bug
 this project has found, and the fix is the one already used for the modal wait: run presence
 through the search wait too.
+
+### Step 3 — parallelism scales LOCALLY, 1.91x on two workers (2026-08-17)
+
+Two workers, disjoint court ranges (0-100, 101-229), own port, own `--user-data-dir`, own output
+files, arrivals serialised through a lock file released on the FIRST CONFIRMED SEARCH. Both ran
+their full 60 minutes and stopped on `lifespan`. **Zero blocks.**
+
+| configuration | opens | min | rate |
+|---|---|---|---|
+| 1 worker, reading x1.0 | 189 | 66 | 2.86/min |
+| **2 workers, reading x1.0** | **328** (172 + 156) | 60 | **5.47/min = 1.91x** |
+| 1 worker, reading floored | 1,046 | 150 | 6.97/min |
+
+⚠️⚠️ **I ALMOST MISREAD THIS, THE SAME WAY THE BURST THEORY WAS MISREAD.** Compared against the
+6.97/min FLOORED single-worker run, two workers at 5.47/min look like parallelism COSTING
+throughput. But those arms differ in two variables (worker count AND reading speed). Against the
+matching x1.0 baseline it is 1.91x — near-linear. **Check the arms match before reading the
+number**; this is the second instance in one session.
+
+★ **Two concurrent local sessions coexist for an hour with no block** — the opposite of the remote
+runners, which were culled within fourteen seconds of each other. And presence held up under
+load: 17.7 and 18.0 mousemove/s per worker, BETTER than the single floored run's 16.0/s.
+
+**Filling June+July's cuaderno 2 (4,491 causas):** 26.1 h at one worker/operator pace, 13.7 h at
+two, 10.7 h at one worker floored, **~5.6 h at two workers floored — PROJECTED, not measured**
+(it multiplies two measured effects that could interact). That is one 60-minute run to settle.
+
+### The search-presence fix, verified
+
+`ojv.WAIT_PRESENCE` keeps the pointer alive through `wait_results`. Across both workers: **zero
+`stale`, zero `timeout`** — searches returned `results` at 20 s and 41 s with the pointer moving.
+The DOM-quiet risk (wait_results needs 10 s of silence and a hover class would reset it) did not
+materialise. `--no-search-presence` remains as the control arm.
+
+### ★ `human_click` looked for one point and gave up
+
+It sampled a single random point in the middle 40% of the target and, if that point was covered,
+waited a second and sampled again from the same range — eight times. The OJV entry tile refused
+three whole entry attempts because `.gallery-item-info`, a caption that expands on hover as a
+SIBLING of the link, kept winning the coin toss. **Our own pointer approach triggers the hover
+that covers the target.** Now it offers a spread of candidate points and takes the first where our
+element is genuinely on top; fully covered targets are still refused, which is the rule that
+correlated with blocks in July (0 covered clicks -> 50 causas, 1 -> blocked at 23, 2 -> at 4).
+
+### ⚠️ `select_option`'s default timeout is 30 s of silence
+
+`#fecCompetencia` inside a collapsed accordion is not actionable, so the call sat for thirty
+seconds and the run then aborted with "not the national tribunal list" — a misleading verdict for
+a panel that needed reopening. 8 s timeout, then reopen the panel and retry once.
