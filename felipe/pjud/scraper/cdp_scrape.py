@@ -353,8 +353,26 @@ def human_scroll_to(page, el, timeout=8000):
             human_scroll(page, notches=1, down=delta > 0, settle=False)
         except Exception:
             break
-    try:                                            # belt and braces: correctness beats elegance
+    # ⚠️ ONLY AS A FALLBACK, WHICH IS WHAT THE COMMENT ALWAYS CLAIMED IT WAS. This ran
+    # UNCONDITIONALLY, so after the wheel had placed the target comfortably mid-viewport,
+    # scroll_into_view_if_needed re-scrolled it to MINIMUM visibility — flush against the top
+    # edge, i.e. underneath the site's sticky navbar (`NAV#mainNav`, z-index 1030). human_click
+    # then hit-tested the target, found the navbar on top, and refused to click. Intermittent by
+    # nature: whether it lands under the header depends on where the page was already scrolled,
+    # which is why one worker sailed through the same link another could not reach.
+    # It is also a teleport for the page (see the docstring above), so not running it is a bonus.
+    try:
+        b = el.bounding_box()
+        vh = page.evaluate("() => innerHeight")
+        if b and 0 <= b["y"] and b["y"] + b["height"] <= vh:
+            return                                  # already fully in view; leave the page alone
+    except Exception:
+        pass
+    try:
         el.scroll_into_view_if_needed(timeout=timeout)
+        # And undo the damage it does: one notch UP moves the content DOWN, out from under any
+        # fixed header. A person whose target is hidden by a sticky bar scrolls exactly this way.
+        human_scroll(page, notches=1, down=False, settle=False)
     except Exception:
         pass
 
@@ -410,13 +428,33 @@ def human_click(page, target, timeout=8000):
     # the click — is unchanged and is still decided by the hit-test, not by hope.
     CANDIDATES = [(0.5, 0.5), (0.5, 0.28), (0.3, 0.4), (0.7, 0.4), (0.5, 0.72),
                   (0.22, 0.5), (0.78, 0.5), (0.35, 0.7), (0.65, 0.7), (0.5, 0.15)]
+    # ⚠️ AND ACCEPT A COVER THAT LEADS TO THE SAME PLACE. On www.pjud.cl each entry tile carries a
+    # `.gallery-item-info` caption laid over it PERMANENTLY — "Sección que permite la revisión de
+    # causas" is a panel on top of the tile, with the tile's own label faint beneath it. A person
+    # looking at that page clicks the caption, because the caption is the thing they can see, and
+    # it navigates. Our hit-test refused it for not being the anchor, and burned entry attempts on
+    # a link that was never actually unreachable.
+    #
+    # This does NOT weaken the no-covered-click rule. That rule exists because clicking a covered
+    # target sends a real click to something ELSE at coordinates where the intended element is not
+    # — measured 2026-07-22: 0 covered clicks survived 50 causas, 1 blocked at 23, 2 at 4. If the
+    # element on top resolves to the SAME destination (same anchor href/onclick), then clicking it
+    # IS clicking us, and the objection does not apply. Anything else is still refused.
     HIT_JS = """(e, pts) => {
+        const dest = (n) => {
+            const a = n && n.closest ? n.closest('a') : null;
+            if (!a) return null;
+            return (a.getAttribute('href') || '') + '|' + (a.getAttribute('onclick') || '');
+        };
+        const mine = dest(e);
         const r = e.getBoundingClientRect();
         for (const pt of pts) {
             const x = r.left + r.width * pt[0], y = r.top + r.height * pt[1];
             if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;
             const top = document.elementFromPoint(x, y);
-            if (top && (top === e || e.contains(top) || top.contains(e))) return [x, y];
+            if (!top) continue;
+            if (top === e || e.contains(top) || top.contains(e)) return [x, y];
+            if (mine && mine !== '|' && dest(top) === mine) return [x, y];
         }
         return null;
     }"""
@@ -457,6 +495,13 @@ def human_click(page, target, timeout=8000):
                 pass
         wait_idle(page)
         try:
+            # ⚠️ NUDGE THE PAGE, or a target under a STICKY HEADER is unreachable for ever.
+            # human_scroll_to now leaves an already-in-view element alone (correctly — it used to
+            # teleport it under the navbar), which means a retry that only re-centres changes
+            # nothing and all eight attempts see the identical covered pixel. One notch UP moves
+            # the content DOWN, out from under a top-fixed bar: what a person does when a header
+            # hides what they are reaching for. `NAV#mainNav` at z-index 1030 cost a whole entry.
+            human_scroll(page, notches=1, down=False, settle=False)
             human_scroll_to(page, el, timeout=timeout)   # wheel here too — same reason
             box = el.bounding_box() or box
         except Exception:
