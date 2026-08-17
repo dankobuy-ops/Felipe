@@ -48,6 +48,7 @@ import dbstore
 import ojv
 import run
 from ojv import note
+import live_view
 import worker_a as A
 import worker_b as B
 from playwright.sync_api import sync_playwright
@@ -213,6 +214,12 @@ def main():
     # ASCII only in help strings.
     ap.add_argument("--search-gap", type=float, default=0.0, help="override SEARCH_GAP")
     ap.add_argument("--causa-gap", type=float, default=0.0, help="override CAUSA_GAP")
+    # ASCII only in help strings - a non-ASCII char here crashes --help on Windows cp1252.
+    ap.add_argument("--live", action="store_true",
+                    help="publish what this worker sees to Neon every few seconds so it can be "
+                         "WATCHED while it runs: python watch_live.py. See live_view.py.")
+    ap.add_argument("--live-every", type=float, default=6.0,
+                    help="seconds between live frames (only sent when the picture changed)")
     ap.add_argument("--post-causa", type=float, default=0.0, help="override POST_CAUSA")
     a = ap.parse_args()
 
@@ -256,6 +263,15 @@ def main():
             raise SystemExit(f"CDP handshake failed on {a.port}: {str(e)[:80]}\n"
                              f"Restart Chrome on the SAME --user-data-dir and retry.")
         ctx = b.contexts[0]
+        # Installed BEFORE the walk-in: entry is where a remote run has failed in the most
+        # different ways, and it is over before the first log line that would say which.
+        # It is set on A, not here: A owns the entry walk-in and the pacing constants this
+        # worker borrows, and A.live() reads that global. The causa itself goes through
+        # C.scrape_causa, so what a watcher sees here is the sweep and the waits, not A's
+        # modal-wait ticks.
+        if a.live:
+            A.LIVE = live_view.Live("C", every=a.live_every)
+            C.IDLE_HOOK = A.LIVE.tick
         p, S, tl = A.enter_and_setup(ctx, net, a.desde, a.hasta)
         if p is None:
             raise SystemExit("could not reach the form")
@@ -277,7 +293,7 @@ def main():
             if last_search:
                 gap = A.SEARCH_GAP - (time.time() - last_search)
                 if gap > 0:
-                    time.sleep(gap)
+                    C.human_idle(p, gap)
             net.clear()
             C.human_click(p, "#btnConConsultaFec")
             last_search = time.time()
@@ -311,7 +327,7 @@ def main():
                     cid, _upd = want[c["rol"]]
                     if a.max_causas and checked >= a.max_causas:
                         break
-                    time.sleep(A.CAUSA_GAP)
+                    C.human_idle(p, A.CAUSA_GAP)
                     try:
                         rec, delta = refresh_causa(p, store.conn, tid, by_id[tid], c, cid)
                     except Exception as e:
@@ -357,12 +373,12 @@ def main():
                         # either the site reorganising folios or our row-id scheme drifting.
                         note(f"      [!] {len(delta['gone'])} stored row(s) not on the page now — "
                              f"first: {delta['gone'][0]}")
-                    time.sleep(A.POST_CAUSA)
+                    C.human_idle(p, A.POST_CAUSA)
                 if consec_fail >= A.MODAL_FAIL_LIMIT:
                     break
                 gap = A.SEARCH_GAP - (time.time() - last_search)
                 if gap > 0:
-                    time.sleep(gap)
+                    C.human_idle(p, gap)
                 try:
                     why = A.advance(p, page)
                     last_search = time.time()

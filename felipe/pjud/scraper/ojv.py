@@ -11,7 +11,7 @@ Callers tune the timing knobs by assigning to the module attributes (they are re
     import ojv
     ojv.EMPTY_MIN_S = 30.0
 """
-import time, re, socket, random, os, atexit
+import time, re, socket, random, os, atexit, collections
 import cdp_scrape as C
 import unattended_worker as uw
 
@@ -33,8 +33,19 @@ STUCK_OVERLAY_S = 25.0
 SHAPE_RE = re.compile(r"/[0-9a-f]{24,40}(\?|$)")
 
 
+# The last log lines, kept in memory for the live view. The narration a worker already writes
+# IS its phase description ("open 10-C-1638-2026", "[42] 2do Juzgado ... 37 registros"), so the
+# live view reads this instead of having a second, parallel status vocabulary threaded through
+# every loop — one that would drift out of step with the log the moment either changed.
+TAIL = collections.deque(maxlen=18)
+
+
 def note(m):
     s = time.strftime("%H:%M:%S")
+    try:
+        TAIL.append(f"{s} {m}")
+    except Exception:
+        pass
     try:
         print(f"[{s}] {m}", flush=True)
     except UnicodeEncodeError:

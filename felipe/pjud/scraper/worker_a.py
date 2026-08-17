@@ -43,6 +43,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import cdp_scrape as C
 import ojv
+import live_view                 # --live: the runner, watchable while it runs
 import run                       # etapa_rejected: the header gate, shared with C and ingest
 from ojv import note
 from settle import Settler
@@ -102,6 +103,22 @@ POST_CAUSA = 10.0      # after closing a causa, before anything else
 
 SHOTS = None           # --shots DIR: capture what the worker is ACTUALLY looking at when it fails
 _shot_n = [0]
+
+# --live: publish what this worker sees to Neon, so it can be WATCHED while it runs (see
+# live_view.py, and watch_live.py for the other end). `shot()` answers the same question after
+# the fact, out of an artifact you can only download once the job is over; this answers it in the
+# minute it happens. Off unless asked for — it is a variable like any other, see live_view.
+LIVE = None
+
+
+def live(page, phase=""):
+    """Show the watcher this moment, whatever the clock says. No-op when nobody is watching."""
+    if LIVE is None:
+        return
+    try:
+        LIVE.say(page, phase) if phase else LIVE.tick(page, force=True)
+    except Exception:
+        pass
 
 
 def shot(page, tag):
@@ -390,11 +407,18 @@ def harvest_causa(ctx, p, trib_id, trib_name, row, want_ebook=False, only_proc="
     t0 = time.time()
     opened = False
     marks = [8.0, 30.0, 60.0]          # snapshot the hang WHILE it hangs, not only after
+    live(p, f"opening {causa_id}")
     while time.time() - t0 < 90:
         p.wait_for_timeout(400)
         el = time.time() - t0
         if SHOTS and marks and el >= marks[0]:
             shot(p, f"waiting-{int(marks.pop(0))}s-{row['rol']}")
+        # ⚠️ THE WATCHER MUST SEE THE HANG, NOT ITS AFTERMATH. This loop is the ninety seconds
+        # that killed four remote sessions, and it is the one stretch where the worker is doing
+        # nothing a log line can describe. Rate-limited inside tick(), and only a frame when the
+        # picture actually changes — so a genuinely frozen page costs one.
+        if LIVE is not None:
+            LIVE.tick(p)
         try:
             if p.evaluate("(rol)=>{const m=document.querySelector('#modalDetalleCivil');"
                           "return !!m && m.innerText.indexOf(rol)>=0;}", row["rol"]):
@@ -845,6 +869,17 @@ def main():
     # ASCII only in help strings - a non-ASCII char here crashes --help on Windows cp1252.
     ap.add_argument("--shots", default="",
                     help="directory for failure screenshots plus page state. A runner has no screen: four sessions died at the same causa with 'modal did not open after 90s' and nobody could say WHAT was on the page. Fires only on failure paths and during the hang itself.")
+    # ASCII only in help strings - a non-ASCII char here crashes --help on Windows cp1252.
+    ap.add_argument("--live", action="store_true",
+                    help="publish what this worker sees (a jpeg plus its log tail) to Neon every "
+                         "few seconds, so it can be WATCHED while it runs: python watch_live.py. "
+                         "The companion to --shots, which only tells you afterwards. Costs no "
+                         "request toward PJUD -- CDP screenshots are local -- but it is still a "
+                         "variable: do not leave it on for a one-variable test unless the other "
+                         "arm has it too.")
+    ap.add_argument("--live-every", type=float, default=6.0,
+                    help="seconds between live frames (default 6). A frame is only sent when the "
+                         "picture CHANGED, so a page sitting through a 25 s pacing wait costs one.")
     ap.add_argument("--no-cuaderno2", action="store_true",
                     help="do NOT switch to book 2. One-variable test for the remote 10-open wall: "
                          "the switch is the only change that adds a request (a second "
@@ -919,7 +954,7 @@ def main():
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
             raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy — refusing to search with it")
 
-    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA, GATE_KIND, CUADERNO2, SHOTS
+    global DATA, PDFS, SEARCH_GAP, CAUSA_GAP, POST_CAUSA, GATE_KIND, CUADERNO2, SHOTS, LIVE
     GATE_KIND = a.gate
     if a.search_gap:
         SEARCH_GAP = a.search_gap
@@ -1033,6 +1068,15 @@ def main():
                              f"Restart Chrome on the SAME --user-data-dir and retry.")
         ctx = b.contexts[0]
 
+        # ⚠️ INSTALLED BEFORE THE WALK-IN, not after it. Entry is the part of a remote run that
+        # has failed in the most different ways — a guest gate that moved, an aviso covering the
+        # button, a form that loads and then cannot search — and it is over before the first log
+        # line that would tell you which. If a watcher is going to exist, it should be watching by
+        # the time the browser reaches www.pjud.cl.
+        if a.live:
+            LIVE = live_view.Live(a.slot or 0, every=a.live_every)
+            C.IDLE_HOOK = LIVE.tick
+
         # Entry is retried too: a single failed walk-in used to end the run outright, which on a
         # slow link means a whole sweep lost to one slow page load.
         p = S = tl = None
@@ -1063,6 +1107,9 @@ def main():
         if boot_lock:
             boot_lock.touch()
             note("on the form — holding the entry lock until my first search comes back")
+        if LIVE is not None:
+            LIVE.public_ip_once()          # which runner am I watching? Asked once, lazily.
+            live(p, f"on the form — {len(tl or [])} tribunales")
         if len(tl) < 50:
             raise SystemExit("not the national list — aborting")
 
@@ -1281,6 +1328,11 @@ def main():
             note(f"RUN REPORT: {reason} | finished={finished} idx={idx} "
                  f"blocks={blocks_seen} recoveries={recoveries} swaps={swaps} "
                  f"opens={tally['opens']} ebooks={tally['ebooks']}")
+            # Leave the last picture up with the verdict written on it, rather than a live-looking
+            # frame that quietly ages. Called here because finish() is on every exit path — which
+            # is the same reason the chain reads its output.
+            if LIVE is not None:
+                LIVE.close(f"{reason} — opens={tally['opens']} blocks={blocks_seen}")
             return code
 
         idx = a.start - 1
@@ -1386,7 +1438,12 @@ def main():
             if last_search:
                 gap = gap_for() - (time.time() - last_search)
                 if gap > 0:
-                    time.sleep(gap)
+                    # ⚠️ human_idle, NOT time.sleep — and with IDLE_MOTION off and no watcher
+                    # installed the two are byte-for-byte the same call. What it buys is that
+                    # EVERY pacing wait is one thing: a live view that misses the search gap
+                    # shows a frozen picture for twenty seconds out of every twenty-five and
+                    # looks exactly like the hang it exists to distinguish.
+                    C.human_idle(p, gap)
 
             net.clear()
             if boot_lock and boot_lock.held:
@@ -1413,6 +1470,7 @@ def main():
             if hit:
                 blocks_seen += 1
                 note(f"  *** BLOCKED at idx {idx} ({tgt['v']} {tgt['t'][:28]}) {why}")
+                live(p, f"BLOCKED on search — {why}")
                 save()
                 tally_line("TALLY at block:")
                 if recover(idx):
@@ -1510,6 +1568,7 @@ def main():
                             blocks_seen += 1
                             note(f"  *** BLOCKED on detail, idx {idx} causa {c['rol']} — {why}")
                             shot(p, f"blocked-detail-{c['rol']}")
+                            live(p, f"BLOCKED on {c['rol']} — {why}")
                             save()
                             tally_line("TALLY at block:")
                             blocked_here = True
@@ -1569,7 +1628,7 @@ def main():
                 # A page advance draws on the same budget as a search — see SEARCH_GAP.
                 gap = gap_for() - (time.time() - last_search)
                 if gap > 0:
-                    time.sleep(gap)
+                    C.human_idle(p, gap)
                 try:
                     why = advance(p, page)
                     last_search = time.time()

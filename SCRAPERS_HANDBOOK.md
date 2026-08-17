@@ -1294,7 +1294,10 @@ Python takes its stdout encoding from the locale (cp1252 here), so anything outs
 `UnicodeEncodeError` **mid-print** and anything outside ASCII lands mangled in the log. Force
 UTF-8 with `errors="replace"` on stdout/stderr at startup. Keep `argparse` help strings **ASCII**
 — they are written straight to the console, and a `%` in them must be escaped as `%%` or `--help`
-itself raises.
+itself raises. **That includes `description=__doc__`**, which is the easy one to miss: the module
+docstring is where the arrows and ⚠️ live, and passing it to `ArgumentParser` puts them on a
+cp1252 console. `watch_live.py --help` died that way (PJUD, 2026-08-16) while the tool itself ran
+perfectly — pass a short ASCII description and let the docstring stay rich for readers.
 
 PowerShell adds its own: Task Scheduler runs Windows PowerShell 5.1, which reads `.ps1` as ANSI
 without a **UTF-8 BOM** and then fails to parse any accented character; and 5.1's `Tee-Object`
@@ -1397,6 +1400,44 @@ Rules that follow:
   because of permissions is *ignorance*, not death — never kill or restart on it alone.
 - **When an alarm fires, verify before acting.** Three of the four above would have caused a
   harmful intervention on a healthy fleet.
+
+### ★★ A worker you cannot see needs a WINDOW, not just a black box recorder
+
+Failure screenshots (`--shots`) were built after four remote sessions died identically and nobody
+could say what was on the page. They worked — and they were still not enough, because a CI
+artifact can only be downloaded **once the job has ended**. You get to study the crash; you never
+get to watch the approach. Every diagnosis stayed a post-mortem, and a post-mortem cannot answer
+"is it doing the right thing *now*".
+
+So give the worker a window. It is much less work than it sounds:
+
+- **Publish over whatever the two ends already share.** Here that was the Postgres the runner
+  already writes to, so there was no tunnel, no new secret, no port opened, and it works
+  identically for a Chrome on the desk and a runner in a datacenter. Ask what both sides can
+  already reach before building transport.
+- **A jpeg plus the log tail is the whole payload.** Do not invent a second status vocabulary —
+  the narration the worker already logs *is* its phase description, and a parallel one drifts out
+  of step with the log the first time either changes.
+- **Instrument the WAIT, not the failure.** Nearly all of a polite scraper's wall clock is pacing
+  gaps and wait loops, and that is exactly where a hang is indistinguishable from patience. Put
+  the frame grab inside the idle helper and inside the "wait for the thing to appear" loop, and
+  coverage comes for free. ⚠️ Which means every pacing wait must go **through one helper**: a
+  `time.sleep()` that skipped it left a live view frozen for 20 of every 25 seconds, looking
+  exactly like the hang it exists to distinguish.
+- **Send a frame only when the picture CHANGED**, and have the viewer send back the sequence
+  number it already holds. A page sitting through a 25 s wait then costs one frame, not five, at
+  both ends. This is the difference between a watchable tool and one you turn off to save bandwidth.
+- **A stale frame must not look live.** Refresh the timestamp even when the picture is identical,
+  and show its age — otherwise "nothing is moving" and "the worker is dead" are the same picture.
+- **The watcher must never be able to break the run.** Short explicit timeout on the capture
+  (a screenshot library default of 30 s will stall you at the worst possible moment), every path
+  swallowed, and self-disable after N consecutive errors. A spectator that can stop the game is
+  worse than no spectator.
+- ⚠️ **And it is a variable.** Screenshotting occupies the renderer's main thread. It sends nothing
+  to the target — but "no requests" is not "no difference", so do not leave it on for a
+  one-variable test unless the arm you are comparing against carries it too.
+
+(PJUD, 2026-08-16. `live_view.py` / `watch_live.py` — ~200 lines each.)
 
 ---
 

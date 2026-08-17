@@ -969,3 +969,58 @@ was wrong in every case.
 - **`--idle-motion` does nothing.** Two runner arms, one variable, both died at exactly 10 opens
   on the same causa with the same signature. Kept off by default so the negative survives.
 - **The pointer-approach fix on the cuaderno dropdown does not lift the wall** (above).
+
+## Watching a worker live — `--live` + `watch_live.py` (2026-08-16)
+
+`--shots` is a black box recorder: it answers *what killed it*, out of an artifact you can only
+download once the job is over. This is the other half — **what is it doing right now** — and it
+was asked for by the operator directly after the table above, which is not a coincidence: two of
+the three pointer defects were found by watching a browser, and the runner is the one browser
+nobody can watch.
+
+```
+runner ──(jpeg + log tail, every ~6 s)──▶ Neon.live_view ◀──(poll)── watch_live.py ──▶ localhost
+```
+
+**Run it.**
+
+```
+python -u worker_a.py ... --live          # any worker: A, B and C all take it
+python watch_live.py                      # your PC — opens http://127.0.0.1:8899
+python watch_live.py --once               # one text snapshot, no browser
+```
+
+The censo workflow has a `live` input (**default true**) and every worker B/C step in the night
+queue passes `--live`. So a dispatched runner is watchable with nothing but `python watch_live.py`
+on this machine.
+
+**What the card shows:** the runner's host and public IP, its GitHub run id, uptime, seconds since
+the last frame (green under 25 s, red over 90), the current phase, and the worker's own last 18 log
+lines under the picture.
+
+### Why it is built the way it is
+
+- **Neon is the transport** because it is the only thing a runner and this desk already share. No
+  tunnel, no new secret, no port opened, and it behaves identically for a local Chrome.
+- **One row per slot, overwritten.** It is a window, not a recorder — `--shots` owns the history.
+- **The phase text is the log tail's last line.** The narration a worker already writes IS its
+  status; a parallel status vocabulary would drift out of step with the log.
+- **A frame is sent only when the picture changed** (md5), and the viewer sends back the `seq` it
+  already holds. A causa sitting through a 25 s pacing wait costs one frame at each end.
+- ⚠️ **Every pacing wait now goes through `C.human_idle()`** — in A, B and C. That is what makes
+  the view continuous: `human_idle` calls `cdp_scrape.IDLE_HOOK` about once a second, and the
+  `time.sleep()` calls it replaced would have left the picture frozen for 20 of every 25 seconds,
+  looking exactly like the hang we are hunting. With no hook installed and `IDLE_MOTION` off the
+  helper is a single `time.sleep` — the pacing itself did not change.
+- **Inside the modal wait loop too**, which is the ninety seconds that killed four remote sessions
+  and the one stretch no log line describes.
+- **It cannot break a run.** 5 s screenshot timeout (the library default is 30 s, and a page busy
+  enough to need 30 s is exactly the page you would be watching), every path swallowed, one
+  reconnect, then self-disable after 5 consecutive errors with a line in the log.
+
+### ⚠️ It is a variable
+
+Screenshotting occupies the renderer's main thread. It sends **nothing** to PJUD — CDP screenshots
+are local — but "no requests" is not "no difference", and we are hunting a wall that appears at
+exactly 10 opens remotely and never locally. Do not leave `--live` on for a one-variable test
+unless the arm you are comparing against carries it too.

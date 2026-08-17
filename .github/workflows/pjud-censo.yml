@@ -109,6 +109,10 @@ on:
         description: "true = NO abrir el cuaderno 2 (prueba de una variable para el muro de 10 aperturas)"
         required: false
         default: "false"
+      live:
+        description: "true = publicar a Neon lo que ve el runner, para mirarlo en vivo con watch_live.py"
+        required: false
+        default: "true"
       only_proc:
         description: "Regex de procedimiento a conservar (vacío = todos)"
         required: false
@@ -390,6 +394,13 @@ jobs:
           # interstitial, an overlay, or a perfectly normal page missing one element. Each has a
           # different fix and we were guessing between them from counters.
           ARGS+=(--shots "$GITHUB_WORKSPACE/felipe/pjud/data/shots")
+          # ⚠️ AND THE OTHER HALF: --shots can only be read once the job is OVER, out of an
+          # artifact. --live publishes the same picture to Neon every few seconds while the run is
+          # happening, so a wrong turn is caught in the minute it occurs instead of the hour
+          # after. Watch it from your own machine with:  python watch_live.py
+          # It costs no request toward PJUD (CDP screenshots are local) but it IS a variable in
+          # the renderer: turn it off for a one-variable test unless the other arm carries it too.
+          if [ "${{ inputs.live }}" = "true" ]; then ARGS+=(--live); fi
           if [ "${{ inputs.detail }}" != "true" ]; then ARGS+=(--no-detail); fi
           if [ -n "${{ inputs.only_proc }}" ]; then ARGS+=(--only-proc "${{ inputs.only_proc }}"); fi
           python -u worker_a.py --port 9222 --slot ${{ matrix.slot }} \
@@ -574,6 +585,7 @@ jobs:
             -f shards="${{ inputs.shards }}" \
             -f detail="${{ inputs.detail }}" \
             -f only_proc="${{ inputs.only_proc }}" \
+            -f live="${{ inputs.live }}" \
             -f resume="true" \
             -f chain="$LEFT" \
             -f max_blocks="${{ inputs.max_blocks }}" \

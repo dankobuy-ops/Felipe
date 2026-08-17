@@ -153,7 +153,7 @@ jobs:
           python -u worker_b.py --port 9222 --select where \
             --where "${{ inputs.b_where }}" \
             --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
-            --limit 2 --max-recover 1 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            --limit 2 --max-recover 1 --live 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Did it actually write? (this step decides green/red)
         if: always()
@@ -205,7 +205,7 @@ jobs:
             --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
             --limit ${{ inputs.b_fast_limit }} --max-recover 1 \
             --causa-gap ${{ inputs.b_fast_causa_gap }} \
-            --search-gap ${{ inputs.b_fast_search_gap }} 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            --search-gap ${{ inputs.b_fast_search_gap }} --live 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Did all of them finish?
         if: always()
@@ -331,7 +331,7 @@ jobs:
           python -u worker_b.py --port 9222 --select where \
             --where "${{ inputs.b_where }}" \
             --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
-            --limit 40 --max-recover 1 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            --limit 40 --max-recover 1 --live 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: What got finished
         if: always()
@@ -372,7 +372,7 @@ jobs:
           set -o pipefail
           python -u worker_c.py --port 9222 \
             --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
-            --min-age-h 0 --limit 3 --max-recover 1 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            --min-age-h 0 --limit 3 --max-recover 1 --live 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Did it re-buy anything it already had?
         if: always()
@@ -406,7 +406,7 @@ jobs:
           set -o pipefail
           python -u worker_c.py --port 9222 \
             --desde "${{ inputs.b_window_desde }}" --hasta "${{ inputs.b_window_hasta }}" \
-            --min-age-h 0 --max-recover 1 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            --min-age-h 0 --max-recover 1 --live 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Result
         if: always()

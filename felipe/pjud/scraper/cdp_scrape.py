@@ -235,6 +235,11 @@ def human_scroll(page, notches=None, down=True, settle=True):
 
 
 IDLE_MOTION = False      # --idle-motion: hand-jitter during the waits. TESTED, BOUGHT NOTHING.
+# Called as HOOK(page) roughly once a second during the pacing waits. live_view installs its
+# frame grabber here, because the waits are most of a worker's wall clock and are where a hang
+# looks identical to healthy patience. Left None the idling below is byte-for-byte what it was —
+# deliberately, so nobody watching a run changes its timing without meaning to.
+IDLE_HOOK = None
 
 
 def human_idle(page, secs):
@@ -262,7 +267,7 @@ def human_idle(page, secs):
     Falls back to a plain sleep on any error: idling must never break a run.
     """
     if not IDLE_MOTION or secs <= 0:
-        time.sleep(max(0.0, secs))
+        _plain_idle(page, max(0.0, secs))
         return
     end = time.time() + secs
     try:
@@ -270,6 +275,7 @@ def human_idle(page, secs):
         x, y = pos["x"], pos["y"]
         while time.time() < end:
             time.sleep(min(random.uniform(0.8, 2.6), max(0.0, end - time.time())))
+            _idle_hook(page)
             if time.time() >= end:
                 break
             # A few pixels, a couple of steps — this is a hand resting, not a hand travelling.
@@ -281,7 +287,35 @@ def human_idle(page, secs):
     except Exception:
         left = end - time.time()
         if left > 0:
-            time.sleep(left)
+            _plain_idle(page, left)
+
+
+def _idle_hook(page):
+    """Run the watcher's hook, and never let it cost the caller anything. A live view that could
+    raise would be a spectator able to stop the game."""
+    if IDLE_HOOK is None:
+        return
+    try:
+        IDLE_HOOK(page)
+    except Exception:
+        pass
+
+
+def _plain_idle(page, secs):
+    """Wait, in slices, so a watcher gets a look in. With no hook installed this is one sleep —
+    the same single call it has always been."""
+    if secs <= 0:
+        return
+    if IDLE_HOOK is None:
+        time.sleep(secs)
+        return
+    end = time.time() + secs
+    while True:
+        left = end - time.time()
+        if left <= 0:
+            return
+        time.sleep(min(1.0, left))
+        _idle_hook(page)
 
 
 def human_scroll_to(page, el, timeout=8000):
