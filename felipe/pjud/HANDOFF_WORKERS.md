@@ -1122,3 +1122,40 @@ Chrome treats `--user-data-dir` as a singleton and the clash does NOT fail loudl
 onto a dir another Chrome still held produced a browser that came up, entered, searched, and was
 closed under us 75 s later (`TargetClosedError`). That reads exactly like a site problem. Matters
 most for step 3, where parallelism means several browsers at once.
+
+### ★★ RESULT — 1,046 opens, 150 min, ZERO blocks, 7.0 causas/min (2026-08-17)
+
+Ended by our own lifespan, not by the site.
+
+| | opens | min | rate | blocks |
+|---|---|---|---|---|
+| worker A, best LOCAL ever | 375 | 190 | 1.97/min | 0 |
+| worker A, best REMOTE ever | 306 | — | — | then blocked |
+| **worker H at the floor** | **1,046** | **150** | **7.0/min** | **0** |
+
+68 courts, 72 searches, 793 causas kept with both cuadernos, 253 discarded by the etapa gate.
+**2.7× worker A's all-time local count at 3.5× its rate**, and 1.5× the operator's own session.
+
+⇒ **Every pacing number this project ever carried was compensation for behaviour.** The 60 s
+search gap, the 90 s causa gap, the 25 s worker A still ships — none of it bought what fixing the
+pointer, the keyboard and the datepicker bought. Fourth time the one rule has paid out, and every
+time the answer made us faster.
+
+★ **Speed did NOT cost the pointer presence**, which was the obvious worry:
+
+| reading × | mousemove/s | mouseover/s |
+|---|---|---|
+| 1.00 | 20.1 | 4.7 |
+| 0.32 | 16.2 | 4.5 |
+| 0.00 | 16.0 | 5.0 |
+
+Held at ~16/s and 5.0 mouseover/s across 856 causas at zero reading time. The whole-run average
+of 3.8/s is diluted by the next item, not by the ramp.
+
+### ⚠️ STILL EMPTY: the pointer is frozen during SEARCHES
+
+`ojv.wait_results` does not run presence, so 72 searches x ~20 s ≈ **23 of the 150 minutes had a
+dead input channel** — 15% of the session. The recorded human session cannot settle what a person
+does there because they searched exactly once. This is the same shape as every empty-channel bug
+this project has found, and the fix is the one already used for the modal wait: run presence
+through the search wait too.
