@@ -370,9 +370,16 @@ def human_scroll_to(page, el, timeout=8000):
         pass
     try:
         el.scroll_into_view_if_needed(timeout=timeout)
-        # And undo the damage it does: one notch UP moves the content DOWN, out from under any
-        # fixed header. A person whose target is hidden by a sticky bar scrolls exactly this way.
-        human_scroll(page, notches=1, down=False, settle=False)
+        # ⚠️ ONLY NUDGE IF THE TARGET LANDED UNDER THE HEADER. This nudge exists because
+        # scroll_into_view parks an element flush against the TOP edge, beneath the site's sticky
+        # navbar. Applying it unconditionally is a regression in the other direction: an element
+        # that landed at the BOTTOM edge gets pushed straight back out of the viewport, and
+        # human_click then reports "covered_by=None" -- unhittable with nothing covering it,
+        # because every candidate point is off-screen. That killed a worker at the datepicker
+        # (2026-08-17), two hours after this nudge was added to fix the navbar.
+        b = el.bounding_box()
+        if b and b["y"] < 120:
+            human_scroll(page, notches=1, down=False, settle=False)
     except Exception:
         pass
 
@@ -1028,6 +1035,34 @@ def open_fecha_panel(page):
             page.wait_for_timeout(300)
             if fecha_form_visible(page):
                 return True
+    if fecha_form_visible(page):
+        return True
+
+    # ⚠️⚠️ THE NAV AND THE PANES CAN DISAGREE, AND THEN THE TAB CANNOT BE CLICKED BACK.
+    # Diagnosed live 2026-08-17 after it had cost the whole afternoon under the label "the form is
+    # wedged". #BusFecha is a Bootstrap TAB PANE, not an accordion collapse. On a wedged page the
+    # nav item for "Busqueda por Fecha" carries `active` while the PANE has lost `in active` and
+    # sits at display:none, with #busRit shown instead. Bootstrap will not switch to a tab it
+    # already believes is current, so clicking the Fecha link delivers a real click that does
+    # nothing at all — human_click correctly returns True and the form stays hidden.
+    #
+    # The symptom was every #fecTribunal select_option timing out at 8 s on an element that was
+    # populated (232 options), enabled, uncovered, on an idle page — because it was INVISIBLE.
+    # Re-entry appeared to fix it only because rebuilding the form re-selects the tab; the desync
+    # returned within a couple of searches and the worker burned its recovery budget.
+    #
+    # The fix is what a person does when a tab looks selected but shows the wrong panel: click a
+    # DIFFERENT tab, then click back. That forces Bootstrap to actually move the `in active`.
+    other = next((s for s in ("a[href='#busRit']", "a[href='#BusNombre']",
+                              "a[href='#BusJuridica']") if page.query_selector(s)), None)
+    if other and human_click(page, other, timeout=6000):
+        page.wait_for_timeout(700)
+        if human_click(page, "a[href='#BusFecha']", timeout=6000):
+            for _ in range(20):
+                page.wait_for_timeout(300)
+                if fecha_form_visible(page):
+                    print("      [fix] tab state was desynced — clicked away and back")
+                    return True
     return fecha_form_visible(page)
 
 
