@@ -485,7 +485,31 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc=""):
         "(rol)=>{const m=document.querySelector('#modalDetalleCivil');"
         "return !!m && m.innerText.indexOf(rol)>=0;}", row["rol"]), poll_every=0.35)
     if not got:
+        # ⚠️ ASK THE PAGE WHY, BEFORE RECOVERING. This is the failure that has ended more sessions
+        # today than every other cause combined, and all we have ever written down is that it
+        # happened. `blocked=(False,'')` already tells us there is no rejection page; what we have
+        # never established is whether OUR CLICK went anywhere, whether the site answered, or
+        # whether a modal exists but never became visible. Each has a different fix and we have
+        # been choosing between them by intuition.
+        try:
+            d = page.evaluate(
+                "(rol)=>{const m=document.querySelector('#modalDetalleCivil');"
+                " const rows=document.querySelectorAll('#dtaTableDetalleFecha tbody tr');"
+                " const links=document.querySelectorAll("
+                "   \"#dtaTableDetalleFecha tbody tr a[onclick*='detalleCausaCivil']\");"
+                " return {modal: !!m,"
+                "  modalShown: !!m && !!(m.offsetWidth||m.offsetHeight||m.getClientRects().length),"
+                "  modalHasRol: !!m && (m.innerText||'').indexOf(rol) >= 0,"
+                "  modalClass: m ? (m.className||'').slice(0,40) : null,"
+                "  rows: rows.length, links: links.length,"
+                "  spinners: [...document.querySelectorAll('[id^=loadPre]')]"
+                "    .filter(e=>e.innerHTML.trim()).map(e=>e.id),"
+                "  sheets: document.querySelectorAll('.jquery-loading-modal,.modal-backdrop').length,"
+                "  bodyLen: (document.body.innerText||'').length};}", row["rol"])
+        except Exception as e:
+            d = f"(probe failed: {str(e)[:40]})"
         note(f"    modal did not open after {time.time()-t_open:.0f}s")
+        note(f"      [why] busy={C.page_busy(page)} {d}")
         return None
 
     # ⚠️ THE HAND FOLLOWS THE READING. Without this the pointer keeps wandering wherever it
@@ -660,6 +684,26 @@ def main():
         for label, val in (("--desde", a.desde), ("--hasta", a.hasta)):
             if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", val):
                 raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy")
+        # ⚠️ THE SITE REFUSES A RANGE LONGER THAN ONE MONTH. Discovered 2026-08-17 the expensive
+        # way: six workers were launched on 01/06..31/07, every search was rejected by a
+        # sweet-alert reading "El rango de fecha no puede ser superior a un Mes ! Not valid",
+        # wait_results reported `empty`, and the fleet concluded its sessions were spent and began
+        # burning recoveries. Nothing in the logs said "invalid range" -- an empty result and a
+        # refused one look identical from the outside. Worker A never met this because its windows
+        # were always a month or less.
+        # Refuse at the door, like the dd/mm/yyyy check: a window the site will not accept must
+        # never reach the form.
+        import datetime as _dt
+        d0 = _dt.datetime.strptime(a.desde, "%d/%m/%Y")
+        d1 = _dt.datetime.strptime(a.hasta, "%d/%m/%Y")
+        if d1 < d0:
+            raise SystemExit(f"--hasta {a.hasta} is before --desde {a.desde}")
+        if (d1 - d0).days > 31:
+            raise SystemExit(
+                f"{a.desde}..{a.hasta} spans {(d1 - d0).days} days. The OJV refuses any range "
+                f"longer than ONE MONTH ('El rango de fecha no puede ser superior a un Mes') and "
+                f"the rejection arrives as a sweet-alert that reads like an empty result. "
+                f"Run one month per pass.")
 
     ojv.ENTRY_ROUTE = a.entry_route
     global RAMP_EVERY, RAMP_STEP, SPEED

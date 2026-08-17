@@ -1070,7 +1070,7 @@ def _close_any_dialog(page):
             "   return s.display !== 'none' && s.visibility !== 'hidden'"
             "          && r.width > 0 && r.height > 0; };"
             " const dialogs = [...document.querySelectorAll("
-            "   '.modal, [role=dialog], .ui-dialog, .swal2-popup')].filter(vis)"
+            "   '.modal, [role=dialog], .ui-dialog, .swal2-popup, .sweet-alert')].filter(vis)"
             "   .filter(d => !prot.some(pp => d.id === pp || d.closest('#' + pp)));"
             " for (const d of dialogs) {"
             "   const ctrls = [...d.querySelectorAll('button,a,[role=button],span,i')].filter(vis2);"
