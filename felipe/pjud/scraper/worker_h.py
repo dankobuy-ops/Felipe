@@ -573,6 +573,20 @@ def main():
     ap.add_argument("--max-causas", type=int, default=0,
                     help="stop after N causa opens (0 = no limit)")
     ap.add_argument("--only-proc", default="")
+    ap.add_argument("--gate-release", choices=("entry", "form", "search"), default="form",
+                    help="WHEN the arrival gate is handed to the next worker. Measured 2026-08-17, "
+                         "median of six: walk-in 100s, form build 28s, first search 30s = ~145s "
+                         "held. 'search' is the original rule and the slowest. 'form' releases "
+                         "once 230 tribunales are loaded -- proof the session works, without "
+                         "making the queue wait for a search. 'entry' releases the moment we are "
+                         "on the form. The gate exists to space ARRIVALS, and neither building a "
+                         "form nor running a search is an arrival -- a reading only defensible "
+                         "since the aggregate-RATE finding replaced the concurrency one.")
+    ap.add_argument("--max-recover", type=int, default=3,
+                    help="how many times a wedged form or a spent session may be cleared by "
+                         "re-entering before giving up. Worker A has had this since 08-07; worker "
+                         "H shipped without it and one worker spent its whole hour skipping 38 "
+                         "courts with a dead session.")
     ap.add_argument("--gate", choices=("file", "none"), default="file",
                     help="serialise ARRIVALS through a lock file so concurrent workers never open "
                          "fresh browsers in the same instant. Released on the first confirmed "
@@ -675,6 +689,9 @@ def main():
             if gate is not None:
                 gate.release()    # nothing to confirm; holding it would strand the queue
             raise SystemExit("could not reach the OJV")
+        if gate is not None and a.gate_release == "entry":
+            note("  on the form — releasing the entry gate (arrival done)")
+            gate.release()
         note(f"in: {p.url[:70]}")
         p.on("response", ojv.make_tap(net))
         settler = A.Settler(p)
@@ -693,7 +710,12 @@ def main():
                                None if a.use_form_dates else a.desde,
                                None if a.use_form_dates else a.hasta)
         if not lst or len(lst) < 50:
+            if gate is not None:
+                gate.release()
             raise SystemExit("not the national tribunal list — aborting")
+        if gate is not None and a.gate_release == "form":
+            note(f"  form built with {len(lst)} tribunales — releasing the entry gate")
+            gate.release()
 
         if a.probe_picker:
             # One click on a date field -- which is a thing a person does constantly -- purely to
@@ -751,10 +773,79 @@ def main():
         def over():
             return bool(a.max_minutes) and (time.time() - t_start) / 60.0 >= a.max_minutes
 
+        # ── recovery ─────────────────────────────────────────────────────────────────
+        # ⚠️ WHY THIS EXISTS. Worker 9451 of the six-worker run had its first search come back
+        # `stale` after 75 s — a dead session — and then spent THIRTY MINUTES failing to select
+        # tribunal after tribunal, skipping 38 courts, before reporting a verdict. Worker A has
+        # re-entered after a block since 2026-08-07: it costs ~18 s, it works because a block
+        # parks challenge frames on a session that is otherwise healthy, and NOTHING about the
+        # profile is burned. Worker H shipped without any of it.
+        recoveries = [0]
+
+        def recover(why):
+            """Re-enter and rebuild the form. (ok, page, settler). Never raises."""
+            if recoveries[0] >= a.max_recover:
+                note(f"  *** {recoveries[0]} recoveries already used — not trying again")
+                return False, None, None
+            recoveries[0] += 1
+            # ⚠️ CONNECTIVITY FIRST. An outage produces exactly the symptoms of a wedged session —
+            # searches that never prove fresh, selects that time out — but none of the remedies
+            # apply, and charging it to the recovery budget spends a life on the site's behalf
+            # for a fault that was never the site's.
+            if not ojv.internet_up():
+                back, waited = ojv.wait_for_internet()
+                if not back:
+                    note("  *** offline and not coming back")
+                    return False, None, None
+                note(f"  back online after {waited / 60:.1f} min — re-entering, budget untouched")
+                recoveries[0] -= 1
+            cool = A.COOL_OFF * recoveries[0]
+            note(f"  recovery {recoveries[0]}/{a.max_recover} ({why}): cooling off {cool:.0f}s")
+            # ⚠️ COOL OFF UNGATED, AND RE-ENTER GATED. Sleeping while holding the arrival gate
+            # makes every other worker wait out OUR penalty; but the re-entry itself IS an
+            # arrival, so it takes a fresh gate of its own.
+            time.sleep(cool)
+            rg = ojv.EntryLock(HERE.parent / "data" / "h-entry.lock") if a.gate != "none" else None
+            if rg is not None:
+                rg.acquire()
+            try:
+                q = ojv.walk_in(ctx)
+                if q is None:
+                    note("  *** could not re-enter")
+                    return False, None, None
+                q.on("response", ojv.make_tap(net))
+                st2 = A.Settler(q)
+                try:
+                    q.evaluate(human_record.INJECT)
+                except Exception:
+                    pass
+                # The hand moves to the new page, and the search-wait presence follows it.
+                pres.page = q
+                pres._sync_bounds()
+                lst2 = build_form_mouse(q, st2, None if a.use_form_dates else a.desde,
+                                        None if a.use_form_dates else a.hasta)
+                if not lst2 or len(lst2) < 50:
+                    note("  *** re-entered but the tribunal list is not the national one")
+                    return False, None, None
+                note(f"  recovered — form rebuilt with {len(lst2)} tribunales")
+                return True, q, st2
+            finally:
+                if rg is not None:
+                    rg.release()
+
         stop = ""
         consec_select_fail = consec_bad_search = 0
         skipped = []
-        for ti, t in enumerate(targets):
+        # ⚠️ AN INDEX LOOP, NOT `for ... in enumerate`, SO A RECOVERED WORKER CAN RETRY THE COURT
+        # IT WAS ON. Worker A does the same thing (`idx -= 1; continue`) for the same reason: the
+        # court that exposed the wedged form has not been searched, and dropping it would leave a
+        # silent hole exactly where the trouble was.
+        ti = -1
+        while True:
+            ti += 1
+            if ti >= len(targets):
+                break
+            t = targets[ti]
             if over():
                 stop = "lifespan"
                 break
@@ -776,10 +867,17 @@ def main():
                      f"({consec_select_fail} in a row)")
                 if consec_select_fail >= SELECT_FAIL_LIMIT:
                     note(f"  *** {consec_select_fail} tribunal selects failed in a row — the form "
-                         f"is wedged, not the courts. Stopping; {len(targets) - ti - 1} courts "
-                         f"in this range were never searched.")
-                    stop = "select-failures (form wedged)"
-                    break
+                         f"is wedged, not the courts.")
+                    ok, q, st2 = recover("wedged form")
+                    if not ok:
+                        note(f"  *** {len(targets) - ti} courts in this range were never searched")
+                        stop = "select-failures (form wedged, recovery failed)"
+                        break
+                    p, settler = q, st2
+                    consec_select_fail = 0
+                    skipped = [x for x in skipped if x["idx"] != ti]
+                    ti -= 1                     # retry the court the wedged form cost us
+                    continue
                 continue
             consec_select_fail = 0
             ojv.click_away(p)
@@ -825,9 +923,15 @@ def main():
                 save_state()
                 if consec_bad_search >= BAD_SEARCH_LIMIT:
                     note(f"  *** {consec_bad_search} searches never proved fresh — this session is "
-                         f"spent. Stopping rather than walking the range recording empties.")
-                    stop = f"searches-not-confirming ({kind})"
-                    break
+                         f"spent.")
+                    ok, q, st2 = recover(f"searches {kind}")
+                    if not ok:
+                        stop = f"searches-not-confirming ({kind}, recovery failed)"
+                        break
+                    p, settler = q, st2
+                    consec_bad_search = 0
+                    ti -= 1                     # retry this court on the fresh session
+                    continue
                 continue
             consec_bad_search = 0
 
