@@ -87,6 +87,20 @@ def jitter(lo, hi):
     return random.uniform(lo, hi)
 
 
+# ── the speed ramp (step 2 of the operator's plan) ───────────────────────────
+# ⚠️ RAMP ONE THING: the READING TIMES. Everything else stays exactly as measured — same acts,
+# same order, same pointer rate, same zero keystrokes. So a trip during the ramp is attributable
+# to pace and nothing else, which is the only reason to run a ramp at all.
+#
+# ⚠️ AND IT MUST FLOOR ITSELF. Worker A's ramps found that below ~15 s the cycle stops shrinking
+# because the SITE's own response time is what remains — 8 s and 6 s were no better than 10 s.
+# Expect the same here: at some level the reading times stop being what costs the time, and any
+# further "speed" is measuring the site, not us. Report the achieved opens/min, never the level.
+SPEED = 1.0            # divides every reading span; 1.0 = exactly what the operator did
+RAMP_EVERY = 0         # causas per rung (0 = no ramp)
+RAMP_STEP = 0.75       # multiply the spans by this at each rung
+
+
 def read(pres, target, span, selector=None):
     """Spend `span` seconds READING something, the way a person does: pointer over it, moving.
 
@@ -95,7 +109,8 @@ def read(pres, target, span, selector=None):
     and produces the `mouseover` stream that a hand produces and a timer never will.
     """
     pres.aim(target, selector)
-    pres.run(jitter(*span))
+    lo, hi = span
+    pres.run(jitter(lo * SPEED, hi * SPEED))
 
 
 def close_modal_human(page, pres):
@@ -340,6 +355,45 @@ def build_form_mouse(page, settler, desde, hasta):
     return lst
 
 
+def fill_targets(desde, hasta, limit=0):
+    """Causas we ALREADY hold that still have no cuaderno-2 rows. (todo, n) where todo is
+    {tribunal_id: {rol: causa_id}}.
+
+    ⚠️ SWEEPING TO FILL IS MOSTLY RE-DISCOVERY. There are ~4,500 banked causas for June+July and
+    13 of them have a second cuaderno, so the work is "open this known list", not "find causas".
+    A sweep would spend most of its opens re-finding records we have had for weeks — and a causa
+    open is the scarcest thing this project spends.
+
+    The date column is `f_ingreso` (not `fecha_ing`, which does not exist — checked, not assumed).
+    """
+    import psycopg2
+    import dbstore
+    conn = psycopg2.connect(**dbstore._conn_kwargs())
+    conn.autocommit = True
+    sql = """select c.causa_id, c.rol, c.tribunal_id, c.etapa
+             from causas c
+             where c.f_ingreso between %s and %s
+               and c.rol like 'C-%%'
+               and not exists (select 1 from cuadernos q
+                               where q.causa_id = c.causa_id and q.cuaderno ilike '2%%')
+             order by c.tribunal_id, c.rol"""
+    todo, n = {}, 0
+    with conn.cursor() as k:
+        k.execute(sql, (desde, hasta))
+        for causa_id, rol, tid, etapa in k.fetchall():
+            # The header gate, applied from what we already know — an open we can skip entirely
+            # is worth more than a fast one. Causas banked before the gate existed have no etapa
+            # and are visited; the gate then fires on the header, as it does in a sweep.
+            if run.etapa_rejected(etapa):
+                continue
+            todo.setdefault(str(tid), {})[rol] = causa_id
+            n += 1
+            if limit and n >= limit:
+                break
+    conn.close()
+    return todo, n
+
+
 def counters(page):
     """This worker's OWN telemetry, read with the instrument used on the human. Measuring
     ourselves with a different ruler is how you end up comparing two numbers that were never
@@ -475,8 +529,30 @@ def main():
                     help="do not touch the dates -- sweep whatever window the form already "
                          "shows. The point of this prototype is the CAUSA LOOP, and leaving a "
                          "readonly field alone is zero keystrokes by definition.")
-    ap.add_argument("--max-causas", type=int, default=15)
+    ap.add_argument("--fill", action="store_true",
+                    help="TARGETED MODE: open the causas already banked for this window that "
+                         "still have no cuaderno-2 rows, instead of sweeping to re-find them. "
+                         "~4,500 of June+July are in that state and 13 are not. Paginates, "
+                         "because a wanted rol can sit past row 100.")
+    ap.add_argument("--max-pages", type=int, default=6,
+                    help="pagination cap per court in --fill (a page advance is a result "
+                         "request and draws on the same budget as a search)")
+    ap.add_argument("--start", type=int, default=0, help="first tribunal index to sweep")
+    ap.add_argument("--end", type=int, default=None, help="last tribunal index (inclusive)")
+    ap.add_argument("--max-minutes", type=float, default=0.0,
+                    help="stop cleanly after this many minutes. A long run is how we learn "
+                         "whether this behaviour blocks at all -- 21 opens in one court proves "
+                         "nothing when the remote wall is at 10 and worker A does 375 locally.")
+    ap.add_argument("--max-causas", type=int, default=0,
+                    help="stop after N causa opens (0 = no limit)")
     ap.add_argument("--only-proc", default="")
+    ap.add_argument("--ramp-every", type=int, default=0,
+                    help="SPEED TEST: after every N causa opens, cut the reading times by "
+                         "--ramp-step. Ramps ONE variable -- the acts, their order, the pointer "
+                         "rate and the zero keystrokes all stay as measured -- so a trip is "
+                         "attributable to pace and nothing else.")
+    ap.add_argument("--ramp-step", type=float, default=0.75,
+                    help="multiplier applied to the reading spans at each rung (default 0.75)")
     ap.add_argument("--rate", type=float, default=26.0,
                     help="pointer events per second (the human measured 25.8)")
     ap.add_argument("--measure", action="store_true",
@@ -492,6 +568,10 @@ def main():
                 raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy")
 
     ojv.ENTRY_ROUTE = a.entry_route
+    global RAMP_EVERY, RAMP_STEP
+    RAMP_EVERY, RAMP_STEP = a.ramp_every, a.ramp_step
+    if RAMP_EVERY:
+        note(f"SPEED RAMP: x{RAMP_STEP} on the reading times every {RAMP_EVERY} opens")
     OUT.mkdir(parents=True, exist_ok=True)
     out_file = OUT / f"h-{time.strftime('%Y%m%d-%H%M%S')}.json"
     got = []
@@ -500,8 +580,13 @@ def main():
 
     with sync_playwright() as pw:
         if a.launch:
+            # ⚠️ ONE PROFILE PER PORT. Chrome treats a --user-data-dir as a SINGLETON: launch a
+            # second browser on a dir another Chrome still holds and the two fight — ours came up,
+            # entered, searched, and was closed under us 75 s later (TargetClosedError), which
+            # reads exactly like a site problem and is not one. The profile dir is the lock, not
+            # the port, so the port has to be in the dir name.
             prof = a.profile or str(Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
-                                    / "pjud_wH")
+                                    / f"pjud_wH{a.port}")
             if not A.launch_chrome(a.port, prof, 1, exe=A.chrome_executable(pw)):
                 raise SystemExit(f"could not start Chrome on {a.port}")
         b = None
@@ -565,76 +650,218 @@ def main():
                 note(f"  picker probe failed: {str(e)[:70]}")
             ojv.click_away(p)
 
-        tid = a.tribunal or lst[0]["v"]
-        tname = next((t["t"] for t in lst if t["v"] == tid), tid)
-        note(f"tribunal {tid} — {tname}")
-        if not set_select_mouse(p, "#fecTribunal", tid):
-            raise SystemExit("could not select the tribunal with the mouse")
-        ojv.click_away(p)
-        pres.travel_to(p, "#btnConConsultaFec")
+        # ── what this run will visit ─────────────────────────────────────────────────
+        # SWEEP: walk the courts and open every bank causa on page 1. Page 1 only, deliberately —
+        # the recorded session read one page of one court, so that is the only list-reading
+        # behaviour we have measured, and paginating would be inventing one.
+        #
+        # FILL: open a KNOWN list instead. There are ~4,500 banked June+July causas and 13 of
+        # them have a second cuaderno, so that work is not discovery — and a sweep would spend
+        # most of its opens re-finding records we have held for weeks, which is the scarcest
+        # thing this project spends. Fill DOES paginate, because a wanted rol can sit past row
+        # 100; that paging is not measured human behaviour and is marked as such.
+        if a.fill:
+            def iso(v):
+                return "-".join(reversed(v.split("/")))
+            todo, n_todo = fill_targets(iso(a.desde), iso(a.hasta), a.max_causas)
+            targets = [t for t in lst if t["v"] in todo]
+            note(f"fill: {n_todo} causas need cuaderno 2, across {len(todo)} tribunales "
+                 f"({len(targets)} of them selectable in this form)")
+        else:
+            todo = None
+            targets = ([t for t in lst if t["v"] == a.tribunal] if a.tribunal
+                       else lst[a.start:(a.end + 1 if a.end is not None else None)])
+            note(f"sweeping {len(targets)} tribunal(es), page 1 of each")
+        tally = {"opens": 0, "kept": 0, "gated": 0, "searches": 0, "courts": 0}
+        state = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "courts": [], "verdict": ""}
+        state_file = OUT / f"h-{time.strftime('%Y%m%d-%H%M%S')}-state.json"
 
-        # ⚠️ NO hasattr FALLBACKS. The first version guessed at three function names and hid the
-        # guesses behind `hasattr(...) else (...)`. `C.result_rows` does not exist, so it returned
-        # [] and the verdict tuple defaulted to ("results", 0, "") — the run then reported
-        # "search -> results in 0s, 0 rows" and exited clean while the page in front of it held
-        # 117 registros and 21 bank causas. A fallback for a name you invented is not robustness,
-        # it manufactures a success. Call the real function and let a wrong name raise at once.
-        net.clear()
-        C.human_click(p, "#btnConConsultaFec")
-        kind, el = ojv.wait_results(p, settler, net)
-        hit, why = ojv.blocked(p, net)
-        note(f"search -> {kind} in {el:.0f}s" + (f"  BLOCKED: {why}" if hit else ""))
-        if hit or kind != "results":
-            raise SystemExit(f"first search did not confirm ({kind}) — nothing to mimic")
+        def save_state(verdict=""):
+            state["verdict"] = verdict or state["verdict"]
+            state["minutes"] = round((time.time() - t_start) / 60.0, 1)
+            state["tally"] = dict(tally)
+            state_file.write_text(json.dumps(state, ensure_ascii=False, indent=1),
+                                  encoding="utf-8")
 
-        rows = C.page_bank_causas(p)
-        note(f"{C.total_registros(p)} registros, {len(rows)} bank causas on page 1")
-        tally = {"opens": 0, "kept": 0, "gated": 0}
-        for row in rows:
-            if tally["opens"] >= a.max_causas:
+        def over():
+            return bool(a.max_minutes) and (time.time() - t_start) / 60.0 >= a.max_minutes
+
+        stop = ""
+        for ti, t in enumerate(targets):
+            if over():
+                stop = "lifespan"
                 break
+            if a.max_causas and tally["opens"] >= a.max_causas:
+                stop = "max-causas"
+                break
+            tid, tname = t["v"], t["t"]
+            note(f"[{ti + 1}/{len(targets)}] tribunal {tid} — {tname}")
+            if not set_select_mouse(p, "#fecTribunal", tid):
+                note("  could not select it with the mouse — skipping")
+                continue
+            ojv.click_away(p)
+            pres.travel_to(p, "#btnConConsultaFec")
+
+            # ⚠️ NO hasattr FALLBACKS. The first version guessed at three function names and hid
+            # the guesses behind `hasattr(...) else (...)`. `C.result_rows` does not exist, so it
+            # returned [] and the verdict tuple defaulted to ("results", 0, "") — the run then
+            # reported "search -> results in 0s, 0 rows" and exited clean while the page in front
+            # of it held 117 registros and 21 bank causas. A fallback for a name you invented is
+            # not robustness, it manufactures a success. Call the real function and let a wrong
+            # name raise at once.
+            net.clear()
+            C.human_click(p, "#btnConConsultaFec")
+            kind, el = ojv.wait_results(p, settler, net)
             hit, why = ojv.blocked(p, net)
+            tally["searches"] += 1
             if hit:
-                note(f"  *** BLOCKED after {tally['opens']} opens — {why}")
+                note(f"  *** BLOCKED ON SEARCH after {tally['opens']} opens / "
+                     f"{tally['searches']} searches — {why}")
+                stop = f"blocked-on-search: {why}"
                 break
-            c0 = counters(p)
-            t_open = time.time()
-            rec = harvest(p, pres, f"{tid}-{row['rol']}", row, only_proc=a.only_proc)
-            tally["opens"] += 1
-            if rec is None:
-                note("  modal never opened — stopping, that is the wall")
-                break
-            got.append(rec)
-            tally["gated" if rec.get("skipped_etapa") or rec.get("skipped_proc") else "kept"] += 1
-            if a.measure:
-                c1 = counters(p)
-                if c1:
-                    secs = max(0.1, time.time() - t_open)
-                    c = c1["c"]
-                    note(f"      [me] {c.get('mousemove',0)/secs:5.1f} mousemove/s  "
-                         f"{c.get('mouseover',0)/secs:4.1f} mouseover/s  "
-                         f"keydown={c.get('keydown',0)}  wheel={c.get('wheel',0)}  "
-                         f"(human: 25.8 / 6.4 / 0 / 0)")
-            out_file.write_text(json.dumps(got, ensure_ascii=False, indent=1), encoding="utf-8")
-            # ⚠️ GO TO THE NEXT CAUSA, DO NOT LOITER (operator, 2026-08-16: "it takes a while
-            # randomly moving from causa to causa. why not just directly go to the next causa?").
-            # The first version copied the AGGREGATE 13 s open-to-open off the recording and spent
-            # the surplus wandering — but a person does not wander between records, they travel to
-            # the next row and click it. Copying an interval is not copying a behaviour. So the
-            # pointer now APPROACHES its next target, and the gap is however long that takes.
-            read(pres, p, READ_LIST, "#dtaTableDetalleFecha")   # reading the list, as they did
-            nxt = rows[rows.index(row) + 1] if row is not rows[-1] else None
-            if nxt is not None:
-                pres.travel_to(page_row(p, nxt))
-            # The wheel lives OUT here, on the results list, at the rate a person used it.
-            if random.random() < 0.35:
-                C.human_scroll(p, notches=random.randint(1, 3))
+            if kind != "results":
+                note(f"  search -> {kind} in {el:.0f}s — not recording this court")
+                state["courts"].append({"id": tid, "name": tname, "kind": kind})
+                save_state()
+                continue
 
+            total = C.total_registros(p)
+            tally["courts"] += 1
+            want = dict(todo[tid]) if todo else None
+            if want is None:
+                rows = C.page_bank_causas(p)
+                note(f"  {total} registros, {len(rows)} bank causas on page 1 ({el:.0f}s)")
+            else:
+                rows = [r for r in C.page_rows(p) if r["has"] and r["rol"] in want]
+                note(f"  {total} registros, want {len(want)} here, {len(rows)} on page 1 "
+                     f"({el:.0f}s)")
+            court = {"id": tid, "name": tname, "kind": kind, "total": total,
+                     "banks": len(rows), "opens": 0, "wanted": len(want) if want else None}
+            state["courts"].append(court)
+
+            page = 1
+            for row in rows:
+                if over():
+                    stop = "lifespan"
+                    break
+                if a.max_causas and tally["opens"] >= a.max_causas:
+                    stop = "max-causas"
+                    break
+                hit, why = ojv.blocked(p, net)
+                if hit:
+                    note(f"  *** BLOCKED after {tally['opens']} opens — {why}")
+                    stop = f"blocked: {why}"
+                    break
+                counters(p)                    # read-and-clear, so [me] below is THIS causa
+                t_open = time.time()
+                rec = harvest(p, pres, f"{tid}-{row['rol']}", row, only_proc=a.only_proc)
+                tally["opens"] += 1
+                court["opens"] += 1
+                if rec is None:
+                    # ⚠️ NOT automatically the wall. A local session produced this exact signature
+                    # on 2026-08-16 because WE clicked the next row while the previous modal's
+                    # backdrop was still up. Say what the page is before concluding anything.
+                    note(f"  modal never opened — where={ojv.locate(p)} "
+                         f"blocked={ojv.blocked(p, net)}")
+                    stop = "modal-never-opened"
+                    break
+                got.append(rec)
+                tally["gated" if rec.get("skipped_etapa") or rec.get("skipped_proc")
+                      else "kept"] += 1
+                if a.measure:
+                    c1 = counters(p)
+                    if c1:
+                        secs = max(0.1, time.time() - t_open)
+                        c = c1["c"]
+                        note(f"      [me] {c.get('mousemove', 0) / secs:5.1f} mousemove/s  "
+                             f"{c.get('mouseover', 0) / secs:4.1f} mouseover/s  "
+                             f"keydown={c.get('keydown', 0)}  wheel={c.get('wheel', 0)}  "
+                             f"(human: 25.8 / 6.4 / 0 / 0)")
+                out_file.write_text(json.dumps(got, ensure_ascii=False, indent=1),
+                                    encoding="utf-8")
+                save_state()
+                if RAMP_EVERY and tally["opens"] % RAMP_EVERY == 0:
+                    globals()["SPEED"] = SPEED * RAMP_STEP
+                    rung = {"opens": tally["opens"], "speed": round(SPEED, 3),
+                           "opens_per_min": round(tally["opens"] / max(0.01, (time.time() - t_start) / 60), 2)}
+                    state.setdefault("rungs", []).append(rung)
+                    note(f"  === RAMP: reading times now x{SPEED:.2f} of the operator's "
+                         f"(after {tally['opens']} opens, {rung['opens_per_min']} opens/min so far)")
+                # ⚠️ GO TO THE NEXT CAUSA, DO NOT LOITER (operator: "why not just directly go to
+                # the next causa?"). Copying the aggregate 13 s open-to-open and spending the
+                # surplus wandering reproduces an INTERVAL, not a behaviour — a person travels to
+                # the next row and clicks it. The reading below is over the list, as theirs was.
+                read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
+                nxt = rows[rows.index(row) + 1] if row is not rows[-1] else None
+                if nxt is not None:
+                    pres.travel_to(page_row(p, nxt))
+                if random.random() < 0.35:
+                    C.human_scroll(p, notches=random.randint(1, 3))
+            save_state()
+            if stop:
+                break
+            # ⚠️ FILL PAGINATES; THE SWEEP DOES NOT. A wanted rol can sit anywhere in a court with
+            # 250 registros, so stopping at page 1 would silently leave most of the list unfilled
+            # — the same under-collection page-1-only census produced. Harvest the page, THEN
+            # advance: a row index belongs to the page it was read from, and clicking page-1
+            # indices with the last page on screen opens the WRONG causas.
+            while want and not stop and page < a.max_pages:
+                found = {r["rol"] for r in rows}
+                for r in found:
+                    want.pop(r, None)
+                if not want:
+                    break
+                why = A.advance(p, page)
+                if why != "more":
+                    if why == "stuck":
+                        note(f"  [warn] paginator stuck on page {page}, {len(want)} not reached")
+                    break
+                page += 1
+                rows = [r for r in C.page_rows(p) if r["has"] and r["rol"] in want]
+                note(f"  page {page}: {len(rows)} wanted rows here ({len(want)} still missing)")
+                for row in rows:
+                    if over() or (a.max_causas and tally["opens"] >= a.max_causas):
+                        stop = "lifespan" if over() else "max-causas"
+                        break
+                    hit, why2 = ojv.blocked(p, net)
+                    if hit:
+                        note(f"  *** BLOCKED after {tally['opens']} opens — {why2}")
+                        stop = f"blocked: {why2}"
+                        break
+                    counters(p)
+                    t_open = time.time()
+                    rec = harvest(p, pres, f"{tid}-{row['rol']}", row, only_proc=a.only_proc)
+                    tally["opens"] += 1
+                    court["opens"] += 1
+                    if rec is None:
+                        note(f"  modal never opened — where={ojv.locate(p)} "
+                             f"blocked={ojv.blocked(p, net)}")
+                        stop = "modal-never-opened"
+                        break
+                    got.append(rec)
+                    tally["gated" if rec.get("skipped_etapa") or rec.get("skipped_proc")
+                          else "kept"] += 1
+                    want.pop(row["rol"], None)
+                    out_file.write_text(json.dumps(got, ensure_ascii=False, indent=1),
+                                        encoding="utf-8")
+                    save_state()
+                    read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
+                if stop:
+                    break
+            if want:
+                court["unreached"] = len(want)
+            save_state()
+            if stop:
+                break
+
+        save_state(stop or "finished")
         el = (time.time() - t_start) / 60.0
         s = pres.stats()
-        note(f"DONE in {el:.1f} min — opens={tally['opens']} kept={tally['kept']} "
+        note(f"DONE in {el:.1f} min — {stop or 'finished'} | courts={tally['courts']} "
+             f"searches={tally['searches']} opens={tally['opens']} kept={tally['kept']} "
              f"gated={tally['gated']}  ({tally['opens']/max(0.01, el):.1f} opens/min, "
              f"human did 4.6)")
+        note(f"state -> {state_file}")
         note(f"pointer: {s['moves']} moves, legs rest={s['rest']} drift={s['drift']} "
              f"traverse={s['traverse']}  = {s['moves']/max(1.0, el*60):.1f}/s (human 25.8)")
         note(f"records -> {out_file}")
