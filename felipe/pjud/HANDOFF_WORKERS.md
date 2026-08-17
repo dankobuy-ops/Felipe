@@ -1208,3 +1208,58 @@ correlated with blocks in July (0 covered clicks -> 50 causas, 1 -> blocked at 2
 `#fecCompetencia` inside a collapsed accordion is not actionable, so the call sat for thirty
 seconds and the run then aborted with "not the national tribunal list" — a misleading verdict for
 a panel that needed reopening. 8 s timeout, then reopen the panel and retry once.
+
+## ★★★ IT IS THE AGGREGATE RATE PER ADDRESS, NOT THE SESSION COUNT (2026-08-17)
+
+The one-variable test that settles years of confusion. Four workers, disjoint court ranges, own
+port, own `--user-data-dir`, own output files, arrivals serialised on the entry gate — **the only
+thing changed between the arms is the reading speed**, and therefore the aggregate request rate:
+
+| 4 workers, one IP | ≈POSTs/min | opens | survival |
+|---|---|---|---|
+| `--speed 0` (top speed) | ~56 | **60** | **all dead by minute 5**, 3 within 10 s of each other |
+| `--speed 1.0` (operator pace) | ~23 | **593** | 2 on lifespan, 2 at 57.1 / 60.9 min |
+
+**Ten times the output and eleven times the survival, from halving the rate with the SAME four
+concurrent sessions.** Aggregate 9.9 opens/min — the best sustained figure measured: 3.5x one
+worker at the operator's pace, 1.4x one worker at top speed.
+
+⇒ ~~"Remote means ONE worker, chained with a cool-off. The parallelism that works is LOCAL."~~
+**OVERTURNED.** That verdict, still in `pjud-censo.yml`, came from runs where shard count and
+aggregate rate moved TOGETHER. The unexplained remote 4-shard death holding 74/16/2/38 opens —
+"a per-session budget cannot produce that" — is exactly what four fast sessions behind one address
+look like. **The right shape is MANY POLITE WORKERS, not few fast ones**, which is the opposite of
+what every optimisation in this repo has aimed at.
+
+★ And the polite configuration is also the FAITHFUL one: pointer fidelity was 15-20 mousemove/s
+at x1.0 against 6-9 at top speed, because reading time is what the presence loop emits into. Top
+speed buys throughput by spending the exact channel we believe keeps us unblocked.
+
+⚠️ **THE DEATH SIGNATURE PROVES NOTHING BY ITSELF.** Three sessions stopping within ten seconds,
+unequal work, `blocked=(False, '')`, no rejection page — we produced that on demand from local
+resource/rate exhaustion. It is what a shared limit looks like from several sessions at once, and
+it is indistinguishable from a coordinated cull.
+
+⚠️ Open: both x1.0 deaths landed at 57.1 and 60.9 min, near the hour. Tail effect or coincidence
+in a sample of two — unresolved.
+
+### ⚠️⚠️ CHECK THE ARMS MATCH BEFORE READING THE NUMBER
+
+Three times in one session I nearly drew a confident conclusion from a mismatched comparison:
+
+1. the **burst theory** — our two `causaCivil.php` POSTs per causa against clean runs that fired
+   ONE per causa, the difference called a burst. A person does it in 2.0 s.
+2. **2-worker scaling** — 5.47/min against the *floored* single-worker 6.97/min, which reads as
+   parallelism costing throughput. Against the matching x1.0 baseline it is 1.91x.
+3. **4-worker death** — nearly attributed to concurrency, when the arm that died differed in speed
+   too. It was the rate.
+
+Each time the fix was the same: **name every variable that differs between the arms before
+interpreting the result.** Two of the three would have sent a runner off to test the wrong thing.
+
+### ⚠️ worker H has NO INGEST — tonight's harvest is only on disk
+
+2,228 causa records and **1,659 cuaderno-2 historias** sit in `data/worker_h/h-*.json`. Neon still
+shows 13 causas with a second cuaderno. I quoted fill estimates without mentioning this. The
+records are safe on disk but they are not banked, and 1,659 of them already answer a third of the
+4,523 outstanding for zero further site load.

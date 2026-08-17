@@ -571,6 +571,11 @@ def main():
                          "one did. The control arm for the search-presence fix, and the escape "
                          "hatch if pointer motion ever stops searches settling (wait_results "
                          "needs 10 s of DOM silence to classify one).")
+    ap.add_argument("--speed", type=float, default=1.0,
+                    help="multiplier on the READING times. 1.0 = exactly the operator's measured "
+                         "pace; 0 = top speed, where the only waits left are the site answering "
+                         "and the pointer travelling. Set it directly for a controlled arm -- "
+                         "ramping INTO a level and holding one are different experiments.")
     ap.add_argument("--ramp-every", type=int, default=0,
                     help="SPEED TEST: after every N causa opens, cut the reading times by "
                          "--ramp-step. Ramps ONE variable -- the acts, their order, the pointer "
@@ -593,8 +598,12 @@ def main():
                 raise SystemExit(f"{label}={val!r} is not dd/mm/yyyy")
 
     ojv.ENTRY_ROUTE = a.entry_route
-    global RAMP_EVERY, RAMP_STEP
+    global RAMP_EVERY, RAMP_STEP, SPEED
     RAMP_EVERY, RAMP_STEP = a.ramp_every, a.ramp_step
+    SPEED = a.speed
+    if SPEED != 1.0:
+        note(f"reading times fixed at x{SPEED} of the operator's"
+             + ("  (TOP SPEED: only the site and the pointer are left)" if SPEED <= 0.01 else ""))
     if RAMP_EVERY:
         note(f"SPEED RAMP: x{RAMP_STEP} on the reading times every {RAMP_EVERY} opens")
     OUT.mkdir(parents=True, exist_ok=True)
