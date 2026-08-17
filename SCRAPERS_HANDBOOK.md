@@ -1447,6 +1447,75 @@ so it never reached the target — luck, not design.
 ⇒ **A safe-looking parameter is not a dry run.** Either have a real `--dry` path that exits before
 any request, or test the wiring against something that cannot reach production at all.
 
+### ★★★ It is the aggregate RATE per address, not the number of sessions
+
+The most expensive wrong belief this project ever held was that **concurrent sessions** were what a
+scored site objects to. It was drawn from runs where session count and request rate moved together,
+and it cost months of throughput: the fleet was cut to one worker, and every optimisation aimed at
+making that worker faster — which is the exact wrong direction.
+
+The one-variable test, four workers behind one address, identical isolation, only the pace differing:
+
+| 4 workers, one IP | ≈requests/min | records opened | survival |
+|---|---|---|---|
+| top speed | ~56 | **60** | all dead by minute 5 |
+| human pace | ~23 | **593** | 2 of 4 ran the full hour |
+
+**Ten times the output and eleven times the survival, from halving the rate with the same four
+sessions.** Sessions are close to free; the rate is the wall.
+
+Consequences worth internalising:
+
+- **Add workers, do not accelerate them.** N polite sessions beat one fast one, and the aggregate
+  is what you control: N × per-worker rate is a number you choose.
+- ★ **The polite configuration is often the FAITHFUL one too.** Here, slowing each worker doubled
+  the pointer-event rate — because human-like idle behaviour needs wall-clock to happen in. Top
+  speed bought throughput by spending the exact signal that keeps you unblocked. Those two goals
+  are usually described as a trade-off; measure before believing it of your target.
+- **A per-session budget cannot explain simultaneous deaths.** If several workers with very
+  unequal progress stop at the same instant, stop looking for a session counter and look for the
+  thing they share.
+
+### ⚠️ A shared limit looks exactly like a coordinated cull
+
+Several sessions stopping within seconds of each other, holding unequal amounts of work, with **no
+rejection page** — that was filed here for months as evidence the target was culling our fleet
+deliberately. We then produced it on demand, locally, by pushing four browsers behind one address
+past the rate limit.
+
+**The signature proves that a shared limit was crossed. It says nothing about intent, and nothing
+about which shared resource.** Address rate, uplink, and the local machine all produce it. Do not
+name the cause until you have varied one of them.
+
+### ★★★ Check that the arms match before you read the number
+
+Three times in a single session I nearly published a confident conclusion from a comparison whose
+arms differed in two variables:
+
+| the comparison | what it "showed" | the truth |
+|---|---|---|
+| our 2 requests per record vs clean runs' spacing | we were bursting | those runs made **1** request per record; a human does ours in 2.0 s |
+| 2 workers (slow) vs 1 worker (fast) | parallelism costs throughput | against the matching arm it is **1.91× — linear** |
+| 4 workers (fast) dying | concurrency is the limit | the arm also differed in speed; it was the **rate** |
+
+Two of the three would have sent expensive work off in the wrong direction, and the first already
+had — a whole test was designed around it.
+
+⇒ **Before interpreting any measurement, write down every variable that differs between the arms.**
+It takes one line and it is the cheapest error-check available. The temptation is strongest when
+the new number is dramatic, because a dramatic number feels like it explains itself.
+
+### ⚠️ A scraper with no ingest has no output
+
+Worker H harvested 2,228 records across an evening, 1,659 of them carrying the exact field the
+whole exercise existed to collect. The database still showed **13**. It wrote JSON to disk and
+nobody had built the path into storage — and I quoted delivery estimates twice without noticing,
+because the run reports were full of healthy numbers.
+
+**A run's own tally is not evidence that the data landed.** Count it where it is meant to end up,
+not where it is produced — the same rule as judging a probe by whether the measurement was
+written, and the same failure as a green step that ingested nothing.
+
 ### ★★ Copy the BEHAVIOUR, not the interval
 
 Having measured a person at 13.1 s between records, the obvious move is to wait 13.1 s between

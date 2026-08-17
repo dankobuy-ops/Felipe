@@ -46,7 +46,24 @@ name: PJUD — censo remoto (por demanda)
 # throughput is WORSE than one worker, because each shard pays the x N pacing tax and is culled
 # anyway: 4 shards produced 130 causa opens in 196 min, against ~218 for one shard extrapolated
 # from its measured 1.11 opens/min. Same shape as the 214-vs-226 of 2026-08-11.
-# ⇒ Remote means ONE worker, chained with a cool-off. The parallelism that works is LOCAL.
+# ⇒ ~~Remote means ONE worker, chained with a cool-off. The parallelism that works is LOCAL.~~
+#
+# ★★★ OVERTURNED 2026-08-17 — IT IS THE AGGREGATE RATE PER ADDRESS, NOT THE SESSION COUNT.
+# Four LOCAL workers behind one residential IP, disjoint court ranges, identical isolation and
+# entry gate, with ONLY the pace differing between the arms:
+#     top speed  (~56 POST/min)    60 opens, all dead by minute 5, three within ten seconds
+#     human pace (~23 POST/min)   593 opens, two of four ran the full hour
+# Ten times the output and eleven times the survival from halving the rate with the SAME four
+# concurrent sessions. Sessions are close to free; the rate is the wall.
+# Every verdict above about concurrency came from runs where shard count and aggregate rate moved
+# TOGETHER — including the 4-shard death holding 74/16/2/38 opens, filed as impossible for a
+# per-session budget to produce. It is exactly what four fast sessions behind one address look like.
+# ⇒ Shard freely, but hold the AGGREGATE rate where a single polite worker sits. `scale_pacing`
+# was built to do precisely that and was turned off when rate was ruled out as a candidate;
+# turning it back on is how you shard safely. See felipe/pjud/HANDOFF_WORKERS.md section 0.
+# ⚠️ And note the fidelity cost of speed: at top speed the pointer emitted 6-9 events/s against
+# 15-20 at human pace, because human-like behaviour needs wall-clock to happen in. Faster workers
+# are less productive in aggregate AND less human.
 # `shards` and `ramp_min` are kept because they are how the experiment was run and how it would
 # be re-run if the site changes — not because more runners help. Two runners did survive 1h46m
 # against 11 minutes for three, so if you ever want two, expect to be culled in pairs.
@@ -94,9 +111,9 @@ on:
         required: false
         default: "25"
       scale_pacing:
-        description: "true = multiplicar las pausas por la cantidad de shards (ya no hace falta)"
+        description: "true = multiplicar las pausas por la cantidad de shards. OBLIGATORIO si shards>1 (2026-08-17: el limite es la TASA agregada por direccion, no el numero de sesiones)"
         required: false
-        default: "false"
+        default: "true"
       detail:
         description: "false = solo censo | true = además abre cada causa y baja el ebook"
         required: false

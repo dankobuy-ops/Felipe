@@ -9,6 +9,38 @@ did not work before 2026-08-06 and does now. Re-verify anything load-bearing bef
 
 ---
 
+## 0. READ THIS FIRST — the current best configuration (2026-08-17)
+
+Everything below this section was written while we believed pacing bought safety. **It did not.**
+The whole document is still worth reading for the traps, but start here.
+
+```
+4 x worker_h.py  --speed 1.0  --gate file        # each: own --port, own --user-data-dir
+                                                 # disjoint --start/--end court ranges
+```
+
+**593 causa opens in one hour, 9.9/min aggregate, on residential.** For comparison, worker A's
+all-time best was 375 opens in 190 minutes (1.97/min) and its remote best was 306 before a block.
+
+| what | value | how it was found |
+|---|---|---|
+| the binding limit | **aggregate request RATE per address** | 4 workers died in 5 min at ~56 POST/min and ran an hour at ~23 |
+| session count | **close to free** | four concurrent sessions, one IP, one hour, no block |
+| one worker's floor | ~8-9 s per kept causa | reading time ramped to zero; the residue is the site |
+| pointer | **~16-20 mousemove/s, ~5 mouseover/s** | a real person emits 25.8 and 6.4 |
+| keystrokes | **ZERO** | a person typed none in a whole session |
+| dates | **the datepicker, with the mouse** | the fields are `readonly`; a person CANNOT type them |
+| wheel inside a modal | **none** | a person wheels the list, not the modal |
+
+⚠️ **Do not "optimise" this by making workers faster.** Top speed halves the pointer rate (6-9/s
+against 15-20/s) and multiplies the request rate, and the request rate is the thing that kills.
+Faster workers are both less productive in aggregate AND less human. Add workers instead.
+
+⚠️ **`worker_h.py` has no ingest.** It writes JSON to `data/worker_h/`. See the ingest note at the
+end of this file.
+
+---
+
 ## 1. The design in one idea
 
 **Opening a causa is the scarce act. Everything else is cheap by comparison.**
@@ -32,6 +64,7 @@ Two consequences drive the whole architecture:
 | **A — discovery** (`worker_a.py`) | sweep every tribunal, census + free metadata + **ebook** | 1 open + 1 doc | **built, running** |
 | **B — backfill** (`worker_b.py`) | ebooks for causas ALREADY in Neon, from a filtered work-list | 1 open + 1 doc | **built — runs on PC 2, see `HANDOFF_PC2.md`** |
 | **C — refresh** | re-check known causas for new movements | 1 search per tribunal | designed, not built |
+| **H — the mimic** (`worker_h.py`) | what a MEASURED HUMAN does: metadata + both cuadernos, zero keystrokes, pointer alive throughout. `--fill` targets a known list instead of sweeping | 1 open, 0 docs | **built 2026-08-16, the fastest and safest thing we have** |
 
 Worker B is built (`worker_b.py`): it asks Neon which selected causas lack a document instead of
 discovering anything, so it never competes with A, and it writes with a targeted UPDATE rather
