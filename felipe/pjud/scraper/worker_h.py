@@ -494,7 +494,29 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
     # never again spend a recovery.
     if not C.human_click(page, page.locator("#dtaTableDetalleFecha tbody tr").nth(row["i"])
                          .locator("a[onclick*='detalleCausaCivil']").first, timeout=8000):
+        # ⚠️ AND SAY WHERE THE ROW WAS. A refusal is now cheap, but 10% of rows refusing is a
+        # tenth of the backlog we would never fill — and "unreachable" is another label, not an
+        # observation. human_click already reports "objetivo tapado" with no overlay found, which
+        # means the row is not where we can click it; the only way to know why is to ask for its
+        # geometry against the viewport at the moment we gave up.
+        try:
+            geo = page.evaluate(
+                "(i)=>{const tr=document.querySelectorAll('#dtaTableDetalleFecha tbody tr')[i];"
+                " if(!tr) return {noRow:true, rows:document.querySelectorAll("
+                "   '#dtaTableDetalleFecha tbody tr').length};"
+                " const a=tr.querySelector(\"a[onclick*='detalleCausaCivil']\");"
+                " const r=(a||tr).getBoundingClientRect();"
+                " const top=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2);"
+                " return {hasLink:!!a, x:Math.round(r.left), y:Math.round(r.top),"
+                "  w:Math.round(r.width), h:Math.round(r.height),"
+                "  vw:innerWidth, vh:innerHeight, scrollY:Math.round(scrollY),"
+                "  inView: r.top>=0 && r.bottom<=innerHeight,"
+                "  topEl: top ? top.tagName+'.'+(top.className||'').toString().slice(0,26) : null};}",
+                row["i"])
+        except Exception as e:
+            geo = f"(probe failed: {str(e)[:40]})"
         note(f"    click on row {row['i']} was REFUSED (unreachable) — skipping this causa")
+        note(f"      [geo] {geo}")
         return "click-refused"
 
     # The two seconds a causa takes to load are spent MOVING, like a person waiting for it.
