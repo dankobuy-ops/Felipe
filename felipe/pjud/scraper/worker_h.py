@@ -420,7 +420,7 @@ def counters(page):
         return None
 
 
-def harvest(page, pres, causa_id, row, only_proc=""):
+def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc=""):
     """Open, take the metadata, switch books, close — at the human's cadence, moving throughout.
 
     ⚠️ NO WHEEL INSIDE THE MODAL (operator, 2026-08-16). Worker A scrolls 2-5 notches after every
@@ -428,7 +428,13 @@ def harvest(page, pres, causa_id, row, only_proc=""):
     wheeled 0.0/s while a modal was open and 0.6/s on the results list. They read by MOVING THE
     POINTER, not by scrolling. So the reading is pointer presence, and the wheel stays outside.
     """
-    rec = {"causa_id": causa_id, "rol": row["rol"], "caratulado": row["car"],
+    # ⚠️ tribunal_id AND tribunal BELONG IN THE RECORD. They were left out because causa_id is
+    # "<tid>-<rol>" and the id is therefore recoverable — but the ingest builder reads
+    # rec["tribunal_id"] directly and died on a KeyError over 1,154 records already on disk, and
+    # the tribunal NAME was not recoverable at all. A record should carry what its consumer needs,
+    # not what a later script could reconstruct.
+    rec = {"causa_id": causa_id, "tribunal_id": trib_id, "tribunal": trib_name,
+           "rol": row["rol"], "caratulado": row["car"],
            "fecha_ing": row.get("fecha", ""), "opened_at": time.strftime("%Y-%m-%d %H:%M:%S")}
     note(f"    open {causa_id}  {row['car'][:52]}")
     t_open = time.time()
@@ -819,7 +825,8 @@ def main():
                     break
                 counters(p)                    # read-and-clear, so [me] below is THIS causa
                 t_open = time.time()
-                rec = harvest(p, pres, f"{tid}-{row['rol']}", row, only_proc=a.only_proc)
+                rec = harvest(p, pres, f"{tid}-{row['rol']}", row, tid, tname,
+                                  only_proc=a.only_proc)
                 tally["opens"] += 1
                 court["opens"] += 1
                 if rec is None:
@@ -895,7 +902,8 @@ def main():
                         break
                     counters(p)
                     t_open = time.time()
-                    rec = harvest(p, pres, f"{tid}-{row['rol']}", row, only_proc=a.only_proc)
+                    rec = harvest(p, pres, f"{tid}-{row['rol']}", row, tid, tname,
+                                  only_proc=a.only_proc)
                     tally["opens"] += 1
                     court["opens"] += 1
                     if rec is None:
