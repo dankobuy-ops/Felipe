@@ -458,7 +458,8 @@ def counters(page):
         return None
 
 
-def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc=""):
+def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
+            net=None):
     """Open, take the metadata, switch books, close — at the human's cadence, moving throughout.
 
     ⚠️ NO WHEEL INSIDE THE MODAL (operator, 2026-08-16). Worker A scrolls 2-5 notches after every
@@ -475,6 +476,12 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc=""):
            "rol": row["rol"], "caratulado": row["car"],
            "fecha_ing": row.get("fecha", ""), "opened_at": time.strftime("%Y-%m-%d %H:%M:%S")}
     note(f"    open {causa_id}  {row['car'][:52]}")
+    # ⚠️ DID OUR CLICK PRODUCE A REQUEST? That is the one question the modal probe cannot answer
+    # from the DOM, and it separates the two remaining explanations: either the click never
+    # reached the magnifier (a stale row index after a table redraw, say) and NO causaCivil.php
+    # was ever asked for, or the click landed and the site did not answer. We already tap every
+    # response; all this needs is a mark before the click.
+    n0 = len(net) if net is not None else 0
     t_open = time.time()
     C.human_click(page, page.locator("#dtaTableDetalleFecha tbody tr").nth(row["i"])
                   .locator("a[onclick*='detalleCausaCivil']").first, timeout=8000)
@@ -508,8 +515,12 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc=""):
                 "  bodyLen: (document.body.innerText||'').length};}", row["rol"])
         except Exception as e:
             d = f"(probe failed: {str(e)[:40]})"
+        seen = [r["u"] for r in (net[n0:] if net is not None else [])]
+        causa_posts = sum(1 for u in seen if "causaCivil" in u)
         note(f"    modal did not open after {time.time()-t_open:.0f}s")
         note(f"      [why] busy={C.page_busy(page)} {d}")
+        note(f"      [net] {len(seen)} responses since the click, "
+             f"causaCivil.php={causa_posts} :: {seen[:8]}")
         return None
 
     # ⚠️ THE HAND FOLLOWS THE READING. Without this the pointer keeps wandering wherever it
@@ -1057,7 +1068,7 @@ def main():
                 counters(p)                    # read-and-clear, so [me] below is THIS causa
                 t_open = time.time()
                 rec = harvest(p, pres, f"{tid}-{row['rol']}", row, tid, tname,
-                                  only_proc=a.only_proc)
+                                  only_proc=a.only_proc, net=net)
                 tally["opens"] += 1
                 court["opens"] += 1
                 if rec is None:
@@ -1148,7 +1159,7 @@ def main():
                     counters(p)
                     t_open = time.time()
                     rec = harvest(p, pres, f"{tid}-{row['rol']}", row, tid, tname,
-                                  only_proc=a.only_proc)
+                                  only_proc=a.only_proc, net=net)
                     tally["opens"] += 1
                     court["opens"] += 1
                     if rec is None:
