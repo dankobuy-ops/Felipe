@@ -974,7 +974,20 @@ def main():
                     # backdrop was still up. Say what the page is before concluding anything.
                     note(f"  modal never opened — where={ojv.locate(p)} "
                          f"blocked={ojv.blocked(p, net)}")
-                    stop = "modal-never-opened"
+                    # ⚠️ AND RECOVER FROM IT. I wired recovery into the wedged-form and
+                    # unconfirmed-search paths and left out the symptom that has ended more
+                    # sessions than both: a modal that never renders. It is the same illness —
+                    # the session is spent or the page is wedged — and re-entry is the same
+                    # remedy. A worker died on it 5.6 minutes into the very run meant to prove
+                    # recovery worked, which is as clear a demonstration of the gap as I could
+                    # have asked for.
+                    ok, q, st2 = recover("modal never opened")
+                    if not ok:
+                        stop = "modal-never-opened (recovery failed)"
+                        break
+                    p, settler = q, st2
+                    consec_bad_search = consec_select_fail = 0
+                    ti -= 1                     # this court still has causas we have not opened
                     break
                 got.append(rec)
                 tally["gated" if rec.get("skipped_etapa") or rec.get("skipped_proc")
