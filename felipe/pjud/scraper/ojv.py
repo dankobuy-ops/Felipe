@@ -53,6 +53,28 @@ def note(m):
         print(f"[{s}] {m.encode('ascii', 'replace').decode('ascii')}", flush=True)
 
 
+def _wait(page, ms):
+    """`wait_for_timeout` in slices, so a watcher (cdp_scrape.IDLE_HOOK) gets a look in.
+
+    ⚠️ ENTRY IS THE STRETCH A LIVE VIEW MOST NEEDS AND LEAST HAD. The publisher is created before
+    the walk-in on purpose -- entry is where a remote run has failed in the most different ways,
+    and it is over before the first log line that would say which -- but the walk-in waits in
+    single 4 s / 8 s / 20 s blocks, so the first run with --live sat at seq=0 through the whole
+    arrival. Installed before it and blind through it is not "watching".
+
+    With no watcher installed this is the one call it replaced.
+    """
+    if C.IDLE_HOOK is None or ms <= 1200:
+        page.wait_for_timeout(ms)
+        return
+    left = ms
+    while left > 0:
+        step = min(1000, left)
+        page.wait_for_timeout(step)
+        left -= step
+        C._idle_hook(page)
+
+
 # ── network tap ──────────────────────────────────────────────────────────────
 
 def make_tap(net):
@@ -778,7 +800,7 @@ def walk_in(ctx):
     except Exception:
         pass
     start.bring_to_front()
-    start.wait_for_timeout(4000)
+    _wait(start, 4000)
     page = None
     # ⚠️★ NEVER NAVIGATE DIRECTLY TO THE OJV (operator, 2026-08-13). There used to be a fallback
     # here that typed https://oficinajudicialvirtual.pjud.cl/home/ into the address bar when the
@@ -812,11 +834,11 @@ def walk_in(ctx):
             if not wait_for_dns()[0]:
                 return None
         _only_tab(ctx, start)
-        time.sleep(8)
+        C._plain_idle(start, 8)
         try:
             start.goto("https://www.pjud.cl/", wait_until="domcontentloaded")
             start.bring_to_front()
-            start.wait_for_timeout(4000)
+            _wait(start, 4000)
         except Exception:
             pass
     if page is None:
@@ -832,7 +854,7 @@ def walk_in(ctx):
              f"stopping [state={st}]")
         return None
     page.bring_to_front()
-    page.wait_for_timeout(4000)
+    _wait(page, 4000)
     try:
         body = page.evaluate("()=>document.body?document.body.innerText.slice(0,300):''") or ""
     except Exception:
@@ -908,7 +930,7 @@ def walk_in(ctx):
                 note("  ...and the form is already open — taking it instead of fighting the gate")
                 here.bring_to_front()
                 return here
-            page.wait_for_timeout(5000)
+            _wait(page, 5000)
             continue
         # Re-centre the one we picked: the loop above left the LAST candidate scrolled into view.
         try:
@@ -921,13 +943,14 @@ def walk_in(ctx):
         note(f"  click delivered: {ok}")
         for _ in range(90):                      # 45 s per attempt
             page.wait_for_timeout(500)
+            C._idle_hook(page)      # the 45 s a stuck entry spends here is worth seeing
             fp = find_form(ctx)
             if fp:
                 note(f"  entered on attempt {attempt}")
                 return fp
         _dismiss_aviso(page)   # it "comes and goes" — it can appear BETWEEN attempts
         note(f"  no form after attempt {attempt}; pausing before retry")
-        page.wait_for_timeout(20000)
+        _wait(page, 20000)
     return find_form(ctx)
 
 

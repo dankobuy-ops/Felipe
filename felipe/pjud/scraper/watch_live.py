@@ -30,6 +30,17 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, str(Path(__file__).parent))
 import live_view
 
+# ⚠️ THIS TOOL PRINTS OTHER PROCESSES' LOG LINES, and those are Spanish: tribunal names, "Cómputo
+# de plazos", caratulados with accents. A cp1252 console cannot encode them, so --once died with
+# a UnicodeEncodeError on the first row it fetched — the read had worked perfectly. ASCII-only
+# output would be the wrong fix here (it would mangle the very text you are reading), so force
+# UTF-8 with errors="replace", which is what the handbook says to do at startup.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 PAGE = """<!doctype html><meta charset="utf-8"><title>PJUD — workers en vivo</title>
 <style>
  :root{color-scheme:dark}
