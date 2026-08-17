@@ -1505,6 +1505,57 @@ had — a whole test was designed around it.
 It takes one line and it is the cheapest error-check available. The temptation is strongest when
 the new number is dramatic, because a dramatic number feels like it explains itself.
 
+### ★★★ Your NAME for a failure is not an observation of it
+
+For most of a day, workers died against a condition recorded in every log and every handoff as
+*"the form is wedged"*. That phrase was **my label for "`select_option` timed out after 8 s"**, and
+it was carried for hours as though it described something. Whole theories were built on it: that
+the address was throttled, that six concurrent sessions were too many, that a particular range of
+records was poisoned. Each was tested and each was wrong, at the cost of an afternoon.
+
+The moment the code was made to ask the page instead — one probe, printed on failure — the answer
+arrived immediately:
+
+    busy=False  covered_by=None  where=results
+    select={opts:232, disabled:false, vis:FALSE, pointerEvents:'auto', spinners:[], sheets:0}
+
+The control was populated, enabled, uncovered, on an idle page, and **invisible**. Everything the
+label had implied — load, refusal, contention — was absent from the evidence.
+
+⇒ **When you name a failure, write the observation next to the name, and never let the name travel
+alone.** "Wedged" is a diagnosis wearing a symptom's clothes. The test: could a stranger reproduce
+your claim from what you wrote down? "select_option timed out" they can; "the form is wedged" they
+cannot.
+
+The corollary is cheap and worth doing everywhere: **make each failure path print the state it
+failed in** — busy flags, the element's own visibility/disabled/pointer-events, what is on top by
+hit-test, which spinners hold content, and where the page thinks it is. It costs a dozen lines and
+it converts every future occurrence from an argument into a measurement.
+
+### ⚠️ A tab that is "active" in the nav but not in the panes cannot be clicked
+
+The concrete bug under that label, and it is a general trap for any Bootstrap-style tab or
+accordion UI. The nav item carried `active` while its pane had lost `in active` and sat at
+`display:none`, with a sibling pane shown instead. **The framework will not switch to a tab it
+already believes is current**, so clicking the nav link delivers a real, trusted click that does
+nothing at all — and a click helper correctly reports success.
+
+Everything downstream then fails in a way that looks like the site: the form's controls are in the
+DOM, fully populated and enabled, and simply invisible, so every interaction times out on an
+actionability wait.
+
+- **Detect it by comparing the two states**, not by trusting either: `navItem.active !==
+  pane.classList.contains('active')`.
+- **Repair it the way a person does** — click a *different* tab, then click back. That forces the
+  framework to actually move the active marker.
+- **Suspect it whenever a control is present-but-invisible**, especially after a navigation or a
+  result render redraws part of the page.
+
+⚠️ And beware the false cure: re-entering the site rebuilds the form and re-selects the tab, so a
+recovery ladder *appears* to work and then fails again minutes later. That pattern — recovery
+succeeds, symptom returns quickly — is itself a signal that you are treating a symptom whose cause
+your recovery merely resets.
+
 ### ★★ Re-discovery is the tax you forget to count
 
 An afternoon of sweeping produced, per fleet-hour:
