@@ -1086,3 +1086,39 @@ Measured live: `mouseover` 4.5–7.5/s (human 6.4) ✓, `keydown` 0 ✓, `mousem
 
 **The operator's plan, in order:** (1) mimic the actions at their pace and confirm no block;
 (2) maximise speed without tripping; (3) find how many can run in parallel; (4) only then remote.
+
+### Step 1 — does the mimic block? (2026-08-17)
+
+**No. 189 opens, 66 min, 12 courts, 15 searches, zero blocks**, stopped by us rather than by the
+site. The remote wall lands at 10 opens; worker A's clean local record is 375.
+
+### Step 2 — the speed ramp
+
+`--ramp-every N --ramp-step F` cuts the READING TIMES only; the acts, their order, the pointer
+rate and the zero keystrokes stay as measured, so a trip is attributable to pace and nothing else.
+
+⚠️ **Time each causa open→next-open, and EXCLUDE the ones followed by a court change** — otherwise
+a ~20 s search lands inside a causa's duration and reads as a slow causa. That artefact produced a
+"29 s gated causa" that briefly looked like the site pushing back.
+
+| reading × | gated causa | kept causa (both books) |
+|---|---|---|
+| 1.00 (operator) | 12.3 s | 19.6 s |
+| 0.75 | 10.2 s | 17.2 s |
+| 0.56 | 10.0 s | 13.7 s |
+| 0.42 | 8.0 s | 11.3 s |
+| 0.32 | 7.6 s | 10.5 s |
+| 0.24 | 6.0 s | 9.3 s |
+| 0.18 | — | 9.0 s |
+
+★ **The floor is ~8–9 s per kept causa, ~5–6 s gated** — cutting reading from 3 s to 2.2 s bought
+0.3 s. That residue is PJUD's own response time plus the acts, the same shape worker A's ramps
+found. **~7 causas/min sustainable: 1.5× the operator's session, 3.5× worker A's 2.0/min.**
+No block at 80 opens with reading at a tenth of the operator's.
+
+### ⚠️ One profile dir per port
+
+Chrome treats `--user-data-dir` as a singleton and the clash does NOT fail loudly: relaunching
+onto a dir another Chrome still held produced a browser that came up, entered, searched, and was
+closed under us 75 s later (`TargetClosedError`). That reads exactly like a site problem. Matters
+most for step 3, where parallelism means several browsers at once.
