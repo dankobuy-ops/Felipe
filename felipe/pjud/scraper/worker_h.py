@@ -483,8 +483,19 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
     # response; all this needs is a mark before the click.
     n0 = len(net) if net is not None else 0
     t_open = time.time()
-    C.human_click(page, page.locator("#dtaTableDetalleFecha tbody tr").nth(row["i"])
-                  .locator("a[onclick*='detalleCausaCivil']").first, timeout=8000)
+    # ⚠️⚠️ CHECK THE CLICK. This return value was ignored, and that single omission produced the
+    # failure this project has chased longest. human_click REFUSES an unreachable target on
+    # purpose — a covered click correlated with getting blocked (0 covered -> 50 causas, 1 ->
+    # blocked at 23, 2 -> at 4, measured 07-22) — and it says so plainly: "objetivo tapado tras
+    # 8s — NO hago clic". We then waited 90-106 s for a modal nobody had requested, reported
+    # "modal did not open", and blamed the site. The network tap settles it: `0 responses since
+    # the click, causaCivil.php=0`. THE SITE WAS NEVER ASKED.
+    # A refused click costs one causa. It is not a spent session, it is not a block, and it must
+    # never again spend a recovery.
+    if not C.human_click(page, page.locator("#dtaTableDetalleFecha tbody tr").nth(row["i"])
+                         .locator("a[onclick*='detalleCausaCivil']").first, timeout=8000):
+        note(f"    click on row {row['i']} was REFUSED (unreachable) — skipping this causa")
+        return "click-refused"
 
     # The two seconds a causa takes to load are spent MOVING, like a person waiting for it.
     pres.aim(page, "#dtaTableDetalleFecha")     # where the hand is while the causa loads
@@ -1071,6 +1082,11 @@ def main():
                                   only_proc=a.only_proc, net=net)
                 tally["opens"] += 1
                 court["opens"] += 1
+                if rec == "click-refused":
+                    # our click never reached the row: one causa lost, session untouched
+                    tally["refused"] = tally.get("refused", 0) + 1
+                    read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
+                    continue
                 if rec is None:
                     # ⚠️ NOT automatically the wall. A local session produced this exact signature
                     # on 2026-08-16 because WE clicked the next row while the previous modal's
@@ -1162,6 +1178,11 @@ def main():
                                   only_proc=a.only_proc, net=net)
                     tally["opens"] += 1
                     court["opens"] += 1
+                    if rec == "click-refused":
+                        # our click never reached the row: one causa lost, session untouched
+                        tally["refused"] = tally.get("refused", 0) + 1
+                        read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
+                        continue
                     if rec is None:
                         # ⚠️ THE SAME FAILURE HAS TWO CALL SITES AND I FIXED ONE. Recovery was
                         # wired into the main causa loop and NOT into this pagination loop, so a
@@ -1211,7 +1232,7 @@ def main():
         save_state(stop or "finished")
         el = (time.time() - t_start) / 60.0
         s = pres.stats()
-        note(f"DONE in {el:.1f} min — {stop or 'finished'} | courts={tally['courts']} "
+        note(f"DONE in {el:.1f} min — {stop or 'finished'} | refused={tally.get('refused', 0)} "
              f"searches={tally['searches']} opens={tally['opens']} kept={tally['kept']} "
              f"gated={tally['gated']}  ({tally['opens']/max(0.01, el):.1f} opens/min, "
              f"human did 4.6)")
