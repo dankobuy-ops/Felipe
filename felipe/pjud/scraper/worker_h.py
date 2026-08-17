@@ -82,6 +82,11 @@ READ_BOOK1 = (1.8, 2.6)      # modal open -> switch to book 2 (median 2.0, max 5
 READ_BOOK2 = (2.0, 3.2)      # switch -> close (observed 2-3)
 READ_LIST = (6.5, 9.0)       # close -> next open (13.1 total, less ~5 spent inside the modal)
 
+# ⚠️ Run-level, NOT per-court. A throttle that costs one court simply moves on to the next and
+# degrades for hours without a single detector firing — worker A learned that on 2026-08-08.
+SELECT_FAIL_LIMIT = 5        # consecutive #fecTribunal selects that fail => the form is wedged
+BAD_SEARCH_LIMIT = 3         # consecutive searches that never prove fresh => the session is spent
+
 
 def jitter(lo, hi):
     return random.uniform(lo, hi)
@@ -747,6 +752,8 @@ def main():
             return bool(a.max_minutes) and (time.time() - t_start) / 60.0 >= a.max_minutes
 
         stop = ""
+        consec_select_fail = consec_bad_search = 0
+        skipped = []
         for ti, t in enumerate(targets):
             if over():
                 stop = "lifespan"
@@ -757,8 +764,24 @@ def main():
             tid, tname = t["v"], t["t"]
             note(f"[{ti + 1}/{len(targets)}] tribunal {tid} — {tname}")
             if not set_select_mouse(p, "#fecTribunal", tid):
-                note("  could not select it with the mouse — skipping")
+                # ⚠️ A RUN OF THESE MEANS THE FORM IS WEDGED, NOT THAT THE COURTS ARE MISSING.
+                # Measured 2026-08-17: a worker's first search came back `stale` after 75 s (a dead
+                # session), every #fecTribunal select then timed out, and it skipped all 38
+                # remaining courts over thirty minutes and reported **finished** — which to any
+                # resume logic means "this range is swept". Worker A has carried a select-fail
+                # limit and a `skipped` list since 08-12 for exactly this; worker H had neither.
+                consec_select_fail += 1
+                skipped.append({"idx": ti, "id": tid, "name": tname})
+                note(f"  could not select it with the mouse — skipping "
+                     f"({consec_select_fail} in a row)")
+                if consec_select_fail >= SELECT_FAIL_LIMIT:
+                    note(f"  *** {consec_select_fail} tribunal selects failed in a row — the form "
+                         f"is wedged, not the courts. Stopping; {len(targets) - ti - 1} courts "
+                         f"in this range were never searched.")
+                    stop = "select-failures (form wedged)"
+                    break
                 continue
+            consec_select_fail = 0
             ojv.click_away(p)
             pres.travel_to(p, "#btnConConsultaFec")
             # Where the hand waits while the results come back: over the table they will appear
@@ -791,10 +814,22 @@ def main():
                 stop = f"blocked-on-search: {why}"
                 break
             if kind != "results":
-                note(f"  search -> {kind} in {el:.0f}s — not recording this court")
+                # ⚠️ AND A RUN OF UNCONFIRMED SEARCHES IS A DEAD SESSION. `stale` means the search
+                # never proved fresh; recording court after court that way is how a degrading
+                # session files live tribunales as empty. Worker A treats this as a throttle and
+                # re-enters; worker H does not recover yet, so it must at least stop and SAY so.
+                consec_bad_search += 1
+                note(f"  search -> {kind} in {el:.0f}s — not recording this court "
+                     f"({consec_bad_search} unconfirmed in a row)")
                 state["courts"].append({"id": tid, "name": tname, "kind": kind})
                 save_state()
+                if consec_bad_search >= BAD_SEARCH_LIMIT:
+                    note(f"  *** {consec_bad_search} searches never proved fresh — this session is "
+                         f"spent. Stopping rather than walking the range recording empties.")
+                    stop = f"searches-not-confirming ({kind})"
+                    break
                 continue
+            consec_bad_search = 0
 
             total = C.total_registros(p)
             tally["courts"] += 1
@@ -927,6 +962,11 @@ def main():
             if stop:
                 break
 
+        # ⚠️ NEVER REPORT "finished" FOR A RANGE NOTHING WAS SEARCHED IN. That is the verdict a
+        # resume reads to decide there is no work left here.
+        if not stop and tally["courts"] == 0:
+            stop = "nothing-searched"
+        state["skipped"] = skipped
         save_state(stop or "finished")
         el = (time.time() - t_start) / 60.0
         s = pres.stats()
