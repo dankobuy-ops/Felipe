@@ -594,6 +594,12 @@ def main():
                          "still have no cuaderno-2 rows, instead of sweeping to re-find them. "
                          "~4,500 of June+July are in that state and 13 are not. Paginates, "
                          "because a wanted rol can sit past row 100.")
+    ap.add_argument("--shard", type=int, default=1,
+                    help="which slice of the work this worker takes (1-based), used with --of")
+    ap.add_argument("--of", type=int, default=1,
+                    help="how many workers are sharing the work. In --fill the COURT LIST is "
+                         "sliced round-robin, because which courts still owe a cuaderno 2 changes "
+                         "after every ingest and --start/--end index the national list instead.")
     ap.add_argument("--max-pages", type=int, default=6,
                     help="pagination cap per court in --fill (a page advance is a result "
                          "request and draws on the same budget as a search)")
@@ -787,6 +793,15 @@ def main():
             targets = [t for t in lst if t["v"] in todo]
             note(f"fill: {n_todo} causas need cuaderno 2, across {len(todo)} tribunales "
                  f"({len(targets)} of them selectable in this form)")
+            # ⚠️ SHARD THE COURT LIST, NOT THE DATE WINDOW. --start/--end are indices into the
+            # NATIONAL list and mean nothing here: fill's targets are only the courts that still
+            # owe us a cuaderno 2, and which those are changes after every ingest. Six workers
+            # given the same target list would open the same causas six times — and a causa open
+            # is the scarcest thing this project spends.
+            if a.of > 1:
+                targets = [t for i, t in enumerate(targets) if i % a.of == (a.shard - 1)]
+                mine = sum(len(todo[t["v"]]) for t in targets)
+                note(f"  shard {a.shard}/{a.of}: {len(targets)} courts, {mine} causas to fill")
         else:
             todo = None
             targets = ([t for t in lst if t["v"] == a.tribunal] if a.tribunal

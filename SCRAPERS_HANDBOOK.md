@@ -1505,6 +1505,39 @@ had — a whole test was designed around it.
 It takes one line and it is the cheapest error-check available. The temptation is strongest when
 the new number is dramatic, because a dramatic number feels like it explains itself.
 
+### ★★ Re-discovery is the tax you forget to count
+
+An afternoon of sweeping produced, per fleet-hour:
+
+    794 record opens  ->  217 records new  ->  211 that gained the field we were collecting
+
+**27%.** The other ~580 opens re-opened records already held complete, because successive fleets
+swept the same slices and the sweep had no idea what was already banked. The run reports looked
+excellent throughout — opens per minute, zero blocks, healthy counters — because they measure
+*work done*, not *work that needed doing*.
+
+⇒ Once you HAVE a corpus, discovery and completion are different jobs and want different workers:
+
+| | discovery | completion |
+|---|---|---|
+| picks records by | what the site lists | **what your database says is missing** |
+| cost per useful result | 1 / hit-rate | ~1 |
+| gets worse as you collect more | **yes** | no |
+
+The discovery worker's efficiency *decays as it succeeds*: the more you hold, the larger the share
+of what it finds that you already have. That is the opposite of the intuition that a sweep gets
+cheaper once the hard records are banked.
+
+- **Ask the database for the work-list**, and apply your reject filters to it *before* spending the
+  expensive act — a record you can skip entirely beats one you open fast.
+- **Shard the work-list, not the site's index.** Which records are outstanding changes after every
+  ingest, so slicing by the site's own ordering hands several workers the same work.
+- **Count useful results, not actions.** "794 opens, no blocks" and "211 fields collected" describe
+  the same hour, and only the second is the thing you wanted.
+
+(PJUD, 2026-08-17: 4,143 outstanding at 27% efficiency is ~19 h of sweeping, or ~5 h of targeted
+filling at the same measured rate.)
+
 ### ⚠️ A scraper with no ingest has no output
 
 Worker H harvested 2,228 records across an evening, 1,659 of them carrying the exact field the
