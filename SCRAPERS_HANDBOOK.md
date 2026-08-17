@@ -268,12 +268,28 @@ leaving silent at least once:
 | page scrolled to a click target | wheel turned | `scrollIntoView` moved the page with no input device |
 | focus arriving in a control | pointer moved to it, or Tab pressed | `.focus()` teleported the caret in |
 
-★ **Idle `mousemove` was tested and bought NOTHING** (2026-08-14): two cloud arms, one variable,
+~~★ **Idle `mousemove` was tested and bought NOTHING** (2026-08-14): two cloud arms, one variable,
 both refused at exactly the same record with the same signature. Kept off by default so the
-negative result is not rebuilt. Its sibling — hover-on-scroll — was real, and the difference is
-the lesson: **that one was a channel proven empty by COUNTING EVENTS (0 vs 12); this one was a
-plausible story about a channel.** Plausible stories about a scored site have been wrong here more
-often than right.
+negative result is not rebuilt.~~
+
+★★ **CORRECTED 2026-08-16 — that test was run at one twenty-sixth of a hand.** The arms really did
+die identically, so the result stands *for that implementation*; what was wrong was the conclusion
+drawn from it. We then recorded a real person doing the same work and counted what they emit:
+
+| | a person | our "idle motion" | our worker between clicks |
+|---|---|---|---|
+| `mousemove` | **25.8 /s, on 98% of all seconds** | ~1 /s, only during pacing gaps | 0 |
+| `mouseover` | **6.4 /s inside a modal** | ~0 — it vibrated in place | only what a click path crosses |
+| while a record is loading | **25.2 /s — they keep moving** | 0 | 0 |
+
+⇒ **The amplitude was wrong by more than an order of magnitude, and the SHAPE was wrong too.**
+Jitter in place crosses no element boundaries, so it generates no `mouseover` at all — the one
+channel that distinguishes a hand from a tremor. A negative result at 4% of the real amplitude is
+not evidence about the channel; it is evidence about 4%.
+
+**The rule this replaces "plausible stories" with: do not reason about a channel, MEASURE A HUMAN
+FILLING IT, then copy the number.** Every other entry in this table was found the same way and
+none of them needed a theory.
 
 ⚠️ The last two rows were both found by an operator **watching the browser**, not by reading logs
 — the logs showed nothing wrong in either case. And the third, `.focus()` teleporting into a
@@ -427,20 +443,77 @@ modal). PJUD's `click_away()` and HDI's `FIND_POINT` are the same idea.
 ⚠️ In PJUD, `click_away` deliberately **hovers without pressing** — a real click on the background
 once dismissed things that were needed. Prefer hover-and-settle unless you know a press is safe.
 
-### Read-only inputs: mutate the property, then type for real
+### ~~Read-only inputs: mutate the property, then type for real~~ → **use the widget**
 
-For a read-only datepicker, clear `readOnly` as a **DOM property** (a mutation, not an event, so
+~~For a read-only datepicker, clear `readOnly` as a **DOM property** (a mutation, not an event, so
 nothing untrusted is dispatched), then **type** the value with real keystrokes so the browser
-itself emits genuine `isTrusted=true` input/change events.
+itself emits genuine `isTrusted=true` input/change events.~~
+
+★★ **OVERTURNED 2026-08-16 by the operator, who simply tried to use the site: "I can't type the
+dates in the search. I can only use the date picker."** Both fields are `readonly` and carry
+`hasDatepicker`. So the technique above — unlock the field, type into it, press Escape — is a
+sequence **no user can produce**, on the one form where the anti-bot token is minted. It had been
+in every run this project has ever made.
+
+The trick is seductive because it is technically clean: the mutation dispatches nothing untrusted,
+and the keystrokes really are `isTrusted=true`. Both facts are true and both are beside the point.
+**`isTrusted` was never the question — the question is whether a person could have done it.** A
+locked field that receives keystrokes is a state the site's own UI cannot reach.
+
+⇒ **If an input is `readonly`, the site is telling you where its real control is. Go and drive
+that.** For a jQuery UI datepicker: click the field, wait for `#ui-datepicker-div` to be visible,
+click `a.ui-datepicker-prev/next` to the month, click the day link — every step a `human_click`.
+
+⚠️ Two traps found driving it, both mine, both costing a live session each:
+
+- **Poll for the widget; never sleep a flat interval.** A 500 ms wait declared "did not open" on a
+  widget that opens in ~700 ms — and the browser died with the process, taking the evidence.
+- **Do not threshold on how many days are rendered**, and do not theorise about the number either.
+  I required ≥20 day links, which "failed" twice on a widget that was open the whole time; I then
+  explained the 16 I had seen as *the site refusing future dates* and wrote that here as fact. The
+  live widget shows **31**. One observation, one confident rule, wrong — the exact habit this
+  handbook warns about, committed while documenting a different instance of it. Ask only whether a
+  calendar is present, then read the value back.
+- **★ Read the calendar's state from its DAY CELLS, never its header.** Both header reads are
+  traps and they fail *silently, in opposite directions*. `.ui-datepicker-month` was a `<span>`
+  but `.ui-datepicker-year` a `<select>`, so `textContent` returned every option concatenated
+  (`"2010201120122013…"`) → a year in the billions → "we are past the target" always true → the
+  widget marched **backwards** through months until it ran out of hops. Reading that select's
+  `.value` instead gave **2020 while the header displayed Agosto 2026** → always "before the
+  target" → it marched **forwards**. I fixed the first, re-ran, and walked straight into the
+  second. jQuery UI stamps `data-month` (0-based) and `data-year` on every day `<td>`: the
+  calendar stating what it is actually showing, in a form that cannot disagree with itself.
+  Scope the day click to that cell too, or a trailing day of the adjacent month can match.
+
+⚠️ And check what the form holds before you trust it: **these fields start EMPTY.** An empty window
+searches instantly, returns zero rows, and still reports "results" — a clean-looking answer to a
+question nobody asked. Our worker never noticed in months of running, because it typed the dates
+in every single time.
 
 ⚠️ **Do not** go back to `el.value = x` plus `dispatchEvent(new Event('change'))`. That fires
 `isTrusted=false`, and the failure is delayed and confusing: the search succeeds *once*, and the
 **next** request comes back as the rejection page. It burned a profile (PJUD, 2026-07-21).
 
-### Select elements: arrow keys, not `select_option`
+### Select elements: arrow keys, not `select_option` — but check whose rule this is
 
-`select_option`'s synthetic change event trips the WAF. Focus the select and press Arrow keys the
-right number of times, with human cadence.
+`select_option`'s synthetic change event was believed to trip the WAF, so the fix was: focus the
+select and press Arrow keys the right number of times, with human cadence.
+
+⚠️ **Re-read the evidence before you inherit this, 2026-08-16.** In the project's own notes the
+same rule appears twice with opposite strength: "never `select_option` the tribunal" is annotated
+*"untested since the 07-22 fix — it may well be innocent too"*, while `select_option` on the
+smaller select is recorded as *"TOLERATED — validated"*. Then we measured a real person: **zero
+keydowns in an entire session**, both selects changed, because picking from a native dropdown is a
+gesture the page sees as a trusted `change` with no keyboard at all.
+
+So the arrow keys are **our invention**, and an expensive one — walking a 230-option list is ~54
+metronome keystrokes into a channel the human leaves completely empty. Meanwhile the one thing we
+cannot reproduce is the native popup itself: it is an OS surface, and no CDP event reaches it.
+
+⇒ Two honest options, and the choice needs measuring rather than assuming: **trusted keys the user
+never pressed**, or **a synthetic change with a real pointer arrival and no keys**. Approach the
+control with the pointer either way, and **never click a `<select>`** — that opens the native
+popup, and everything after it is delivered into a dropdown nobody can see.
 
 ### ★ Always read the value BACK
 
@@ -1373,6 +1446,57 @@ so it never reached the target — luck, not design.
 
 ⇒ **A safe-looking parameter is not a dry run.** Either have a real `--dry` path that exits before
 any request, or test the wiring against something that cannot reach production at all.
+
+### ★★ Copy the BEHAVIOUR, not the interval
+
+Having measured a person at 13.1 s between records, the obvious move is to wait 13.1 s between
+records. It is the wrong move, and an operator watching the result named it in one line: *"it
+takes a while randomly moving from record to record — why not just go directly to the next one?"*
+
+A person's 13 seconds is **reading the list, deciding, travelling to the next row, clicking it**.
+Reproduce it as a delay and you get a worker that is simultaneously *slower than the human* and
+*less like them*: eight seconds of pointer motion with no destination, which is a behaviour no
+person has ever produced. The interval is an OUTPUT of what they did, not an input.
+
+⇒ Copy the acts and let the interval fall out of them. Here that meant: aim the pointer at the
+next row, travel to it, click — and the gap becomes however long the travel takes (~8-10 s, well
+inside the observed 5-27 s range) without a single second of invented waiting.
+
+The same test applies to every number you lift off a recording: **is this a thing they DID, or a
+consequence of things they did?** Copy the first kind. Derive the second.
+
+### ★★ A fallback for a name you invented manufactures success
+
+Writing a prototype against an unfamiliar module, I guessed at three function names and hedged
+each one:
+
+```python
+rows = C.result_rows(p) if hasattr(C, "result_rows") else []
+kind, el, why = ojv.settle_search(...) if hasattr(ojv, "settle_search") else ("results", 0, "")
+```
+
+`result_rows` does not exist. So the run reported **`search -> results in 0s, 0 rows, DONE`** and
+exited green, while the page in front of it held 117 records and 21 matching rows. The hedge did
+not make the code robust — **it converted "I called something that isn't there" into a clean
+result nobody would question.** The same shape as swallowing a traceback with `|| echo`, and the
+same lesson: *a failure that looks like an answer is worse than a crash.*
+
+- **Call the real function. Let a wrong name raise on the first run** — that is the cheapest
+  possible failure and it happens before any live request is spent.
+- **Verify the symbol instead of guarding it.** One `hasattr` sweep over the names you intend to
+  call, run once at import, tells you the truth without hiding it at the call site.
+- Corollary for edits: **grep the file afterwards to confirm the change is on disk.** A patch that
+  reported success but never landed is what let this ship — the search block I "fixed" was still
+  the guessed version, and the run's fake verdict is what made that invisible.
+
+### ⚠️ The profile directory is the lock, not the port
+
+A relaunch hung forever with no error: the previous browser had survived, and although the new one
+asked for a *different* debug port, it wanted the **same `--user-data-dir`** — which the old
+process still holds. Killing by port, or assuming a dead script means a dead browser, both leave
+this. Check for a live process on the profile before launching, and remember the inverse too: a
+browser started by a script that is `kill -9`'d does **not** always die with it, so the evidence
+you wanted may still be sitting there — or the lock you did not want.
 
 ### ★★ Your instrumentation will lie to you more often than your scraper does
 

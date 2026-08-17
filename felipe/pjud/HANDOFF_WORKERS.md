@@ -1024,3 +1024,65 @@ Screenshotting occupies the renderer's main thread. It sends **nothing** to PJUD
 are local — but "no requests" is not "no difference", and we are hunting a wall that appears at
 exactly 10 opens remotely and never locally. Do not leave `--live` on for a one-variable test
 unless the arm you are comparing against carries it too.
+
+## WORKER H — the mimic (2026-08-16)
+
+The operator drove a real session while `human_record.py` counted what they emitted. Everything
+below is out of `data/human/session-20260816-212249.jsonl` — 6.5 minutes, 15 causas, 389 rows.
+
+### What the recording killed
+
+⚠️⚠️ **THE BURST HYPOTHESIS IS DEAD, AND THE REASONING BEHIND IT WAS A BAD COMPARISON.** The
+planned "human dwell before switching books" test would have made us slower for nothing:
+
+| | operator | worker A |
+|---|---|---|
+| causa open → switch to book 2 | **2.0 s median** (min 2.0, max 5.0, n=12) | ~4 s |
+| causa open → next open | **13.1 s** (4.6/min) | 25 s (2.0/min) |
+| `causaCivil.php` | **8.0 POST/min** sustained | ~4/min |
+
+A person switches books in two seconds — faster than we do. The "29–38 s spacing in clean runs"
+I cited as the baseline came from runs with the switch **disabled**, where that endpoint is hit
+once per causa instead of twice: a one-POST pattern compared against a two-POST pattern and the
+difference called a burst. **Pace is not what the site objects to** — now shown three ways.
+
+### What it found instead
+
+| channel | operator | worker A |
+|---|---|---|
+| `mousemove` | **25.8/s, on 98% of seconds** | 0 between clicks |
+| `mouseover` | **6.4/s inside the modal** | only what a click path crosses |
+| while a causa loads | **25.2/s — they keep moving** | 0, it sits in a wait loop |
+| `keydown` | **ZERO all session** | ~54/tribunal + ~20 for dates |
+| wheel inside the modal | **ZERO** (0.6/s on the list) | 2–5 notches per causa |
+
+⇒ `--idle-motion` was tested at ~1/s — **one twenty-sixth of a hand** — and it vibrated in place,
+so it crossed no elements and produced no `mouseover` at all. The negative result stands for that
+implementation and says nothing about the channel.
+
+### ★ The date fields are READONLY (operator, unprompted: "I can't type the dates")
+
+`#fecDesde`/`#fecHasta` are `readonly` with `hasDatepicker`. `type_date_kbd` clears the `readOnly`
+property, types into the unlocked field and presses Escape — **a sequence no user can produce**,
+on the form where the token is minted, in every run this project has ever made. Worker H drives
+the jQuery UI picker with the mouse instead. Three traps, each cost a live session:
+
+- the widget opens in ~700 ms — **poll for it**, never sleep a flat interval;
+- **never read its month/year from the header**: `.ui-datepicker-month` is a SPAN but
+  `.ui-datepicker-year` is a SELECT, so `textContent` concatenates every option and `.value` read
+  2020 while the header showed Agosto 2026 — one made it march backwards, the other forwards.
+  Read `data-month`/`data-year` off a day `<td>`;
+- **openness is not a state you check once** — it closes between the check and the read.
+
+⚠️ And the fields **start empty**: an empty window searches instantly, returns nothing, and still
+reports "results". Worker A never noticed because it typed them every time.
+
+### Status
+
+Zero keystrokes end to end, no wheel in the modal, dates by picker, pointer present throughout.
+Measured live: `mouseover` 4.5–7.5/s (human 6.4) ✓, `keydown` 0 ✓, `mousemove` ~16/s against 25.8
+— **capped by CDP round-trip cost on a heavy page, not by choice**: raising the target rate from
+34 to 52 moved the achieved rate not at all.
+
+**The operator's plan, in order:** (1) mimic the actions at their pace and confirm no block;
+(2) maximise speed without tripping; (3) find how many can run in parallel; (4) only then remote.
