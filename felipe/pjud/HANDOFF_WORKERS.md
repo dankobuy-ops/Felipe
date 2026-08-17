@@ -874,3 +874,98 @@ Bisect order when it lands: pointer scrolling, cuaderno switch, etapa gate, abse
 ⚠️ Local surviving proves little — residential has always been the forgiving environment
 (730+ opens/day vs a small runner session). It rules out "catastrophically broken", not "worse on
 runners".
+
+---
+
+# THE 2026-08-14 SESSION — worker A metadata-only, proven local, blocked remote
+
+## ★ RESULT: local worker A is done. 375 opens, 0 blocks, stopped by OUR clock.
+
+```
+RUN REPORT: lifespan | finished=False idx=14 blocks=0 recoveries=0 swaps=0 opens=375 ebooks=0
+```
+
+190 minutes, 15 tribunales, 0 blocks / 0 recoveries / 0 swaps / 0 apm challenges, `pdf_bytes=0`
+throughout, cuaderno-2 switch firing on every eligible causa. **That beats the best remote run
+ever recorded (306) and it ended because the lifespan expired, not because the site refused us.**
+
+Rate: **2.0 causa opens/min**, against the old remote worker's 1.59 on the same window — faster
+despite the extra cuaderno-2 POST, because it downloads nothing and the gates discard ~34% of
+causas for one open each.
+
+Record shape verified live, not just compiled: of 50 causas, 33 harvested and every one had all
+five parts (historia_c1, historia_c2, header_c2, litigantes, escritos); 15 gated on etapa, 2 on
+procedimiento; **zero documents bought**.
+
+## ⚠️⚠️ THE REMOTE 10-OPEN WALL — CAUSE FOUND, MECHANISM NOT
+
+**Four** runner sessions stopped at **exactly 10 causa opens**, on the **same causa**
+(`2-C-1251-2026`), with the **same signature** (`modal did not open after 90s`,
+`rejF=2 hardRej=1`) — across two entry routes, four IPs, and a range quiet for an hour.
+
+**It is the cuaderno-2 switch.** Disabling it alone cleared the wall: the causa that had hung for
+90 s three times opened in **six seconds** and the run carried on past causa 15.
+
+It is NOT:
+- **the causa** — local opened `2-C-1251-2026` as its own 10th causa, in 6 s, and went on to 375.
+- **the position** — same sequence locally, no wall.
+- **the entry route** — the 4th death carried `--entry-route home`.
+- **the pointer teleport** — reaching the dropdown with a real arc instead of `.focus()` did NOT
+  fix it (run 31844271560, same causa, same count). ⚠️ Kept anyway: teleported focus IS a genuine
+  tell, it is just not this one. **Recorded so it is not re-attempted.**
+- **the wheel-scroll fix, the pointer clamp, or `locate()`** — the 4th death carried all of them.
+- **a POST count** — `probe_pace` made 306 `causaCivil.php` POSTs on a runner (08-13), clean.
+
+**What is left, and it is the only property the clean runs never had:** the switch fires its
+second `causaCivil.php` POST **~4 s after the open**, where every clean run spaced that endpoint
+**29–38 s** apart. A burst of two POSTs we invented. Nobody flips to the Apremio cuaderno four
+seconds after a modal renders.
+
+⇒ **NEXT TEST: a human dwell before switching books** (10–20 s of "reading" book 1). It is the
+one-variable test that remains, and it is also simply what a person does.
+
+⚠️ **My error, recorded:** I cancelled the `--no-cuaderno2` run at ~causa 15, one causa short of
+where a ~16-POST count budget would have shown itself. That would have separated count from burst
+for free. Do not cancel a running discriminator for a test that can wait.
+
+## The entry route is PER-ENVIRONMENT (measured)
+
+| environment | direct link | `/home` + guest gate |
+|---|---|---|
+| residential | **works** — 375 opens; the only reason local entry works at all | (not offered here) |
+| datacenter | enters cleanly, then **cannot complete one search** — `rejF=1`, 0 opens, twice | **works** — the only remote route that has ever searched |
+
+`entry_probe.py` proved a runner is still offered **both** anchors, so this is a choice, not a
+closed door. `--entry-route {auto,home,direct}`; the censo workflow passes `home`.
+
+⚠️ I scanned ONE machine, saw only the direct link, concluded the site had dropped `/home` for
+everyone, and pushed a single global ranking. The runner failed its first search minutes later.
+**Two environments already known to be served different pages do not get one hardcoded preference.**
+
+## Seeing what a runner does — `--shots DIR`
+
+A runner has no screen, and for four sessions we could not say what was on the page during those
+90 s: a spinner, a rejection interstitial, an overlay, or a normal page missing one element. Four
+different fixes; we were choosing between them by counting requests.
+
+`--shots` captures a screenshot **and** page state (url, text, `#modalDetalleCivil` exists vs
+shown, which `loadPre*` spinners hold content, backdrop/overlay count, iframes) at **8 s, 30 s and
+60 s INTO the hang**, again when it gives up, and on a detail block. Failure paths only. The censo
+workflow always passes it and uploads the folder as an artifact.
+
+## Pointer defects found this session — all three were invisible in the logs
+
+| defect | channel left empty | found by |
+|---|---|---|
+| `human_scroll` wheeled from `(0,0)` | 0 `mouseover` vs 12 for a positioned pointer (measured) | operator, watching |
+| `scrollIntoView` before every click | page moved with no input device involved | operator, watching |
+| `.focus()` into the cuaderno dropdown | keystrokes arriving with no pointer approach | operator's question |
+
+⚠️ Two of three were found by **watching the browser**, not by reading logs. The logs said nothing
+was wrong in every case.
+
+## Negative results — do not rebuild these
+
+- **`--idle-motion` does nothing.** Two runner arms, one variable, both died at exactly 10 opens
+  on the same causa with the same signature. Kept off by default so the negative survives.
+- **The pointer-approach fix on the cuaderno dropdown does not lift the wall** (above).

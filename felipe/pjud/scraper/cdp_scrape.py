@@ -381,6 +381,19 @@ def human_click(page, target, timeout=8000):
         page.wait_for_timeout(1000)                      # give slow renders time to settle
         if attempt == 2:
             clear_stuck_modal(page)                      # usually a left-open modal's backdrop
+            # ⚠️ AND ASK WHAT IS ACTUALLY ON TOP. ojv.clear_overlay() was written for exactly this
+            # and then only wired into the entry button, so every OTHER covered target still
+            # reported the bare word "covered" — which is the situation it was built to end.
+            # Caught on 2026-08-14 by the paginator: two refusals, a court flagged INCOMPLETE at
+            # 100/251 rows, and no idea what the Siguiente button was under.
+            # Imported lazily: ojv imports this module, so a top-level import would be circular.
+            try:
+                import ojv as _ojv
+                ok, why = _ojv.clear_overlay(page)
+                if not ok and "nothing covering" not in why:
+                    print(f"    [warn] human_click: {why}")
+            except Exception:
+                pass
         wait_idle(page)
         try:
             human_scroll_to(page, el, timeout=timeout)   # wheel here too — same reason

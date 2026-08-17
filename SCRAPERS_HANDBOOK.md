@@ -264,12 +264,21 @@ leaving silent at least once:
 | `mouseover`/`mouseout` | scrolling with the pointer over content | scrolled from `(0,0)` |
 | pointer approach path | moving to anything clickable | `page.click()` teleports |
 | keystroke rhythm | typing | fixed 60/70 ms metronome |
-| **`mousemove` while idle** | **hand resting on the mouse** | **still empty — wheel does not emit it** |
+| **`mousemove` while idle** | **hand resting on the mouse** | tested — see below |
+| page scrolled to a click target | wheel turned | `scrollIntoView` moved the page with no input device |
+| focus arriving in a control | pointer moved to it, or Tab pressed | `.focus()` teleported the caret in |
 
-That last row is open, and recorded as open: `mouse.wheel()` dispatches no `mousemove`, so idle
-hand-jitter is a channel we still do not fill. Marked as speculation until it is tested against a
-control — which is the only honest way to add motion, since "more human-looking" is exactly the
-kind of claim that feels obviously true and has been wrong here before.
+★ **Idle `mousemove` was tested and bought NOTHING** (2026-08-14): two cloud arms, one variable,
+both refused at exactly the same record with the same signature. Kept off by default so the
+negative result is not rebuilt. Its sibling — hover-on-scroll — was real, and the difference is
+the lesson: **that one was a channel proven empty by COUNTING EVENTS (0 vs 12); this one was a
+plausible story about a channel.** Plausible stories about a scored site have been wrong here more
+often than right.
+
+⚠️ The last two rows were both found by an operator **watching the browser**, not by reading logs
+— the logs showed nothing wrong in either case. And the third, `.focus()` teleporting into a
+dropdown, was a genuine tell whose removal did NOT fix the failure being chased. **Remove it
+anyway, and record that it was not the cause**, or the next person will try it again.
 
 ### ★★ A worker must know WHERE IT IS, not just what it failed to do
 
@@ -321,6 +330,51 @@ cleaner would have hunted for a dismiss control on it. If nothing overlay-like i
 target, say so: an unhittable target is a **layout** problem, a different diagnosis with a
 different fix. Disguising one as the other is how "covered" came to mean three different things in
 a single week.
+
+### ★★ The same environment can be served a different SITE — never generalise from one machine
+
+PJUD, 2026-08-14. The landing page changed its entry route: the old link to a gated `/home/` page
+was joined by one that goes straight to the search form. I scanned **one** machine, saw only the
+new link, concluded the old route was gone **for everyone**, and pushed a single global preference.
+
+Both were wrong. A cloud runner is still offered **both** links — and worse, the two environments
+need **opposite** ones:
+
+| | direct link | gated route |
+|---|---|---|
+| residential | works — 375 record opens | (not offered) |
+| datacenter | enters cleanly, then **cannot complete one search** | the only route that works |
+
+⇒ **Environment-dependent behaviour needs an environment-dependent setting**, not a constant. Make
+it a flag with the measurement written beside it.
+⇒ **A probe that answers "what is this machine actually offered?" costs two page loads.** Each
+guess instead cost a whole session. Build the probe first.
+
+### ★★ When something new breaks, ask what you started DOING that you never did before
+
+The hardest bug of that session: a worker that had run for weeks began dying after exactly ten
+records, remotely only, always on the same record — while the same code on the same records ran
+375 clean locally. Days of counters (opens, bytes, requests, elapsed) explained none of it.
+
+The answer was one line in the diff: the worker now switched to a **second sub-view** on every
+record, an interaction it had **never performed before**. Disabling that alone lifted the wall —
+the record that had hung for 90 s opened in six.
+
+⇒ **Diff the BEHAVIOUR, not just the code.** "What actions does this version take that the last
+one did not?" is a shorter list than the code diff and it is where new failures live.
+⇒ Its own docstring had said the risk out loud — *"it went unnoticed because worker A only ever
+reads cuaderno 1 and never switches"* — written by someone fixing a related bug months earlier.
+**When you make a warning's precondition come true, that warning is now about you.**
+
+### ⚠️ A burst is not a rate
+
+The offending switch fires its second request **~4 s after the first**, where every clean run
+spaced that same endpoint **29–38 s** apart. Averaged over a minute the difference looks minor;
+as a *pattern* it is two requests in four seconds against one every half-minute.
+
+⇒ **Pacing configured per ITEM says nothing about the shape within an item.** If handling one
+record now costs two requests, they land together — and "requests per minute" will not show it.
+Nobody opens a case file and flips to its second volume four seconds later.
 
 ### ⚠️ Never click a covered target
 
