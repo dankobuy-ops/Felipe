@@ -514,7 +514,27 @@ def human_click(page, target, timeout=8000):
         except Exception:
             pass
     if covered:
-        print("    [warn] human_click: objetivo tapado tras 8s — NO hago clic (evita el bloqueo)")
+        # ⚠️ SAY WHERE IT WAS. "objetivo tapado" is the single most expensive message in this
+        # project: it refuses row clicks (3% of causas) AND Siguiente clicks (39% of courts, 1,224
+        # causas unreached in one afternoon), and for months it named no cause. blocking_overlay
+        # keeps reporting nothing on top, which means the target is not COVERED at all — it is
+        # somewhere we cannot aim. Geometry answers that; the word never will.
+        try:
+            g = el.evaluate(
+                "(e)=>{const r=e.getBoundingClientRect();"
+                " const top=document.elementFromPoint("
+                "   Math.min(Math.max(r.left+r.width/2,0),innerWidth-1),"
+                "   Math.min(Math.max(r.top+r.height/2,0),innerHeight-1));"
+                " return {x:Math.round(r.left), y:Math.round(r.top),"
+                "  w:Math.round(r.width), h:Math.round(r.height),"
+                "  vw:innerWidth, vh:innerHeight, sy:Math.round(scrollY),"
+                "  inView: r.top>=0 && r.bottom<=innerHeight && r.left>=0 && r.right<=innerWidth,"
+                "  zero: r.width===0||r.height===0,"
+                "  top: top ? top.tagName+'.'+((top.className||'')+'').slice(0,24) : null};}")
+        except Exception as e:
+            g = f"(probe failed: {str(e)[:40]})"
+        print(f"    [warn] human_click: objetivo tapado tras 8s — NO hago clic (evita el bloqueo)")
+        print(f"      [geo] {g}")
         return False
 
     try:
