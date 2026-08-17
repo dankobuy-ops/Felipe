@@ -1505,6 +1505,44 @@ had — a whole test was designed around it.
 It takes one line and it is the cheapest error-check available. The temptation is strongest when
 the new number is dramatic, because a dramatic number feels like it explains itself.
 
+### ★★★ Check what your safety guards RETURN, or they become the bug
+
+The most expensive defect in this project's history was a boolean thrown away.
+
+`human_click()` refuses to click a target it cannot reach, on purpose: a covered click sends a
+real click to whatever is underneath, and that correlated exactly with getting blocked (0 covered
+clicks → 50 records; 1 → blocked at 23; 2 → at 4). It announces the refusal in the log. **The
+caller ignored the return value.** So the worker clicked nothing, waited 90–106 seconds for a
+modal that had never been requested, reported *"modal did not open"*, and concluded the site had
+refused it.
+
+That one omission produced, over weeks: dead workers, a "10-open wall" on cloud runners that four
+separate sessions died against, and theories blaming the record itself, its position in the list,
+the entry route, a per-session request budget, a burst pattern, concurrent sessions, and the
+datacenter address range. Every one of those was built on a symptom **we manufactured**.
+
+What settled it in one line was counting requests instead of reading the DOM:
+
+    [warn] human_click: objetivo tapado — NO hago clic
+    [net] 0 responses since the click, causaCivil.php=0 :: []
+
+Zero. The site was never asked. It had never refused anything.
+
+Rules that follow:
+
+- **A guard that can decline must be checked at every call site.** Grep for the function and look
+  at each one; a guard whose refusal is ignored is worse than no guard, because it converts a
+  cheap skip into an expensive fake failure.
+- **Cost the failure correctly.** A refused click costs ONE RECORD. It is not a spent session, not
+  a block, and must never trigger a recovery — ours did, and each recovery slept 3, 6, then 9
+  minutes before walking back into the same unreachable row.
+- **Count it in the run's own verdict.** `refused=33` beside `opens=1009` is a 3% loss you can see
+  and chase; silence made the same losses look like the site throttling us.
+- ★ **When the DOM says "nothing happened", ask the NETWORK whether you asked for anything.**
+  Element state tells you what the page looks like; the request log tells you whether the failure
+  is even the server's to explain. That single question separated our bug from a site refusal
+  after weeks of arguing about the latter.
+
 ### ★★★ Your NAME for a failure is not an observation of it
 
 For most of a day, workers died against a condition recorded in every log and every handoff as
