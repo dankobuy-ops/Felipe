@@ -593,6 +593,24 @@ def human_click(page, target, timeout=8000):
         print(f"      [geo] {g}")
         return False
 
+    # ⚠️ DO NOT PRESS WHILE THE PAGE IS STILL MOVING. _human_pointer moves, then presses, then
+    # releases. If the page is mid-scroll — and we now scroll on BOTH axes before clicking — the
+    # element slides out from under the point between mousedown and mouseup, the click registers
+    # on nothing, and no request is made. That is indistinguishable from the site ignoring us and
+    # it is how `modal never opened` survives every other fix: right row, no refusal, zero
+    # responses. Two reads of the box, 150 ms apart, cost nothing and remove the race.
+    try:
+        for _ in range(6):
+            b1 = el.bounding_box()
+            page.wait_for_timeout(150)
+            b2 = el.bounding_box()
+            if b1 and b2 and abs(b1["x"] - b2["x"]) < 2 and abs(b1["y"] - b2["y"]) < 2:
+                if b2 != box:                      # it moved while we waited: re-aim
+                    x = b2["x"] + b2["width"] * random.uniform(0.35, 0.65)
+                    y = b2["y"] + b2["height"] * random.uniform(0.35, 0.65)
+                break
+    except Exception:
+        pass
     try:
         _human_pointer(page, x, y)
         return True

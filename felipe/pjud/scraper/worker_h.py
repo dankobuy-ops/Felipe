@@ -571,6 +571,14 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
         note(f"      [why] busy={C.page_busy(page)} {d}")
         note(f"      [net] {len(seen)} responses since the click, "
              f"causaCivil.php={causa_posts} :: {seen[:8]}")
+        # ⚠️ COST IT WHERE IT BELONGS. If our click produced NO causa request, the site was never
+        # asked and there is nothing wrong with the session — spending a 3-9 minute recovery on it
+        # is the same error as spending one on a refused click, which cost us an entire fleet
+        # earlier today. Only a modal that failed AFTER we actually asked for it is evidence the
+        # session is unwell.
+        if causa_posts == 0:
+            note("      our click produced no causa request — one causa lost, session untouched")
+            return "click-refused"
         return None
 
     # ⚠️ THE HAND FOLLOWS THE READING. Without this the pointer keeps wandering wherever it
