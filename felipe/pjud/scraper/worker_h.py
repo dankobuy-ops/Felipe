@@ -1215,6 +1215,14 @@ def main():
                         note(f"  [warn] paginator stuck on page {page}, {len(want)} not reached")
                     break
                 page += 1
+                # ⚠️ LET THE REDRAW FINISH BEFORE READING ROW INDICES. advance() returns as soon
+                # as the FIRST row changes, which proves a swap started, not that it ended. Read
+                # too early and the indices belong to a table that is still being rebuilt — then
+                # `.nth(i)` clicks a row whose handler has been replaced, no request is made at
+                # all, and it looks exactly like the site ignoring us. MEASURED 2026-08-17: every
+                # one of these failures (4/4) happened after a page advance, none on page 1.
+                C.wait_idle(p)
+                p.wait_for_timeout(700)
                 rows = [r for r in C.page_rows(p) if r["has"] and r["rol"] in want]
                 note(f"  page {page}: {len(rows)} wanted rows here ({len(want)} still missing)")
                 for row in rows:
