@@ -318,6 +318,48 @@ def _plain_idle(page, secs):
         _idle_hook(page)
 
 
+def human_scroll_x(page, dx, notches=None):
+    """Scroll SIDEWAYS by roughly `dx` px, the way a person does it — a trackpad swipe or
+    shift+wheel, in a few uneven notches with the pointer parked over the content.
+
+    ⚠️ WE HAD NEVER SCROLLED HORIZONTALLY. Not once, in any worker. `mouse.wheel(0, dy)` — deltaX
+    hard-zero everywhere — which meant anything past the right edge of the window was unreachable
+    no matter how long we waited, and human_click refused it with "objetivo tapado" and no overlay
+    to name. That is how a 1,115 px table in a 958 px viewport cost 1,224 causas: the magnifier
+    column simply lived outside, and we treated a horizontal-scroll problem as a WAF verdict.
+    It is also one more empty telemetry channel, the same family as never wheeling at all.
+
+    ⇒ This is why the fix does NOT require a big window. A person with a narrow window scrolls
+    across; so can we. Window size is then a preference (small windows are watchable), not a
+    correctness requirement.
+    """
+    try:
+        if abs(dx) < 8:
+            return
+        n = notches if notches is not None else random.randint(2, 4)
+        try:
+            spot = page.evaluate(
+                """() => {const el = document.querySelector('#dtaTableDetalleFecha')
+                        || document.querySelector('table') || document.body;
+                   const r = el.getBoundingClientRect();
+                   const cx = Math.min(Math.max(r.left + r.width * 0.4, 30), innerWidth - 30);
+                   const cy = Math.min(Math.max(r.top + r.height * 0.35, 30), innerHeight - 30);
+                   return {x: cx, y: cy};}""")
+            page.mouse.move(spot["x"], spot["y"])
+        except Exception:
+            pass
+        step = dx / n
+        for i in range(n):
+            page.mouse.wheel(step * random.uniform(0.8, 1.2), 0)
+            page.wait_for_timeout(random.randint(90, 260))
+        # the small correction back that a hand makes after overshooting
+        if random.random() < 0.3:
+            page.mouse.wheel(-step * random.uniform(0.1, 0.3), 0)
+            page.wait_for_timeout(random.randint(80, 180))
+    except Exception:
+        pass
+
+
 def human_scroll_to(page, el, timeout=8000):
     """Bring `el` into view the way a person does — with the WHEEL — and only fall back to the
     instant jump if the wheel could not get there.
@@ -361,10 +403,24 @@ def human_scroll_to(page, el, timeout=8000):
     # nature: whether it lands under the header depends on where the page was already scrolled,
     # which is why one worker sailed through the same link another could not reach.
     # It is also a teleport for the page (see the docstring above), so not running it is a bonus.
+    # ⚠️ AND SIDEWAYS. Vertical-only scrolling leaves anything past the right edge permanently
+    # unreachable — which is exactly what happened to the results table's magnifier column in a
+    # narrow window. Bring the target inside the viewport WIDTH the way a person does, then the
+    # window can be any size the operator likes.
+    try:
+        b = el.bounding_box()
+        vw = page.evaluate("() => innerWidth")
+        if b and (b["x"] < 4 or b["x"] + b["width"] > vw - 4):
+            # positive dx scrolls right (content moves left); aim the target at mid-viewport
+            human_scroll_x(page, b["x"] + b["width"] / 2 - vw / 2)
+    except Exception:
+        pass
     try:
         b = el.bounding_box()
         vh = page.evaluate("() => innerHeight")
-        if b and 0 <= b["y"] and b["y"] + b["height"] <= vh:
+        vw = page.evaluate("() => innerWidth")
+        if (b and 0 <= b["y"] and b["y"] + b["height"] <= vh
+                and 0 <= b["x"] and b["x"] + b["width"] <= vw):
             return                                  # already fully in view; leave the page alone
     except Exception:
         pass
