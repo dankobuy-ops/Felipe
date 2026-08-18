@@ -358,6 +358,36 @@ def pick_date_mouse(page, sel, value, max_hops=36):
         note(f"    [warn] {max_hops} hops and never reached {m:02d}/{y}")
         return False
 
+    # ⚠️ DRAWN IS NOT SELECTABLE. jQuery UI still renders every day of the month; the ones the
+    # site refuses become <td class="ui-datepicker-unselectable ui-state-disabled"> holding a
+    # SPAN instead of an <a>. The OJV disables every day AFTER TODAY, so `--hasta 31/08/2026`
+    # asked on the 18th clicks nothing whatsoever: the locator resolves to zero elements,
+    # human_click falls through, and the field is left empty. A cloud runner and a local worker
+    # died at exactly this cell on 2026-08-18, minutes apart, and the only log line either
+    # produced was `#fecHasta reads ''`.
+    # ⚠️ AND IT OVERTURNS AN EARLIER NOTE. "16 day links means the site blocks future dates" was
+    # struck once because the picker plainly renders all 31 — it renders 31 and DISABLES the
+    # future ones. Count the anchors, not the cells.
+    cell = page.evaluate(
+        "(a)=>{const [s,mm,yy,dd]=a; const d=document.querySelector(s); if(!d) return null;"
+        " const td=[...d.querySelectorAll(`td[data-month='${mm}'][data-year='${yy}']`)]"
+        "   .find(t=>t.textContent.trim()===String(dd));"
+        " const en=[...d.querySelectorAll('td[data-month] a')].map(x=>x.textContent.trim());"
+        " if(!td) return {missing:true, last: en.length?en[en.length-1]:null};"
+        " const cl=td.className||'';"
+        " return {disabled: cl.includes('disabled')||cl.includes('unselectable')"
+        "                   || !td.querySelector('a'),"
+        "         last: en.length?en[en.length-1]:null};}",
+        [div, m - 1, y, d])
+    if cell and cell.get("missing"):
+        note(f"    [warn] {m:02d}/{y} has no cell for day {d}")
+        return False
+    if cell and cell.get("disabled"):
+        note(f"    [warn] the OJV DISABLES {d:02d}/{m:02d}/{y} in the picker — the cell is drawn "
+             f"but has no link. Last selectable day shown: {cell.get('last')}. "
+             f"The site does not accept a date in the future.")
+        return False
+
     # Scope the day to ITS OWN month cell. Filtering day links by text alone would happily match
     # a day from an adjacent month's trailing week.
     C.human_click(page, page.locator(f"{div} td[data-month='{m - 1}'][data-year='{y}'] a")
@@ -796,6 +826,20 @@ def main():
         import datetime as _dt
         d0 = _dt.datetime.strptime(a.desde, "%d/%m/%Y")
         d1 = _dt.datetime.strptime(a.hasta, "%d/%m/%Y")
+        value_was = a.hasta
+        # ⚠️ THE PICKER WILL NOT ACCEPT TOMORROW. Every day after today is drawn greyed out with
+        # no link, so asking for the end of the current month clicks a dead cell and leaves
+        # #fecHasta empty -- which the worker can only report as "reads ''". Clamp it, loudly:
+        # a person standing at that calendar on the 18th clicks the 18th, because the 31st is not
+        # offered. This is the one rule, not a workaround.
+        _today = _dt.datetime.combine(_dt.date.today(), _dt.time())
+        if d0 > _today:
+            raise SystemExit(f"--desde {a.desde} is in the future; there is nothing filed yet")
+        if d1 > _today:
+            a.hasta = _today.strftime("%d/%m/%Y")
+            print(f"[{time.strftime('%H:%M:%S')}] --hasta was {value_was} (in the future); the "
+                  f"OJV picker disables every day after today -- using {a.hasta}", flush=True)
+            d1 = _today
         if d1 < d0:
             raise SystemExit(f"--hasta {a.hasta} is before --desde {a.desde}")
         if (d1 - d0).days > 31:

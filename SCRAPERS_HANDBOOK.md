@@ -474,6 +474,18 @@ click `a.ui-datepicker-prev/next` to the month, click the day link — every ste
   live widget shows **31**. One observation, one confident rule, wrong — the exact habit this
   handbook warns about, committed while documenting a different instance of it. Ask only whether a
   calendar is present, then read the value back.
+- **★★ ...and then BOTH of those were half right (2026-08-18). DRAWN IS NOT SELECTABLE.** The
+  widget renders all 31 days *and disables every day after today*: jQuery UI turns a refused day
+  into `<td class="ui-datepicker-unselectable ui-state-disabled">` holding a **`<span>`, not an
+  `<a>`**. So the original hunch — the site refuses future dates — was true, and the correction —
+  it shows 31 — was also true, and counting *cells* could never tell them apart. A cloud runner
+  and a local worker died on this cell minutes apart, both asking for `31/08` on the 18th: the day
+  locator resolved to **zero elements**, the click helper fell through, and the only evidence
+  either produced was `#fecHasta reads ''`. It cost a whole remote run and it was visible at a
+  glance in the first traced frame of that picker — greyed cells from 19 onward.
+  ⇒ Count the **anchors**, not the cells; check the target cell for `disabled`/`unselectable`
+  before clicking it; and clamp a future end-date at the door, because a person standing at that
+  calendar clicks today — the 31st is simply not offered.
 - **★ Read the calendar's state from its DAY CELLS, never its header.** Both header reads are
   traps and they fail *silently, in opposite directions*. `.ui-datepicker-month` was a `<span>`
   but `.ui-datepicker-year` a `<select>`, so `textContent` returned every option concatenated
