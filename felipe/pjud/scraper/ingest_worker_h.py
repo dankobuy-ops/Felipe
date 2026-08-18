@@ -47,6 +47,7 @@ DATA = HERE.parent / "data" / "worker_h"
 def load(paths):
     """Every record from every file, newest file winning on a duplicate causa_id."""
     causas, dupes, gated, headerless = {}, 0, 0, 0
+    regated = {}
     for f in paths:
         try:
             recs = json.loads(f.read_text(encoding="utf-8"))
@@ -59,6 +60,15 @@ def load(paths):
                 continue
             if rec.get("skipped_etapa") or rec.get("skipped_proc"):
                 gated += 1
+                # ⚠️ RECORD THE ETAPA THAT REJECTED IT, or we pay for this open again every pass.
+                # The stored etapa is whatever the causa had when first discovered; the header we
+                # just read says otherwise. fill_targets() gates on the STORED value, so skipping
+                # these records entirely means the work-list keeps handing them back — measured
+                # 2026-08-17: 32 of 40 opens in some courts were causas already opened and
+                # rejected on an earlier pass. The open is the scarcest thing we spend.
+                et = (rec.get("header") or {}).get("etapa", "")
+                if et and rec.get("skipped_etapa"):
+                    regated[cid] = et
                 continue
             if not (rec.get("header") or {}):
                 headerless += 1
@@ -82,7 +92,7 @@ def load(paths):
             if cid in causas:
                 dupes += 1
             causas[cid] = rec
-    return causas, dupes, gated, headerless
+    return causas, dupes, gated, headerless, regated
 
 
 def main():
@@ -100,7 +110,7 @@ def main():
         raise SystemExit(f"no worker H records under {DATA}")
     print(f"{len(paths)} file(s) from {DATA}")
 
-    causas, dupes, gated, headerless = load(paths)
+    causas, dupes, gated, headerless, regated = load(paths)
     print(f"  {len(causas)} distinct causas to ingest "
           f"({dupes} duplicate records collapsed, {gated} gate-rejected skipped, "
           f"{headerless} with no header)")
@@ -185,6 +195,15 @@ def main():
                  for i, t in tribs.items() if i not in have and t]
         if fresh:
             print(f"  inserted {'Tribunales':14} {store.upsert('Tribunales', fresh)} new")
+
+    # ⚠️ ONLY THE ETAPA COLUMN. These causas have no harvest to store — we closed them at the
+    # gate — so a full upsert would blank everything else they carry. One targeted UPDATE.
+    if regated:
+        with store.conn.cursor() as cur:
+            for cid, et in regated.items():
+                cur.execute("UPDATE causas SET etapa=%s WHERE causa_id=%s", (et, cid))
+        print(f"  updated etapa on {len(regated)} gate-rejected causas "
+              f"(they will not be re-opened next pass)")
 
     # Count it where it LANDED, which is the whole point of this file.
     with store.conn.cursor() as k:
