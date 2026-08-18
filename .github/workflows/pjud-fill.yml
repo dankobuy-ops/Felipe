@@ -1,0 +1,141 @@
+name: PJUD — fill cuaderno 2 (worker H, por demanda)
+
+# Targeted backfill on cloud runners with worker_h, the mimic built from a MEASURED human session
+# (see felipe/pjud/HANDOFF_WORKERS.md section 0). It opens ONLY the causas Neon says still lack a
+# cuaderno-2 historia — no sweeping, no re-discovery.
+#
+# ⚠️ WHY THIS EXISTS SEPARATELY FROM pjud-censo.yml. That workflow runs worker_a and SWEEPS. Once
+# a corpus exists, sweeping re-opens what you already hold: measured 2026-08-17, 794 opens produced
+# 211 useful results (27%), while --fill produced 871 from 1,009 (95%). A causa open is the
+# scarcest thing this project spends.
+#
+# ⚠️ THE REMOTE "10-OPEN WALL" IS PROBABLY NOT THE SITE. Four cloud sessions once died at exactly
+# ten opens with `modal did not open after 90s`, and it was blamed in turn on the causa, its
+# position, the entry route, a POST budget, a burst, concurrency and the datacenter range. On
+# 2026-08-17 the same signature was traced LOCALLY to `human_click` refusing an unreachable target
+# while `harvest` ignored the return value — the site was never asked at all (`[net] 0 responses`).
+# Worker H checks that boolean, counts the loss, and never spends a recovery on it. Whether the
+# wall survives those fixes is exactly what this workflow is for.
+#
+# ⚠️ ONE MONTH PER DISPATCH. The OJV refuses a range longer than a month ("El rango de fecha no
+# puede ser superior a un Mes") and the refusal arrives as a sweet-alert that reads like an empty
+# result. worker_h refuses such a window at the door.
+
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Desde (dd/mm/aaaa) — máximo UN MES de rango"
+        required: true
+        default: "01/07/2026"
+      hasta:
+        description: "Hasta (dd/mm/aaaa)"
+        required: true
+        default: "31/07/2026"
+      shards:
+        description: "Runners en paralelo (el work-list se reparte entre ellos)"
+        required: false
+        default: "3"
+      minutes:
+        description: "Vida de cada runner en minutos"
+        required: false
+        default: "180"
+      speed:
+        description: "Multiplicador de los tiempos de lectura (1.0 = exactamente el operador)"
+        required: false
+        default: "1.0"
+
+# One run at a time: every extra run is another set of live browsers arriving at the site.
+concurrency:
+  group: pjud-fill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ⚠️ THE MATRIX IS GENERATED, NOT EXPRESSED. GitHub's expression language has no range(), so a
+  # shard list has to be built by a real program — the same pattern pjud-censo.yml uses.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - id: gen
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          n = max(1, min(12, int("${{ inputs.shards }}" or 3)))
+          print("matrix=" + json.dumps({"include": [{"shard": i + 1} for i in range(n)]}))
+          PY
+
+  fill:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install playwright psycopg2-binary requests \
+                      google-auth google-auth-oauthlib google-api-python-client
+          playwright install chromium --with-deps
+
+      - name: Xvfb (headed, never headless)
+        run: |
+          # ⚠️ F5's challenge script tests document.visibilityState: a headless browser never
+          # completes it. Measured 2026-08-11, same code both ways — headed under Xvfb entered and
+          # swept; --headless=new failed entry after 102 s.
+          sudo apt-get install -y --no-install-recommends xvfb >/dev/null 2>&1 || true
+          Xvfb :99 -screen 0 1600x1000x24 >/dev/null 2>&1 &
+          sleep 2
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Restore config (Neon)
+        working-directory: felipe/pjud/scraper
+        env:
+          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
+        run: |
+          printf '%s' "$PJUD_CONFIG" > pjud_config.json
+          python -c "import json;d=json.load(open('pjud_config.json'));print('config keys:',sorted(d))"
+
+      - name: Fill shard ${{ matrix.shard }}
+        working-directory: felipe/pjud/scraper
+        run: |
+          # ⚠️ --entry-route home ON RUNNERS. Measured 2026-08-14: a datacenter session that takes
+          # the DIRECT link lands on the form perfectly and then cannot complete a single search.
+          # Every remote run that has ever searched went through /home/ and the guest gate.
+          # ⚠️ --gate db: separate machines have no shared filesystem, so the arrival gate lives in
+          # Neon. Released once the form is built, not on a search — the gate spaces ARRIVALS, and
+          # building a form is not an arrival.
+          python -u worker_h.py \
+            --launch --port 9222 --fill \
+            --shard ${{ matrix.shard }} --of ${{ inputs.shards }} \
+            --entry-route home --gate db --gate-release form \
+            --window 1440x900 --speed ${{ inputs.speed }} \
+            --max-recover 3 --max-pages 10 --measure \
+            --max-minutes ${{ inputs.minutes }} \
+            --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}"
+
+      - name: Ingest to Neon
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          # ⚠️ ALWAYS, AND LOUD. The runner is ephemeral: whatever is not ingested dies with it.
+          # A worker's own tally is not evidence the data landed — count it where it ends up.
+          # And never `|| echo`: a swallowed failure makes a run that stored nothing look green.
+          python -u ingest_worker_h.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fill-s${{ matrix.shard }}-${{ github.run_id }}
+          path: felipe/pjud/data/worker_h/
+          if-no-files-found: warn

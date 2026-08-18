@@ -725,10 +725,11 @@ def main():
                          "target once we scroll across, verified. So this is a PREFERENCE: small "
                          "tiled windows stay watchable. Use 760x440 to reproduce the geometry "
                          "that refused 3.5% of rows and truncated 39% of courts.")
-    ap.add_argument("--gate", choices=("file", "none"), default="file",
-                    help="serialise ARRIVALS through a lock file so concurrent workers never open "
-                         "fresh browsers in the same instant. Released on the first confirmed "
-                         "search, never on merely reaching the form.")
+    ap.add_argument("--gate", choices=("file", "db", "none"), default="file",
+                    help="serialise ARRIVALS so concurrent workers never open fresh browsers in "
+                         "the same instant. 'file' for workers on ONE machine; 'db' for cloud "
+                         "runners, which have no shared filesystem and so cannot use a lock file. "
+                         "Released at --gate-release, never on merely reaching the form.")
     ap.add_argument("--no-search-presence", action="store_true",
                     help="leave the pointer FROZEN during searches, as every worker before this "
                          "one did. The control arm for the search-presence fix, and the escape "
@@ -805,7 +806,14 @@ def main():
         # held across launching Chrome, walking in, AND the first confirmed search. Being on the
         # form proves nothing: four workers once reached a page and not one could search.
         gate = None
-        if a.gate != "none":
+        if a.gate == "db":
+            # ⚠️ SEPARATE MACHINES HAVE NO SHARED FILESYSTEM. Cloud runners gate through Neon,
+            # which they all reach anyway. The holder name carries the run id so a corpse left by
+            # a cancelled run is distinguishable from a live neighbour.
+            gate = ojv.PgEntryLock(f"h{a.shard}-{os.environ.get('GITHUB_RUN_ID', 'local')}")
+            note("waiting for the entry gate (db)")
+            gate.acquire()
+        elif a.gate == "file":
             gate = ojv.EntryLock(HERE.parent / "data" / "h-entry.lock")
             note("waiting for the entry gate")
             gate.acquire()
@@ -981,7 +989,9 @@ def main():
             # makes every other worker wait out OUR penalty; but the re-entry itself IS an
             # arrival, so it takes a fresh gate of its own.
             time.sleep(cool)
-            rg = ojv.EntryLock(HERE.parent / "data" / "h-entry.lock") if a.gate != "none" else None
+            rg = (ojv.PgEntryLock(f"h{a.shard}r-{os.environ.get('GITHUB_RUN_ID', 'local')}")
+                  if a.gate == "db" else
+                  ojv.EntryLock(HERE.parent / "data" / "h-entry.lock") if a.gate == "file" else None)
             if rg is not None:
                 rg.acquire()
             try:
