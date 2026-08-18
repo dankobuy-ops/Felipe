@@ -820,6 +820,11 @@ def main():
             note("  on the form — releasing the entry gate (arrival done)")
             gate.release()
         note(f"in: {p.url[:70]}")
+        # ⚠️ SIZE THE WINDOW BEFORE TOUCHING THE FORM. The results table is ~1115 px wide; a
+        # narrower viewport scrolls horizontally and puts the magnifier column outside the window,
+        # where human_click correctly refuses it and we spend the afternoon blaming the site.
+        ok_w, vp = C.ensure_window(p, 1440, 900)
+        note(f"window: {vp} {'ok' if ok_w else '*** TOO SMALL — clicks will be refused ***'}")
         p.on("response", ojv.make_tap(net))
         settler = A.Settler(p)
         try:

@@ -1034,6 +1034,39 @@ def fecha_form_visible(page):
         return False
 
 
+def ensure_window(page, w=1440, h=900):
+    """Make the real browser window at least w x h. (ok, {vw,vh}) — never raises.
+
+    ⚠️ WHY NOT JUST --window-size. Measured 2026-08-17: six workers launched with
+    `--window-size=1440,900` came up at 958x428, 673x483 and 726x434 — the flag was not honoured,
+    the windows differed from each other, and none matched the request. The consequence is not
+    cosmetic: the results table is ~1115 px wide, so a 958 px viewport scrolls HORIZONTALLY, and
+    the magnifier column lands at x=-441 — outside the window, unreachable, refused. That cost
+    1,224 causas in one afternoon and was read as the site refusing us.
+
+    ⚠️ THIS IS A REAL WINDOW RESIZE (Browser.setWindowBounds), NOT device emulation. A person's
+    browser has a genuine size; Emulation.setDeviceMetricsOverride would fake one, which is
+    exactly the class of thing this project refuses to do. Resizing your own window is ordinary.
+    """
+    try:
+        sess = page.context.new_cdp_session(page)
+        wid = sess.send("Browser.getWindowForTarget")["windowId"]
+        sess.send("Browser.setWindowBounds",
+                  {"windowId": wid,
+                   "bounds": {"windowState": "normal", "left": 0, "top": 0,
+                              "width": w, "height": h}})
+        page.wait_for_timeout(400)
+        vp = page.evaluate("()=>({vw:innerWidth, vh:innerHeight})")
+        return (vp["vw"] >= w - 120 and vp["vh"] >= h - 220), vp
+    except Exception as e:
+        try:
+            vp = page.evaluate("()=>({vw:innerWidth, vh:innerHeight})")
+        except Exception:
+            vp = None
+        print(f"    [warn] ensure_window: {str(e)[:70]}")
+        return False, vp
+
+
 def open_fecha_panel(page):
     """Expand 'Busqueda por Fecha'.
 
