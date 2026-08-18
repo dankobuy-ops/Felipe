@@ -318,6 +318,47 @@ def _plain_idle(page, secs):
         _idle_hook(page)
 
 
+SHOTS = None            # directory for failure screenshots; set by a worker via --shots
+_shot_n = [0]
+
+
+def shot(page, tag, extra=None):
+    """Screenshot + page state at a failure, so a RUNNER can be looked at afterwards.
+
+    ⚠️ A CLOUD RUNNER HAS NO SCREEN, and today every remote diagnosis was made by reading log text
+    and guessing at the picture behind it. `entry button covered (top: TSBrPFrame_cs_chlg...)` is
+    a good line, but a screenshot of that page settles in one look what the words argue about —
+    exactly as the operator's screenshot of the AVISO did, after three of my DOM probes had
+    reported the wrong thing.
+
+    Cheap and bounded: only called on failure paths. Writes <NNN>-<tag>.png beside a .json of the
+    page's own account of itself. Never raises — a diagnostic must not become the incident.
+    """
+    if not SHOTS:
+        return
+    try:
+        from pathlib import Path as _P
+        _shot_n[0] += 1
+        base = _P(SHOTS) / f"{_shot_n[0]:03d}-{tag}"
+        base.parent.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(base) + ".png", full_page=False, timeout=8000)
+        st = page.evaluate(
+            "()=>({url:location.href, title:document.title,"
+            " vw:innerWidth, vh:innerHeight, sx:Math.round(scrollX), sy:Math.round(scrollY),"
+            " body:(document.body?document.body.innerText:'').slice(0,1500),"
+            " frames:[...document.querySelectorAll('iframe')].map(f=>f.id||f.name||''),"
+            " modals:[...document.querySelectorAll('.modal.show,.modal.in')].map(m=>m.id),"
+            " sheets:document.querySelectorAll('.modal-backdrop,.jquery-loading-modal').length})")
+        if extra:
+            st["extra"] = extra
+        import json as _j
+        _P(str(base) + ".json").write_text(_j.dumps(st, ensure_ascii=False, indent=1),
+                                           encoding="utf-8")
+        print(f"      [shot] {base.name}.png  url={st['url'][:60]} frames={st['frames'][:3]}")
+    except Exception as e:
+        print(f"      [warn] shot {tag}: {str(e)[:60]}")
+
+
 def human_scroll_x(page, dx, notches=None):
     """Scroll SIDEWAYS by roughly `dx` px, the way a person does it — a trackpad swipe or
     shift+wheel, in a few uneven notches with the pointer parked over the content.
@@ -591,6 +632,7 @@ def human_click(page, target, timeout=8000):
             g = f"(probe failed: {str(e)[:40]})"
         print(f"    [warn] human_click: objetivo tapado tras 8s — NO hago clic (evita el bloqueo)")
         print(f"      [geo] {g}")
+        shot(page, "click-refused", {"geo": g})
         return False
 
     # ⚠️ DO NOT PRESS WHILE THE PAGE IS STILL MOVING. _human_pointer moves, then presses, then

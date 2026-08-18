@@ -952,6 +952,10 @@ def walk_in(ctx):
             # things on three different days and sent the diagnosis to the WAF every time; on
             # 2026-08-14 it meant "we are already past this gate", which locate() says in a word.
             note(f"  entry button covered ({cov}) — not clicking [state={locate(page)}]")
+            # ⚠️ A RUNNER HAS NO SCREEN. Two of three runners were refused here tonight by an F5
+            # challenge frame, and the whole diagnosis was made from this one log line. A picture
+            # settles what the words argue about.
+            C.shot(page, f"entry-covered-{locate(page)}", {"covering": str(cov)[:200]})
             here = find_form(ctx)
             if here is not None:
                 note("  ...and the form is already open — taking it instead of fighting the gate")

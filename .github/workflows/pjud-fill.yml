@@ -120,7 +120,7 @@ jobs:
             --shard ${{ matrix.shard }} --of ${{ inputs.shards }} \
             --entry-route home --gate db --gate-release form \
             --window 1440x900 --speed ${{ inputs.speed }} \
-            --max-recover 3 --max-pages 10 --measure \
+            --max-recover 3 --max-pages 10 --measure             --shots "$GITHUB_WORKSPACE/felipe/pjud/data/shots" \
             --max-minutes ${{ inputs.minutes }} \
             --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}"
 
@@ -139,3 +139,13 @@ jobs:
           name: fill-s${{ matrix.shard }}-${{ github.run_id }}
           path: felipe/pjud/data/worker_h/
           if-no-files-found: warn
+
+      # ⚠️ THE PICTURES ARE THE POINT. A runner has no screen, and every remote diagnosis so far
+      # has been made by reading log text and imagining the page behind it. Uploaded separately
+      # so a failed run still hands them over -- that is when they are wanted.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots-s${{ matrix.shard }}-${{ github.run_id }}
+          path: felipe/pjud/data/shots/
+          if-no-files-found: ignore

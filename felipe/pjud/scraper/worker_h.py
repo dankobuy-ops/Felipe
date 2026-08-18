@@ -227,6 +227,7 @@ def set_select_mouse(page, sel, value=None, index=None, settle=4.0):
                     pass
                 note(f"      [why] busy={C.page_busy(page)} select={d} covered_by={cov} "
                      f"where={ojv.locate(page)}")
+                C.shot(page, f"select-stuck-{sel.strip('#')}", {"select": d, "covered_by": str(cov)})
                 return False
             try:
                 C.open_fecha_panel(page)      # the usual reason: the panel closed under us
@@ -571,6 +572,8 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
         note(f"      [why] busy={C.page_busy(page)} {d}")
         note(f"      [net] {len(seen)} responses since the click, "
              f"causaCivil.php={causa_posts} :: {seen[:8]}")
+        C.shot(page, f"modal-never-opened-{row['rol']}",
+               {"dom": d, "responses": seen[:8], "causa_posts": causa_posts})
         # ⚠️ COST IT WHERE IT BELONGS. If our click produced NO causa request, the site was never
         # asked and there is nothing wrong with the session — spending a 3-9 minute recovery on it
         # is the same error as spending one on a refused click, which cost us an entire fleet
@@ -719,6 +722,10 @@ def main():
                          "re-entering before giving up. Worker A has had this since 08-07; worker "
                          "H shipped without it and one worker spent its whole hour skipping 38 "
                          "courts with a dead session.")
+    ap.add_argument("--shots", default="",
+                    help="directory for failure screenshots + page state. A runner has no screen: "
+                         "capture what it was actually looking at when a click was refused, a "
+                         "modal never opened, or entry was blocked, and upload it as an artifact.")
     ap.add_argument("--window", default="1440x900",
                     help="browser window size, WxH. The correctness fix is horizontal scrolling "
                          "(human_scroll_x), not size -- a 744x345 window reaches an off-screen "
@@ -782,6 +789,7 @@ def main():
                 f"Run one month per pass.")
 
     ojv.ENTRY_ROUTE = a.entry_route
+    C.SHOTS = a.shots or None
     global RAMP_EVERY, RAMP_STEP, SPEED
     RAMP_EVERY, RAMP_STEP = a.ramp_every, a.ramp_step
     SPEED = a.speed
