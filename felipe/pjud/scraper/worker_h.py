@@ -731,7 +731,7 @@ def main():
                          "(human_scroll_x), not size -- a 744x345 window reaches an off-screen "
                          "target once we scroll across, verified. So this is a PREFERENCE: small "
                          "tiled windows stay watchable. Use 760x440 to reproduce the geometry "
-                         "that refused 3.5% of rows and truncated 39% of courts.")
+                         "that refused 3.5%% of rows and truncated 39%% of courts.")
     ap.add_argument("--gate", choices=("file", "db", "none"), default="file",
                     help="serialise ARRIVALS so concurrent workers never open fresh browsers in "
                          "the same instant. 'file' for workers on ONE machine; 'db' for cloud "
@@ -761,6 +761,23 @@ def main():
     ap.add_argument("--entry-route", choices=("auto", "home", "direct"), default="auto",
                     help="which door from www.pjud.cl. Runners need 'home'; residential takes the direct link. Measured per environment 2026-08-14.")
     ap.add_argument("--live", action="store_true", help="publish frames to Neon (watch_live.py)")
+    ap.add_argument("--trace", choices=("off", "entry", "all"), default="off",
+                    help="a JPEG before and after EVERY action, into <shots>/trace, with one "
+                         "trace.jsonl of the page's own account of itself per frame. 'entry' is "
+                         "the arrival only (~30 frames) and is where every remote run has died; "
+                         "'all' is the whole shift and runs to thousands. Requires --shots.")
+    ap.add_argument("--trace-max", type=int, default=400,
+                    help="frame budget. A diagnostic that fills a runner's disk is an incident.")
+    ap.add_argument("--step", choices=("off", "entry", "all"), default="off",
+                    help="STOP before each action and wait for an instruction from the operator, "
+                         "over Neon (see stepgate.py, step_console.py). The runner posts the frame "
+                         "it is looking at and blocks until told go / run / abort. Implies --trace "
+                         "at the same scope.")
+    ap.add_argument("--step-timeout", type=float, default=900.0,
+                    help="seconds to wait for an instruction before giving up on one step")
+    ap.add_argument("--step-on-timeout", choices=("abort", "go"), default="abort",
+                    help="what an unanswered step does. 'abort' by default: a runner nobody is "
+                         "watching should stop, not quietly finish the hour on its own.")
     a = ap.parse_args()
 
     if not a.use_form_dates:
@@ -790,6 +807,24 @@ def main():
 
     ojv.ENTRY_ROUTE = a.entry_route
     C.SHOTS = a.shots or None
+    # ⚠️ --step IMPLIES --trace at the same scope. Being asked "may I click this?" without the
+    # picture of what "this" is would be the same blind log line the trace exists to replace.
+    scope = a.step if a.step != "off" else a.trace
+    if scope != "off":
+        if not C.SHOTS:
+            raise SystemExit("--trace/--step need --shots DIR to write frames into")
+        C.TRACE, C.TRACE_SCOPE, C.PHASE = a.trace_max, scope, "entry"
+        note(f"step trace ON, scope={scope}, budget={a.trace_max} frames -> {C.SHOTS}\\trace")
+    if a.step != "off":
+        import stepgate
+        C.STEPPER = stepgate.Stepper(
+            run_id=f"{os.environ.get('GITHUB_RUN_ID', 'local')}-s{a.shard}",
+            timeout=a.step_timeout, on_timeout=a.step_on_timeout,
+            # A hand on the page while it waits: a browser frozen stone dead for minutes is a
+            # louder empty channel than anything this project has fixed.
+            idle=lambda pg, s: C.human_idle(pg, s))
+        note(f"STEP MODE: waiting for an instruction before each action "
+             f"(run_id={C.STEPPER.run_id}, {a.step_timeout:.0f}s -> {a.step_on_timeout})")
     global RAMP_EVERY, RAMP_STEP, SPEED
     RAMP_EVERY, RAMP_STEP = a.ramp_every, a.ramp_step
     SPEED = a.speed
@@ -899,6 +934,8 @@ def main():
         if gate is not None and a.gate_release == "form":
             note(f"  form built with {len(lst)} tribunales — releasing the entry gate")
             gate.release()
+        # The arrival is over. `--trace entry` / `--step entry` stop here; `all` carries on.
+        C.PHASE = "work"
 
         if a.probe_picker:
             # One click on a date field -- which is a thing a person does constantly -- purely to
@@ -1351,4 +1388,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # ⚠️ AN OPERATOR SAYING STOP IS NOT A CRASH. --step lets a human end a run mid-action; that
+    # must exit cleanly and say so, not print a traceback that reads like the site did something.
+    try:
+        main()
+    except Exception as e:
+        if type(e).__name__ != "Aborted":
+            raise
+        note(f"STOPPED BY THE OPERATOR: {e}")
+        sys.exit(0)

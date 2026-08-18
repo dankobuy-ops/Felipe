@@ -1798,6 +1798,62 @@ So give the worker a window. It is much less work than it sounds:
 
 ---
 
+### ★★★ The interesting frame is never the last one — and the channel that carries it out carries instructions back
+
+A failure screenshot tells you where a run **ended**. It cannot tell you how it got there, and
+"how it got there" is the entire question. Two cloud runners died on 2026-08-18 with a log that
+read: click delivered, forty-five seconds of silence, then a WAF rejection page. Whether the
+refusal arrived at second 1 or second 40 decides whether the click was the trigger or a bystander,
+and nothing in the run had looked at the page in between.
+
+So photograph every action, both sides of it:
+
+- **Hook the chokepoint, not the call sites.** Every action this scraper takes goes through one
+  `human_click`, so the trace wraps that one function and no call site can be forgotten. Wrapping
+  forty callers is how instrumentation ends up with holes exactly where the odd paths are.
+- **The `after` frame belongs in a `finally`.** An action that threw still leaves a picture of what
+  it left behind — the one frame you always want and never have.
+- **Sample the silent waits.** The blind spot is never the action; it is the poll loop after it.
+  A frame every three seconds inside "wait for the thing to appear" puts a timestamp on the
+  refusal, and a timestamp is most of the diagnosis.
+- **Scope it, and budget it.** The arrival is ~30 frames and is where remote runs actually die; a
+  whole shift is thousands. `--trace entry` vs `--trace all`, plus a hard frame cap, is the
+  difference between a diagnostic and an incident.
+- **JPEG, and one contact sheet.** Ninety frames is ~6 MB as jpeg and ~34 MB as png, and a zip of
+  loose images is a picture that got captured and still never looked at. Emit one self-contained
+  HTML with the frames in order and each frame's own account beside it.
+
+Then notice that the channel is bidirectional. A cloud runner has no inbound network, no screen and
+no shell — but it already polls a database, so it can **stop before each action, publish the frame
+it is looking at, and wait to be told go / run / abort**. Single-stepping a scraper through a WAF
+you do not understand is worth more than any number of post-mortems, and it costs one table.
+
+- ⚠️ **A paused session must keep moving.** A browser frozen stone dead for five minutes — no
+  pointer, no idle motion — is a longer, louder empty telemetry channel than anything this project
+  has ever fixed. Run the idle-motion helper between polls; a pause should look like a person
+  reading, which is what it is.
+- ⚠️ **Default to STOP on silence.** If nobody answers within the timeout, end the run. A runner
+  nobody is watching should not quietly finish the hour on its own — that is precisely the
+  unattended run the step mode was built to replace.
+- **An operator saying stop is not a crash.** Exit clean and say so, or the traceback reads like
+  the target did something.
+
+(PJUD, 2026-08-18. `stepgate.py` / `step_console.py` / `trace_sheet.py`, and `cdp_scrape.step()`.)
+
+---
+
+### ⚠️ A literal `%` in an argparse help string only crashes `--help`
+
+`"refused 3.5% of rows"` in a help string is read as the format spec `%o`, and argparse raises
+`TypeError: %o format: an integer is required`. Every real invocation works; only `--help` dies,
+so it survives in a mature CLI indefinitely — this one had been there for days and was found by
+grepping for it after `--help` failed on an unrelated change. Escape as `%%`, and run `--help` in
+whatever passes for a smoke test.
+
+(PJUD, 2026-08-18.)
+
+---
+
 ## Quick checklist for a new scraper
 
 ```

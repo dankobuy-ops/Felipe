@@ -822,10 +822,11 @@ def walk_in(ctx):
     # tab, so "3 attempts" was really one attempt and two minutes of nothing.
     start = next((q for q in ctx.pages if "pjud.cl" in (q.url or "")), None) or ctx.new_page()
     _only_tab(ctx, start)
-    try:
-        start.goto("https://www.pjud.cl/", wait_until="domcontentloaded")
-    except Exception:
-        pass
+    with C.step(start, "goto-www-pjud"):
+        try:
+            start.goto("https://www.pjud.cl/", wait_until="domcontentloaded")
+        except Exception:
+            pass
     start.bring_to_front()
     _wait(start, 4000)
     page = None
@@ -846,7 +847,8 @@ def walk_in(ctx):
     # and 3 fire no clicks at all. If all three fail, return None and let the caller stop; an
     # entry we cannot make the human way is not one worth forcing.
     for attempt in (1, 2, 3):
-        page = _reach_ojv(ctx, start, wait=60.0)
+        with C.step(start, f"reach-ojv-a{attempt}"):
+            page = _reach_ojv(ctx, start, wait=60.0)
         if page is not None:
             break
         note(f"could not reach the OJV by click-through (attempt {attempt}/3) "
@@ -898,7 +900,8 @@ def walk_in(ctx):
         note("    landed straight on the form — no guest gate on this route")
         already.bring_to_front()
         return already
-    _dismiss_aviso(page)
+    with C.step(page, "dismiss-aviso"):
+        _dismiss_aviso(page)
     # GATE 1 IS FLAKY, NOT REFUSING. Every fresh profile on 2026-08-06 failed its first entry
     # click and succeeded on a retry seconds later with nothing changed. Treating one timeout as a
     # verdict produced several wrong "needs a human / reCAPTCHA refused" conclusions.
@@ -947,6 +950,9 @@ def walk_in(ctx):
           return out;
         }""", sel)
         pick = next((c["i"] for c in cov if c["hit"]), None)
+        # A frame of exactly what the hit-test was looking at, whichever way it went. When this
+        # says "covered" the argument is always about what was on top; a picture ends it.
+        C.trace(page, f"home-hittest-a{attempt}", extra=str(cov)[:200])
         if pick is None:
             # Say WHAT is on top, AND WHERE WE ARE. "covered" alone has meant three different
             # things on three different days and sent the diagnosis to the WAF every time; on
@@ -970,11 +976,18 @@ def walk_in(ctx):
         except Exception:
             pass
         note(f"human_click guest entry {sel} nth({pick}) (attempt {attempt}/3)")
-        ok = C.human_click(page, page.locator(sel).nth(pick), timeout=8000)
+        ok = C.human_click(page, page.locator(sel).nth(pick), timeout=8000,
+                           label="guest-entry")
         note(f"  click delivered: {ok}")
         for _ in range(90):                      # 45 s per attempt
             page.wait_for_timeout(500)
             C._idle_hook(page)      # the 45 s a stuck entry spends here is worth seeing
+            # ⚠️ AND WORTH PHOTOGRAPHING. This loop is where both August runners spent their last
+            # 45 seconds: the click was delivered, no form ever came, and the rejection page was
+            # only noticed afterwards by the NEXT attempt's coverage test — so the log could not
+            # say whether F5 refused us at second 1 or second 40. A frame every three seconds
+            # dates the refusal, and dating it is the whole diagnosis.
+            C.trace_tick(page, f"waiting-for-form-a{attempt}", every=3.0)
             fp = find_form(ctx)
             if fp:
                 note(f"  entered on attempt {attempt}")

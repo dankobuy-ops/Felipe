@@ -13,6 +13,7 @@ Run:  python cdp_scrape.py [--port 9333] [--max-tribs 0] [--max-causas 0] [--pro
 
 import argparse
 import base64
+import contextlib
 import json
 import math
 import os
@@ -359,6 +360,102 @@ def shot(page, tag, extra=None):
         print(f"      [warn] shot {tag}: {str(e)[:60]}")
 
 
+# ── STEP TRACE ─────────────────────────────────────────────────────────────────────────────
+# A frame before and after every action, for a session nobody can watch.
+#
+# ⚠️ `shot()` above fires on FAILURE, which tells you where a run ended and nothing about how it
+# got there. Both August runners died with `click delivered: True`, forty-five silent seconds, and
+# then a rejection page — and no way to tell whether the block arrived at second 1 or second 40.
+# The interesting frame is never the last one.
+#
+# JPEG at quality 50, not PNG: ninety frames of an entry sequence is ~6 MB this way and ~34 MB the
+# other, and the whole point is that it comes back from a runner as an artifact somebody opens.
+# One trace.jsonl beats one sidecar per frame for the same reason.
+TRACE = 0               # frame budget; 0 = off
+TRACE_SCOPE = "entry"   # "entry" = arrival only, "all" = every click, whole run
+STEPPER = None          # stepgate.Stepper — set by a worker with --step; blocks before each action
+# Which part of the run we are in, so `--trace entry` can mean the arrival and nothing else. The
+# arrival is where every remote run has died, and it is ~30 frames; a whole shift is thousands.
+PHASE = "entry"
+_trace_n = [0]
+_trace_t0 = [0.0]
+_trace_last = [0.0]
+
+
+def tracing(scope="entry"):
+    """Is the trace on for this scope, and is there budget left? 'all' subsumes 'entry'."""
+    return bool(SHOTS and TRACE and _trace_n[0] < TRACE
+                and (TRACE_SCOPE == "all" or TRACE_SCOPE == scope))
+
+
+def trace(page, tag, extra=None, scope="entry"):
+    """One frame of the step trace. Never raises, never blocks for long, stops at the budget —
+    a diagnostic that can end the run it is diagnosing is worse than no diagnostic."""
+    if not tracing(scope):
+        return
+    try:
+        from pathlib import Path as _P
+        d = _P(SHOTS) / "trace"
+        d.mkdir(parents=True, exist_ok=True)
+        if not _trace_t0[0]:
+            _trace_t0[0] = time.time()
+        _trace_n[0] += 1
+        n = _trace_n[0]
+        name = f"{n:04d}-{re.sub(r'[^A-Za-z0-9._-]+', '-', tag)[:60]}.jpg"
+        page.screenshot(path=str(d / name), full_page=False, timeout=6000,
+                        type="jpeg", quality=50)
+        st = page.evaluate(
+            "()=>({url:location.href, title:document.title,"
+            " sx:Math.round(scrollX), sy:Math.round(scrollY),"
+            " text:(document.body?document.body.innerText:'').slice(0,300),"
+            " frames:[...document.querySelectorAll('iframe')].map(f=>f.id||f.name||''),"
+            " modals:[...document.querySelectorAll('.modal.show,.modal.in')].map(m=>m.id),"
+            " sheets:document.querySelectorAll('.modal-backdrop,.jquery-loading-modal').length})")
+        st.update(n=n, tag=tag, img=name, t=round(time.time() - _trace_t0[0], 2))
+        if extra:
+            st["extra"] = str(extra)[:400]
+        with (d / "trace.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(st, ensure_ascii=False) + "\n")
+        if n == TRACE:
+            print(f"      [trace] frame budget {TRACE} reached — tracing stops here")
+    except Exception as e:
+        print(f"      [warn] trace {tag}: {str(e)[:60]}")
+
+
+def trace_tick(page, tag, every=3.0, scope="entry"):
+    """A frame at most every `every` seconds, for a polling loop that must keep polling.
+
+    ⚠️ THE BLIND SPOT WAS FORTY-FIVE SECONDS LONG — ojv.walk_in polls find_form() that long after
+    the guest-entry click, and on 2026-08-18 both runners spent the whole window unobserved. This
+    puts a timestamp on the refusal without touching the loop's own cadence.
+    """
+    if not tracing(scope):
+        return
+    now = time.time()
+    if now - _trace_last[0] < every:
+        return
+    _trace_last[0] = now
+    trace(page, tag, scope=scope)
+
+
+@contextlib.contextmanager
+def step(page, label, extra=None, scope="entry"):
+    """Frame before, ask permission, do it, frame after.
+
+    The `after` frame is written from a `finally`, so an action that THREW still leaves a picture
+    of what it left behind — which is the one frame you always want and never have.
+    """
+    trace(page, f"{label}--before", extra, scope)
+    if STEPPER is not None and (TRACE_SCOPE == "all" or TRACE_SCOPE == scope):
+        STEPPER.ask(page, label, extra)
+    try:
+        yield
+    finally:
+        trace(page, f"{label}--after", extra, scope)
+        if STEPPER is not None and (TRACE_SCOPE == "all" or TRACE_SCOPE == scope):
+            STEPPER.report(page, label, extra)
+
+
 def human_scroll_x(page, dx, notches=None):
     """Scroll SIDEWAYS by roughly `dx` px, the way a person does it — a trackpad swipe or
     shift+wheel, in a few uneven notches with the pointer parked over the content.
@@ -481,7 +578,36 @@ def human_scroll_to(page, el, timeout=8000):
         pass
 
 
-def human_click(page, target, timeout=8000):
+def _click_label(target):
+    """A short, filesystem-safe name for whatever we are about to click."""
+    try:
+        s = target if isinstance(target, str) else (getattr(target, "_selector", None) or repr(target))
+    except Exception:
+        s = "element"
+    s = re.sub(r"\s+", " ", str(s))
+    # ⚠️ A Locator's repr is `<Locator frame=<Frame name= url='...'> selector='...'>`, so anything
+    # anchored with [^>]* stops inside the FRAME and names the step after the URL we are on rather
+    # than the thing we are clicking. Reach for the selector wherever it is.
+    m = re.search(r"selector=['\"](.+?)['\"]\s*>?\s*$", s)
+    if m:
+        s = m.group(1)
+    return re.sub(r"[^A-Za-z0-9._#\[\]=*-]+", "-", s).strip("-")[:48] or "element"
+
+
+def human_click(page, target, timeout=8000, label=None):
+    """THE click, with a picture either side of it when a trace is running.
+
+    ⚠️ EVERY ACTION THIS SCRAPER TAKES COMES THROUGH HERE, which is why the trace hooks the
+    wrapper rather than each of the forty call sites: one place to instrument, and no call site
+    can be forgotten. The real work is `_human_click` below, unchanged.
+    """
+    if TRACE or STEPPER is not None:
+        with step(page, f"click-{label or _click_label(target)}", scope=PHASE):
+            return _human_click(page, target, timeout)
+    return _human_click(page, target, timeout)
+
+
+def _human_click(page, target, timeout=8000):
     """THE click. `target` is a selector, Locator or ElementHandle.
 
     NEVER use page.click()/locator.click() on this site. Both are isTrusted=true, but they

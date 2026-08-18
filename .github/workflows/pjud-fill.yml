@@ -44,6 +44,14 @@ on:
         description: "Multiplicador de los tiempos de lectura (1.0 = exactamente el operador)"
         required: false
         default: "1.0"
+      trace:
+        description: "Foto antes y después de CADA acción: off | entry | all"
+        required: false
+        default: "entry"
+      step:
+        description: "Esperar instrucción del operador antes de cada acción: off | entry | all"
+        required: false
+        default: "off"
 
 # One run at a time: every extra run is another set of live browsers arriving at the site.
 concurrency:
@@ -121,8 +129,22 @@ jobs:
             --entry-route home --gate db --gate-release form \
             --window 1440x900 --speed ${{ inputs.speed }} \
             --max-recover 3 --max-pages 10 --measure             --shots "$GITHUB_WORKSPACE/felipe/pjud/data/shots" \
+            --trace ${{ inputs.trace }} --step ${{ inputs.step }} \
+            --step-timeout 1800 --step-on-timeout abort \
             --max-minutes ${{ inputs.minutes }} \
             --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}"
+
+      # ⚠️ ONE HTML FILE, NOT A FOLDER OF JPEGs. A trace of the arrival is ~30 frames; downloading
+      # a zip and opening them one at a time is how a picture that was captured still fails to get
+      # looked at. The sheet lays them out in order with each frame's own account beside it.
+      - name: Contact sheet
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          python -u trace_sheet.py \
+            --dir "$GITHUB_WORKSPACE/felipe/pjud/data/shots/trace" \
+            --out "$GITHUB_WORKSPACE/felipe/pjud/data/shots/trace.html" \
+            --title "shard ${{ matrix.shard }} · run ${{ github.run_id }}" || true
 
       - name: Ingest to Neon
         if: always()
