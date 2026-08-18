@@ -1215,6 +1215,24 @@ def main():
                         note(f"  [warn] paginator stuck on page {page}, {len(want)} not reached")
                     break
                 page += 1
+                # ⚠️⚠️ WAIT FOR THE NETWORK TO GO QUIET, NOT JUST THE DOM. wait_idle plus a fixed
+                # settle was not enough: the probe caught a click whose only following response
+                # was `consultaFechaCivil.php` — the PAGINATION request still arriving AFTER we
+                # clicked. The row was correct at click time (the rol check passed, stale-rows=0,
+                # which refutes the stale-index theory) and was then replaced by the response
+                # landing, discarding our click. No causa request is ever made, and it reads as
+                # the site ignoring us.
+                # So: wait until that endpoint stops answering, then settle, then read indices.
+                _n = len(net)
+                _t0 = time.time()
+                _quiet = time.time()
+                while time.time() - _t0 < 12.0:
+                    p.wait_for_timeout(250)
+                    if len(net) != _n:
+                        _n = len(net)
+                        _quiet = time.time()          # something arrived; restart the quiet clock
+                    elif time.time() - _quiet > 1.5:
+                        break
                 # ⚠️ LET THE REDRAW FINISH BEFORE READING ROW INDICES. advance() returns as soon
                 # as the FIRST row changes, which proves a swap started, not that it ended. Read
                 # too early and the indices belong to a table that is still being rebuilt — then
