@@ -1681,6 +1681,14 @@ cheaper once the hard records are banked.
 (PJUD, 2026-08-17: 4,143 outstanding at 27% efficiency is ~19 h of sweeping, or ~5 h of targeted
 filling at the same measured rate.)
 
+⚠️ **A completion worker cannot open a range it has never discovered, and says so in a way that
+looks like a block.** Pointed at a month the database held nothing for, the fill run reported
+`nothing-searched` and was read as a refusal — there was no work-list, so no search was ever
+issued. **Fill and sweep are not interchangeable**: a new window needs discovery first, and the
+failure mode of choosing wrong is a green run that did nothing.
+
+(PJUD, 2026-08-18.)
+
 ### ⚠️ A scraper with no ingest has no output
 
 Worker H harvested 2,228 records across an evening, 1,659 of them carrying the exact field the
@@ -1876,6 +1884,70 @@ grepping for it after `--help` failed on an unrelated change. Escape as `%%`, an
 whatever passes for a smoke test.
 
 (PJUD, 2026-08-18.)
+
+### ★★★ A refusal that is DETERMINISTIC and per-item is not a rate verdict
+
+Two cloud runs, dispatched hours apart, were refused at **the same record**, at the same point in
+the visit, with the same counters — after nineteen records in the same session had been processed
+identically and successfully. Everything this project had learned about being blocked said *rate*:
+cool off, slow down, add jitter, add workers instead of speed. None of it applies here.
+
+**A rate verdict is a function of HOW MUCH you have done. This was a function of WHICH item.**
+
+That single distinction re-sorts the whole suspect list:
+
+| if the refusal is… | then it cannot be… | and the test is… |
+|---|---|---|
+| deterministic on one item | pacing, burst, session age, position, address reputation | **process that item alone, from a fresh session** |
+| reproducible across sessions | anything about the session | change ONE thing about the *request*, not the schedule |
+| preceded by N identical successes | the shape of the action in general | what is different about **this** item's payload |
+
+⇒ **Before theorising, count the successes that came first.** Nineteen identical acts that worked,
+then one that did not, is nearly a proof by itself — and it is a proof you already own, sitting in
+the log, costing nothing to read. Every reflex the project had built (slow down, back off, fewer
+sessions) would have made the run longer and failed at the same record.
+
+⚠️ **And ask what YOU do on that request that a person does not**, because per-item determinism
+points at the payload, and the payload is where our own shortcuts live. The two suspects here were
+both behaviours, not accidents of the target: a `<select>` driven by `.focus()` plus arrow keys —
+so it receives keystrokes having never been clicked — and two flat `wait_for_timeout()` sleeps that
+were measured on a residential link and inherited unchanged by a datacenter one. **A constant
+measured in one environment is a guess in the other**, which this handbook already records twice.
+
+(PJUD, 2026-08-18. Unresolved at the time of writing: the next test is to read the per-item token
+the request carries and compare it against one that succeeds.)
+
+---
+
+### ⚠️ Chokepoint instrumentation has exactly the coverage of your chokepoint
+
+The step trace above wraps **one** function, on the argument that every action goes through it —
+and among *clicks* that is exactly right, which is why it has no holes there. Then the failure
+happened in the one action that is not a click: a dropdown driven by focus and arrow keys, which
+passes through no chokepoint and produced **no frame at all**.
+
+The result is a nine-second hole in the middle of the only failure we have:
+
+```
+frame 0101   t+975.4   after the row click — correct row highlighted
+   (modal opens · first tab parses 28 rows · the switch fires · the WAF refuses)   ← no frames
+frame 0102   t+984.5   modal open and correct, content EMPTY, rejection box overlaid
+```
+
+Everything about the diagnosis had to be inferred from the two frames bracketing the gap.
+
+- **Enumerate your action verbs, not your call sites.** "Every action goes through `human_click`"
+  was true of clicking and silently false of typing, selecting, scrolling and key-pressing. One
+  chokepoint per verb, or one wrapper they all call.
+- **The gap is self-concealing.** An untraced action leaves no marker; you discover it by noticing
+  a *time* discontinuity between two frame numbers, which nobody looks for until the trace has
+  already failed to answer the question.
+- **Instrument the suspect FIRST.** The action most likely to be refused is the one you least
+  understand, and it is therefore the one most likely to sit outside a chokepoint you designed
+  around the actions you did understand.
+
+(PJUD, 2026-08-18. The same shape as the blind copy of a facility recorded above — there the eyes
+were unwired, here they were pointed at the wrong verb.)
 
 ---
 

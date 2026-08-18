@@ -855,6 +855,26 @@ def select_cuaderno(page, index):
 
     Returns True if the selection took. The caller should treat False as "do not trust the
     historia now on screen" — it still belongs to the previous cuaderno.
+
+    ⚠️⚠️ THIS FUNCTION IS THE PRIME SUSPECT FOR THE ONLY BLOCK LEFT (2026-08-18). Two remote runs
+    hours apart were refused on the SAME causa (C-936-2026), at the same point, with the same
+    counters — after 19 causas in the same session had made this identical switch successfully.
+    The click landed on the right row, the modal opened on the right causa, cuaderno 1 parsed 28
+    rows, and only the cuaderno-2 POST was refused. A rate verdict is a function of HOW MUCH you
+    have done; that one is a function of WHICH causa. Two things here are what a human does not do:
+
+      1. hover -> .focus() -> arrow keys is a <select> receiving keystrokes it was NEVER CLICKED
+         into. The pointer approach below was added because teleported focus is a genuine tell, and
+         it did not lift the old 10-open wall — but the shape survives: no mousedown, then keydowns.
+      2. the wait_for_timeout(1600) below (and worker A's 900) are FLAT SLEEPS, not conditions.
+         They were measured residentially and inherited unchanged by a datacenter runner whose
+         round-trip is 17-23 s against a local 12-26 s. Wait for the historia to CHANGE instead.
+
+    ⚠️ And this action is INVISIBLE TO THE TRACE: cdp_scrape.step() wraps human_click, and this is
+    not a click, so the whole failure sits in a 9-second hole between two frames. Route it through
+    step() before the next attempt at reproducing it.
+
+    Detail and frames: felipe/pjud/HANDOFF_WORKERS.md -> THE 2026-08-18 SESSION.
     """
     try:
         opts = page.eval_on_selector_all(

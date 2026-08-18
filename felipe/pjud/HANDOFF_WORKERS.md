@@ -11,6 +11,12 @@ did not work before 2026-08-06 and does now. Re-verify anything load-bearing bef
 
 ## 0. READ THIS FIRST — the current best configuration (2026-08-17)
 
+> **Newer than this section:** [THE 2026-08-18 SESSION](#the-2026-08-18-session--the-runner-can-be-single-stepped-and-the-block-is-one-causa)
+> at the end of this file — `--trace`/`--step` (photograph and single-step a runner), the
+> datepicker's disabled days, worker A's blind screenshots, and **the May block is ONE CAUSA**.
+> Corpus as of 2026-08-18: **5,510 causas, 5,377 with a cuaderno 2 (97.6%)**; June and July are
+> done, May is the outstanding window.
+
 Everything below this section was written while we believed pacing bought safety. **It did not.**
 The whole document is still worth reading for the traps, but start here.
 
@@ -1402,3 +1408,264 @@ no request at all. **4 of 4 such failures in one test came after a page advance,
 already hold: 794 opens produced 217 new causas and 211 new cuaderno-2 historias — 27%. Fill asks
 the database what is missing and opens only that: 1,009 opens, 871 kept, 95%. Two shards ended
 `finished` having exhausted every court that owed them anything.
+
+---
+
+# THE 2026-08-18 SESSION — the runner can be single-stepped, and the block is ONE CAUSA
+
+## Where the corpus stands (measured in Neon, 2026-08-18)
+
+| | |
+|---|---:|
+| causas | **5,510** |
+| causas with a cuaderno-2 historia | **5,377 (97.6%)** |
+| cuaderno rows | 76,218 |
+| litigantes | 23,517 |
+| escritos | 586 |
+
+By month of `f_ingreso`: **mayo 16 · junio 2,132 · julio 3,354 · agosto 8**.
+
+⇒ **June and July are essentially done; May has barely been touched.** The May sweep reached
+Arica and was refused there (below), so 15/05–31/05 is the outstanding window.
+
+### The gate-rejected records were deleted, and the PDFs with them
+
+The `etapa` gate discards `Terminada` / `Incidentes` / `Téngase por no presentada`, but 245 causas
+harvested before the gate existed were still in the database. Operator's call: *"there's no need to
+keep gate-rejected data or pdfs."*
+
+```
+245 causas   (218 "8 Terminada", 21 "6", 3 "4", 2 "7", 1 "1" — every one a Terminada variant)
+1,591 cuadernos · 669 litigantes · 57 escritos          = 2,562 rows
+163 Drive PDFs trashed  (163 ok, 0 errors)
+5 backup tables *_predel_20260818 created, then dropped
+```
+
+⚠️ **A sweep will re-discover all 245 and pay one open for each.** Deleting them removes the
+*record*, not the site's listing — the gate then rejects them again, for one open apiece, on every
+future pass over June/July. That was flagged before deleting, and accepted. If the cost ever
+matters, the fix is a `rechazadas` table of ids, not keeping the rows.
+
+⚠️ **`ingest_worker_h.py` now records WHY a causa was rejected** (commit `246e48d`) — without it,
+a gate-rejected causa is indistinguishable from one never visited, and gets re-opened every pass.
+
+---
+
+## `--trace` and `--step` — photograph every action, and stop before each one
+
+Built this session (`77c1333`). The generalised lesson is in `SCRAPERS_HANDBOOK.md`; this is how
+to *run* it.
+
+```powershell
+# a picture before and after every action, no pausing
+python -u worker_h.py ... --shots data\shots --trace all --trace-max 400
+
+# and stop before each action, waiting for a verdict through Neon
+python -u worker_h.py ... --shots data\shots --trace all --step all `
+                          --step-timeout 1800 --step-on-timeout abort
+```
+
+| flag | values | meaning |
+|---|---|---|
+| `--trace` | `off` \| `entry` \| `all` | `entry` = the arrival only (~30 frames, where remote runs die); `all` = the whole shift |
+| `--trace-max` | default 400 | hard frame budget; a shift at `all` is thousands otherwise |
+| `--step` | `off` \| `entry` \| `all` | block before each action until told `go` / `run` / `abort` |
+| `--step-timeout` | 900 s | how long to wait for a verdict |
+| `--step-on-timeout` | `abort` (default) \| `go` | silence ends the run — see below |
+
+**The operator console**, on this machine, against the same Neon:
+
+```powershell
+python step_console.py --watch          # frames arrive, saved to data\step_frames\, path printed
+python step_console.py --go             # one step
+python step_console.py --run            # release the brake, let it finish
+python step_console.py --abort          # clean stop, not a crash
+python step_console.py --recent 20 --pull DIR --purge
+```
+
+Both workflows carry it: `pjud-fill.yml` has `trace` and `step` inputs, `pjud-censo.yml` has
+`trace`. Each run ends with a **Contact sheet** step (`trace_sheet.py`) that emits one
+self-contained HTML with every frame in order and its own account beside it — a zip of loose JPEGs
+is a picture that was captured and still never looked at.
+
+⚠️ **`--trace`/`--step` require `--shots DIR`.** The worker refuses at the door rather than
+running a trace that writes nowhere.
+
+⚠️ **A stepped session keeps moving while it waits.** `Stepper` calls `C.human_idle(page, 2.0)`
+between polls. A browser frozen stone dead for five minutes is a louder empty telemetry channel
+than anything this project has ever fixed.
+
+⚠️ **Verdicts are `go` / `run` / `abort` only — deliberately no `skip`.** `step()` is a context
+manager and cannot decline to run its own body without tricks, and a half-executed action is a
+worse diagnostic than no action.
+
+### ⚠️⚠️ The trace does NOT photograph the cuaderno switch
+
+`cdp_scrape.step()` wraps `human_click`, because every *click* the scraper makes goes through that
+one function — which is exactly why the instrumentation has no holes among clicks. **The cuaderno
+switch is not a click.** It is hover → `.focus()` → `ArrowDown`, so it passes through no chokepoint
+and produces no frame.
+
+In run `32149016591` that is a **9.1-second hole in the middle of the only failure we have**:
+
+| frame | t | what |
+|---|---|---|
+| 0101 | t+975.4 | after the row click — correct row (`C-936-2026`) highlighted |
+| — | — | modal opens · cuaderno 1 parses 28 rows · **switch fires · F5 refuses** — no frames |
+| 0102 | t+984.5 | modal open, header correct, historia EMPTY, rejection box overlaid |
+
+⇒ **Chokepoint instrumentation has exactly the coverage of your chokepoint.** Route the
+keyboard-driven selects through `step()` too before the next attempt at this.
+
+---
+
+## Two bugs the trace found immediately
+
+### ★★ The datepicker DRAWS every day and DISABLES the ones it refuses (`431592c`)
+
+Run `32098486677` entered on the first attempt and then died with `#fecHasta reads ''`. Frame 0024
+showed Agosto 2026 with every day from **19 onward greyed out** — the run was asking for 31/08 on
+2026-08-18.
+
+jQuery UI renders all 31 cells; a refused day is
+`<td class="ui-datepicker-unselectable ui-state-disabled">` holding a **`<span>`, not an `<a>`** —
+so a day locator resolves to **zero elements** and the field stays empty. `pick_date_mouse` now
+asks the DOM whether the cell is disabled *before* clicking it and says so, and `main()` clamps
+`--hasta` to today (refusing a `--desde` in the future outright).
+
+⚠️ **This overturned the second half of two earlier entries at once.** "Read `data-month`/
+`data-year` off a day `<td>`, never the header" was right and stayed right; "if the day is drawn it
+is selectable" was never written down but was assumed by every version of this code. **DRAWN IS NOT
+SELECTABLE.**
+
+⚠️ A local worker (p9641) died identically **without** stepping, which is what ruled out the
+instrumentation as the cause. Reproduce a stepped failure unstepped before blaming the step mode.
+
+### ⚠️ Worker A's screenshots were never switched on (`9482d86`)
+
+`worker_a.py` carried its own `SHOTS` global and its own `shot()`, and **never set
+`cdp_scrape.SHOTS`** — so every `C.shot()` call on the *shared entry path* had been a silent no-op
+for worker A since the day it was written. Run `32135642944` took six `state=captcha` entry
+refusals in a row and uploaded an **empty artifact**, while looking correctly instrumented from
+outside.
+
+Fixed: worker A sets `C.SHOTS` too, takes `--trace`/`--trace-max`, and its `shot()` now uses the
+**shared counter** `C._shot_n[0]` — two writers into one directory with private counters both
+wrote `001-*.png` over each other.
+
+⇒ **Grep for every copy of a capability before trusting any of it.** Two copies of one facility,
+one wired and one blind, is the same failure this project already recorded for the rejection
+matchers — and it hurts most in instrumentation, because what fails is your ability to see
+anything fail.
+
+---
+
+## ⚠️ `--fill` cannot open a range it has never discovered
+
+Dispatching `pjud-fill.yml` for May returned **`nothing-searched`** and looked like a block. It was
+not: `--fill` re-opens causas **already in Neon** that lack a cuaderno 2, and Neon held **zero** May
+causas. There was no work-list, so there was no search.
+
+⇒ **A completion worker needs a corpus; a new window needs `pjud-censo.yml` (worker A, sweeping)
+first.** Fill and sweep are not interchangeable, and the failure mode of choosing wrong is a green
+run that did nothing.
+
+---
+
+## The local fleets, June and July
+
+Four local workers, two per month, `--fill`:
+
+| window | opens | refused | signature |
+|---|---:|---:|---|
+| June, 2 workers | 20 + 21 | **0** | — |
+| July, 2 workers | 30 + 31 | **7** | all seven the *lost click* — click delivered, `causaCivil.php`=0 |
+
+⚠️ **My geometry theory for the July refusals was wrong, twice.** I predicted wide tables and
+horizontal scroll; there were no `objetivo tapado` lines and no `[geo]` lines at all, and
+`unreachable-row` was 0. The seven were the signature already documented in §"check what your
+guards RETURN": the click is refused or lands inert, the site is never asked, and the worker
+correctly costs it one causa and moves on.
+
+---
+
+## ★★★ THE MAY BLOCK IS ONE CAUSA — `C-936-2026`, and it is the cuaderno-2 switch
+
+Two remote runs, dispatched hours apart, blocked at **the same causa**, at the same point, with the
+same counters:
+
+| run | mode | result |
+|---|---|---|
+| `32136655492` | `--trace entry` | entered attempt 1, swept 16 min, **19 causas · 13 with detail · 262 cuadernos ingested**, then blocked at `C-936-2026` |
+| `32149016591` | `--trace all` | **reproduced exactly** — same causa, same `28 hist c1 · 0 hist c2`, same `rejF=2 hardRej=1`, 105 frames |
+
+`C-936-2026` — 1º Juzgado de Letras de Arica, f. ingreso 19/05/2026, BANCO DEL ESTADO.
+
+### What the frames show
+
+```
+0100  t+974.2  before the row click      iframes ['a-a4vqd75z5x8b','']            modals []
+0101  t+975.4  after  the row click      iframes ['a-a4vqd75z5x8b','']            modals []
+                 ↑ the CORRECT row is highlighted — C-936-2026
+0102  t+984.5  before the modal close    + TSBrPFrame_cs_chlg_ajax_frame_810/811  modals ['modalDetalleCivil']
+                 ↑ modal OPEN and CORRECT — ROL C-936-2026, F. Ing. 19/05/2026, BANCO DEL ESTADO
+                   historia EMPTY, F5 rejection box overlaid, support id 8068285253452880612
+```
+
+Captured state at the block: `modal=True modalIn=False`, all four `loadPre*` spinners empty,
+`overlays=0`, **two challenge iframes attached to the causa modal**.
+
+### What that rules out
+
+The operator's reading of the earlier frames was *"there's no blocking, just clicks landing
+somewhere else"*, and the follow-up hypothesis was *"it might click things a human would not, or
+click before it's fully loaded."* Both are answerable now, and the answer is no:
+
+- **The click landed correctly.** Frame 0101 shows the right row selected; the modal opened on the
+  right causa with the right header.
+- **The page was loaded.** Cuaderno 1 parsed **28 historia rows** — the modal was fully rendered
+  and read.
+- **It is not pacing, rate, session age, or a burst.** **19 causas in the same session did the same
+  switch successfully**, immediately before, at the same speed.
+- **It is not position.** `32136655492` and `32149016591` reached it after different amounts of
+  work and stopped at the same causa.
+
+⇒ **The refusal is specific to the cuaderno-2 AJAX for this one causa.** Deterministic, per-causa,
+after a session of identical successful switches. That is not the shape of a rate verdict — a rate
+verdict is a function of *how much* you have done, and this one is a function of *which* causa.
+
+### The two suspects in `select_cuaderno`, both raised by the operator's question
+
+Neither is proven; both are things **a human does not do**, on **exactly the request that gets
+refused**:
+
+1. **Hover → `.focus()` → arrow keys is a control that receives keystrokes without ever being
+   clicked.** The pointer-approach fix was added precisely because teleported focus is a tell, and
+   it did not lift the old 10-open wall — but it left the *shape* intact: a `<select>` that never
+   receives a `mousedown` and then emits keydowns. A person opens the dropdown.
+2. **`wait_for_timeout(1600)` + worker A's `wait_for_timeout(900)` are flat sleeps, not
+   conditions.** They were measured residentially and inherited by a datacenter runner whose
+   round-trip is 17–23 s against a local 12–26 s. A fixed sleep tuned on one link is a guess on the
+   other — and the constant that was "measured" was never measured *there*.
+
+### Next tests, in order
+
+1. **Read the token.** Open `C-936-2026` locally and dump `#selCuaderno option` values, then the
+   same for a causa whose switch succeeds in that same court. If the per-causa token content is
+   anomalous, the refusal is a signature match and nothing about our behaviour will fix it.
+2. **`--no-cuaderno2` over 15/05–31/05.** If the sweep walks straight past C-936, the switch is
+   confirmed as the trigger and we know the exact cost of avoiding it.
+3. **Route the switch through `step()`** so the next reproduction is photographed instead of
+   inferred (the 9.1-second hole above).
+4. **Replace the two flat sleeps with a condition** — wait for the historia table to change, not
+   for a number of milliseconds.
+
+⚠️ **Do not run 1 and 2 together.** Two variables, one run, and the confusion this project has
+already paid for three times in one session.
+
+---
+
+## Known cosmetic defect
+
+The trace startup line prints a Windows backslash (`.../data/shots\trace`) on Linux runners. The
+path itself is correct; only the message is wrong. Recorded so it is not chased as a path bug.

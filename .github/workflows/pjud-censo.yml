@@ -68,6 +68,15 @@ name: PJUD — censo remoto (por demanda)
 # be re-run if the site changes — not because more runners help. Two runners did survive 1h46m
 # against 11 minutes for three, so if you ever want two, expect to be culled in pairs.
 #
+# ⚠️ 2026-08-18 — NOT EVERY REFUSAL IS A RATE VERDICT, so do not reach for the playbook above by
+# reflex. Two May runs, dispatched hours apart, were refused on the SAME causa (C-936-2026), at the
+# same point, with the same counters, after 19 causas in the same session had made the identical
+# cuaderno-2 switch successfully. `--trace all` photographed it: the click landed on the right row,
+# the modal opened on the right causa, cuaderno 1 parsed 28 rows, and only then did two
+# TSBrPFrame challenge iframes attach to the modal. A rate verdict is a function of HOW MUCH you
+# have done; this one is a function of WHICH causa. Count the successes that came first before
+# blaming pacing. See felipe/pjud/HANDOFF_WORKERS.md -> THE 2026-08-18 SESSION.
+#
 # A census alone is ~3.3 h for 230 tribunales on one worker; WITH detail (open every bank causa
 # and fetch its ebook) it is far longer — locally that runs at roughly one causa a minute. So a
 # detail pass is not expected to finish in one dispatch, and does not need to: state is carried

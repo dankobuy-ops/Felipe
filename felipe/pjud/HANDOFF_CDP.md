@@ -1,4 +1,4 @@
-# PJUD scraper — CDP Handoff (site + WAF reference; history updated 2026-08-12)
+# PJUD scraper — CDP Handoff (site + WAF reference; history updated 2026-08-18)
 
 > **Building or running a worker? Read [`HANDOFF_WORKERS.md`](HANDOFF_WORKERS.md) first.**
 > It covers the three-worker architecture, pacing with its evidence, block recovery, the Neon
@@ -38,6 +38,10 @@ What follows is the current state. Where they disagree, this block wins.
 - **`sin resultados` from a spent session is a false negative**, not an empty court.
 - **The corte-change burst is real.** Never touch `#corteFec`; sweep with Corte = Todos.
 - **Tier 3 (full-page image CAPTCHA) needs a human.** Detect, report, stop. Never script it.
+- **Not every refusal is a rate verdict** (2026-08-18). One causa was refused deterministically by
+  two separate runs, after 19 identical successes in the same session — see the top section. Check
+  whether the refusal follows *how much you have done* or *which record you are on* before
+  reaching for pacing.
 
 **Newer than everything below (2026-08-11/12), see `HANDOFF_WORKERS.md` for detail:**
 
@@ -61,6 +65,51 @@ with **full detail + PDF files + GPS**, into a **Neon Postgres** DB (+ PDFs to G
 The scraper **works end-to-end** — detail, files, GPS, Neon ingest, resume. On 2026-07-22 the
 WAF blocker was **found and fixed**: it was our own `page.click()`. Read the next section
 first; it **disproves** most of what the 07-20/07-21 versions of this doc concluded.
+
+---
+
+## ★★★★★ 2026-08-18 — A REFUSAL THAT IS NOT A RATE VERDICT: ONE CAUSA, EVERY TIME ★★★★★
+
+The first PJUD block this project has seen that **is not about how much we have done**.
+
+Two cloud runs, hours apart, were refused on **the same causa** (`C-936-2026`, 1º Juzgado de Letras
+de Arica, f. ingreso 19/05/2026), at the same point in the visit, with the same counters
+(`28 hist c1 · 0 hist c2`, `rejF=2 hardRej=1`) — **after 19 causas in the same session had made the
+identical cuaderno-2 switch successfully.**
+
+With `--trace all` the page was photographed before and after every click, and the frames settle
+what the log could not:
+
+```
+0101  t+975.4  after the row click   — the CORRECT row is highlighted (C-936-2026)
+0102  t+984.5  modal OPEN and CORRECT — ROL C-936-2026, F. Ing. 19/05/2026, BANCO DEL ESTADO
+                 historia EMPTY, F5 rejection box overlaid, support id 8068285253452880612
+                 iframes: a-a4vqd75z5x8b, '', TSBrPFrame_cs_chlg_ajax_frame_810, _811
+                 modal=True modalIn=False, all four loadPre* spinners empty, overlays=0
+```
+
+**Two challenge iframes attach to the causa modal itself**, not to a navigation. The click landed,
+the modal rendered, cuaderno 1 parsed 28 rows — and then the **cuaderno-2 `causaCivil.php` POST
+specifically** was refused.
+
+⇒ **A rate verdict is a function of HOW MUCH you have done; this is a function of WHICH causa.**
+That eliminates, in one stroke, everything this file has ever recommended for a block: pacing,
+jitter, cool-off, session age, position in the sweep, address reputation. None of them can produce
+a per-causa deterministic refusal preceded by nineteen identical successes.
+
+**Still open.** The two suspects both live in `select_cuaderno` and both are things a person does
+not do, on exactly the refused request:
+
+1. hover → `.focus()` → `ArrowDown` — a `<select>` receiving keystrokes it was never clicked into;
+2. `wait_for_timeout(1600)` (and worker A's `wait_for_timeout(900)`) — flat sleeps measured on a
+   residential link and inherited unchanged by a datacenter runner whose round-trip is 17–23 s.
+
+Next test is to **read the per-causa `#selCuaderno option` token** for C-936 and compare it against
+a causa that switches fine; the one-variable confirmation is `--no-cuaderno2` over the same range.
+Detail, frames and the full elimination table: `HANDOFF_WORKERS.md` → **THE 2026-08-18 SESSION**.
+
+⚠️ **The switch itself was never photographed** — the trace hooks `human_click`, and the switch is
+not a click. There is a 9.1-second hole between frames 0101 and 0102 containing the entire failure.
 
 ---
 
