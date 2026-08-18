@@ -1487,6 +1487,48 @@ past the rate limit.
 about which shared resource.** Address rate, uplink, and the local machine all produce it. Do not
 name the cause until you have varied one of them.
 
+### ★★★ Scroll BOTH axes, or half the page is unreachable for ever
+
+Every scroll this project ever made was `wheel(0, dy)` — deltaX hard-zero. So any target past the
+right edge of the window could not be reached **at any window size, by any amount of waiting**.
+The click helper refused it correctly and said "target covered"; the overlay hit-test found
+nothing on top, because nothing was on top — the element was simply outside.
+
+Measured cost in one afternoon: 3.5% of record clicks refused, and the *next page* button
+unreachable on **39% of listings**, truncating them silently. 1,224 records never opened.
+
+Verified fix, in the exact geometry that failed (744×345 viewport):
+
+    before   target x=1307   scrollX=0     off-screen right
+    after    target x=697    scrollX=610   click succeeded
+
+- **A person with a narrow window scrolls across.** Trackpad swipe or shift+wheel, a few uneven
+  notches, pointer parked over the content, with the small correction back after overshooting.
+- **It is also an empty telemetry channel** — the same family as never wheeling at all. A reader
+  of a table wider than their window emits deltaX; we never had.
+- ⇒ **Window size becomes a preference, not a correctness requirement.** Small windows stay
+  watchable and still work, which matters when watching the browser is how you find bugs.
+
+⚠️ And do not trust `--window-size=` on the command line: six browsers asking for 1440×900 came up
+at 958×428, 673×483 and 726×434. Set the bounds after launch through the debug protocol, **verify
+the viewport, and log it** — an undersized window should announce itself, not be discovered weeks
+later through missing records. Never fake it with device-metric emulation: a real person's browser
+has a real window behind its viewport.
+
+### ⚠️ After a paginated redraw, row indices are stale before they are wrong
+
+A "next page" helper typically returns as soon as the FIRST row changes — proof that a swap
+*started*, not that it *finished*. Read your row list at that moment and you capture indices into
+a table still rebuilding; clicking `nth(i)` then hits a row whose handler has been replaced, **no
+request is issued at all**, and it is indistinguishable from the server ignoring you.
+
+4 of 4 such failures in one controlled run came after a page advance; none on page one.
+
+- **Wait for idle plus a short settle before reading the new page.**
+- **Verify identity at the moment of clicking** — compare the row's own key against the record you
+  meant to open, and skip rather than click the wrong one. Cheap, and it turns a silent
+  mis-click into a counted event.
+
 ### ★★★ Check that the arms match before you read the number
 
 Three times in a single session I nearly published a confident conclusion from a comparison whose

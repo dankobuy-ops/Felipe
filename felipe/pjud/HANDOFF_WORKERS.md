@@ -15,12 +15,19 @@ Everything below this section was written while we believed pacing bought safety
 The whole document is still worth reading for the traps, but start here.
 
 ```
-4 x worker_h.py  --speed 1.0  --gate file        # each: own --port, own --user-data-dir
-                                                 # disjoint --start/--end court ranges
+6 x worker_h.py --fill --shard i --of 6 --speed 1.0 --gate-release form
+                                                 # each: own --port, own --user-data-dir
+                                                 # --fill shards the WORK-LIST, not the court index
 ```
 
-**593 causa opens in one hour, 9.9/min aggregate, on residential.** For comparison, worker A's
-all-time best was 375 opens in 190 minutes (1.97/min) and its remote best was 306 before a block.
+**~16 causa opens/min aggregate on residential, 95% of them useful.** Worker A's all-time best was
+375 opens in 190 minutes (1.97/min); its remote best was 306 before a block.
+
+⇒ **Use `--fill`, not a sweep, once you have a corpus.** A sweep re-opens what you already hold —
+27% useful and falling as you collect more. Fill asks Neon what is missing: 95% useful, and shards
+end `finished` rather than merely out of time.
+⇒ **Add workers, do not speed them up.** Six at the operator's pace beat any faster configuration
+and are more human at the same time (pointer 15-20 events/s vs 6-9 at top speed).
 
 | what | value | how it was found |
 |---|---|---|
@@ -28,6 +35,8 @@ all-time best was 375 opens in 190 minutes (1.97/min) and its remote best was 30
 | session count | **close to free** | four concurrent sessions, one IP, one hour, no block |
 | one worker's floor | ~8-9 s per kept causa | reading time ramped to zero; the residue is the site |
 | pointer | **~16-20 mousemove/s, ~5 mouseover/s** | a real person emits 25.8 and 6.4 |
+| horizontal scroll | **human_scroll_x on every off-side target** | we had never emitted a deltaX |
+| window | `--window WxH`, verified on arrival | a PREFERENCE: 744x345 works, see below |
 | keystrokes | **ZERO** | a person typed none in a whole session |
 | dates | **the datepicker, with the mouse** | the fields are `readonly`; a person CANNOT type them |
 | wheel inside a modal | **none** | a person wheels the list, not the modal |
@@ -1296,3 +1305,100 @@ interpreting the result.** Two of the three would have sent a runner off to test
 shows 13 causas with a second cuaderno. I quoted fill estimates without mentioning this. The
 records are safe on disk but they are not banked, and 1,659 of them already answer a third of the
 4,523 outstanding for zero further site load.
+
+---
+
+## ★★★ THE AFTERNOON OF 2026-08-17 — every "block" was ours
+
+Six failures were chased today under names that described nothing. Not one was the site. The
+pattern is identical each time: a symptom we manufactured, given a label, then a theory built on
+the label. What ended each of them was **making the failure describe itself**.
+
+| we called it | it actually was | cost |
+|---|---|---|
+| "the form is wedged" | a Bootstrap TAB whose nav said `active` while its pane was `display:none` | an afternoon |
+| "modal never opened" | `human_click` REFUSED the click and we ignored the return value | weeks, incl. the remote 10-open wall |
+| "searches came back empty" | the site refuses a date range **longer than one month** | 3 workers, minutes from exhausting recoveries |
+| "the 6th session is starved" | the browser WINDOW was too small to contain what we clicked | 1,224 causas |
+| "the row is unreachable" | we had **never scrolled horizontally**, in any worker, ever | the same 1,224 |
+| "modal never opened (paging)" | row indices read from a table still redrawing | 4 workers in one test |
+
+### ⚠️⚠️ THE ONE THAT MATTERS MOST: check what your guards RETURN
+
+`human_click()` refuses an unreachable target **on purpose** — a covered click sends a real click
+to whatever is underneath, and that correlated exactly with getting blocked (0 covered → 50
+causas; 1 → blocked at 23; 2 → at 4). It announces the refusal. **`harvest()` ignored the return
+value.** So the worker clicked nothing, waited 90–106 s for a modal never requested, reported
+`modal did not open`, and blamed PJUD.
+
+The network tap settled it in one line:
+
+```
+[warn] human_click: objetivo tapado tras 8s — NO hago clic
+[net] 0 responses since the click, causaCivil.php=0 :: []
+```
+
+**Zero. The site was never asked.** ⇒ A refused click costs ONE CAUSA, is counted in the run
+verdict (`refused=N`), and must never spend a recovery.
+
+### ★★ We had never scrolled SIDEWAYS
+
+`page.mouse.wheel(0, dy)` — deltaX hard-zero everywhere. The results table is ~1,115 px wide, so
+in a narrow viewport the magnifier column sits outside the window and **no amount of waiting or
+vertical scrolling can reach it**. Enlarging the window hid it; `human_scroll_x()` fixes it.
+
+Verified in the exact failing geometry (744×345 viewport):
+
+```
+before   target x=1307   scrollX=0     (off-screen right)
+after    target x=697    scrollX=610   click succeeded
+```
+
+⇒ **Window size is a PREFERENCE, not a correctness requirement** — small tiled windows stay
+watchable and still work. `--window WxH` sets it; `ensure_window()` applies it via
+`Browser.setWindowBounds` (a REAL resize; never `Emulation.setDeviceMetricsOverride`, which fakes
+a viewport with no window behind it).
+
+⚠️ `--window-size=` on the command line was **not honoured**: six workers asking for 1440×900 came
+up at 958×428, 673×483 and 726×434. Set it after launch and verify — the worker prints
+`window: {vw,vh}` on arrival for exactly this reason.
+
+### ⚠️ A tab that is "active" in the nav but not in the panes cannot be clicked back
+
+`#BusFecha` is a Bootstrap tab pane. On a wedged page the nav item carried `active` while the pane
+had lost `in active`, so **Bootstrap refused to switch to a tab it already believed was current**
+— our click was delivered, trusted, and inert. Every `#fecTribunal` select then timed out at 8 s
+on a control that was populated (232 options), enabled, uncovered, and simply INVISIBLE.
+
+The repair is what a person does: click a different tab, then click back. And note the false cure
+— re-entry rebuilds the form and re-selects the tab, so recovery *appears* to work and fails again
+minutes later. **Recovery succeeding and the symptom returning quickly means you are resetting a
+cause, not fixing it.**
+
+### ⚠️ The OJV refuses a date range longer than ONE MONTH
+
+`El rango de fecha no puede ser superior a un Mes` arrives as a sweet-alert; `wait_results` sees no
+results and reports `empty`. **An invalid search and an empty one are indistinguishable from the
+outside.** Refused at the door now, before a browser opens. Same shape as the date fields starting
+EMPTY — which searches instantly, returns nothing, and still reports "results".
+
+### ⚠️ Pagination: read the rows only after the redraw FINISHES
+
+`advance()` returns when the FIRST row changes — a swap started, not finished. Reading then gives
+indices into a table still rebuilding, and `.nth(i)` clicks a row whose handler has been replaced:
+no request at all. **4 of 4 such failures in one test came after a page advance, none on page 1.**
+`wait_idle` + a settle before reading, and a rol comparison at click time as the backstop.
+
+## Where the backfill got to
+
+| | morning | evening |
+|---|---|---|
+| causas with a cuaderno-2 historia | **13** | **4,948 of 5,739 (86%)** |
+| useful opens | 27% (sweeping) | **95%** (`--fill`) |
+| throughput | ~2/min (1 worker) | **~16/min (6 workers)** |
+| estimated time to finish | 26 h | **~50 min** |
+
+★ **`--fill` beats sweeping because discovery decays as it succeeds.** A sweep re-opens what you
+already hold: 794 opens produced 217 new causas and 211 new cuaderno-2 historias — 27%. Fill asks
+the database what is missing and opens only that: 1,009 opens, 871 kept, 95%. Two shards ended
+`finished` having exhausted every court that owed them anything.
