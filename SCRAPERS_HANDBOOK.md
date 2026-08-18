@@ -1852,6 +1852,19 @@ you do not understand is worth more than any number of post-mortems, and it cost
 
 (PJUD, 2026-08-18. `stepgate.py` / `step_console.py` / `trace_sheet.py`, and `cdp_scrape.step()`.)
 
+⚠️ **And then check that the eyes are actually WIRED, in every worker.** Worker A carried its own
+`shot()` and its own `SHOTS` global and never set the shared module's — so every capture on the
+*shared* entry path was a silent no-op for that worker, for as long as it had existed. The
+workflow passed `--shots`, uploaded the artifact, and the artifact was empty; six entry refusals in
+a row produced zero frames while the run looked correctly instrumented from the outside. Two copies
+of one facility, one wired and one blind, is the same failure this handbook already records for the
+rejection matchers — and instrumentation is where it hurts most, because the thing that fails is
+your ability to see anything fail. **Grep for every copy of a capability before trusting any of
+it, and share the counter too: two writers into one directory with private counters overwrite each
+other's `001-*.png`.**
+
+(PJUD, 2026-08-18.)
+
 ---
 
 ### ⚠️ A literal `%` in an argparse help string only crashes `--help`

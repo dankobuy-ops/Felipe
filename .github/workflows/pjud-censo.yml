@@ -126,6 +126,10 @@ on:
         description: "true = NO abrir el cuaderno 2 (prueba de una variable para el muro de 10 aperturas)"
         required: false
         default: "false"
+      trace:
+        description: "Foto antes y despues de CADA accion durante la entrada: off | entry | all"
+        required: false
+        default: "entry"
       live:
         description: "true = publicar a Neon lo que ve el runner, para mirarlo en vivo con watch_live.py"
         required: false
@@ -411,6 +415,10 @@ jobs:
           # interstitial, an overlay, or a perfectly normal page missing one element. Each has a
           # different fix and we were guessing between them from counters.
           ARGS+=(--shots "$GITHUB_WORKSPACE/felipe/pjud/data/shots")
+          # ⚠️ AND THE TRACE. --shots alone only fires on a failure PATH, which for an entry
+          # refusal means the run ends with one log line and no picture -- exactly what the May
+          # sweep handed back on 2026-08-18 (six `state=captcha` refusals, zero frames uploaded).
+          ARGS+=(--trace "${{ inputs.trace }}")
           # ⚠️ AND THE OTHER HALF: --shots can only be read once the job is OVER, out of an
           # artifact. --live publishes the same picture to Neon every few seconds while the run is
           # happening, so a wrong turn is caught in the minute it occurs instead of the hour
@@ -482,6 +490,15 @@ jobs:
       - name: Collect Chrome stderr
         if: always()
         run: cp "$HOME/chrome_9222.err" felipe/pjud/scraper/chrome.err 2>/dev/null || true
+
+      # ⚠️ ONE HTML FILE, NOT A FOLDER OF JPEGs. A folder of loose frames is a picture that got
+      # captured and still never looked at; the sheet lays them out in order with each frame's
+      # own account of the page beside it.
+      - name: Contact sheet
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          python -u trace_sheet.py             --dir "$GITHUB_WORKSPACE/felipe/pjud/data/shots/trace"             --out "$GITHUB_WORKSPACE/felipe/pjud/data/shots/trace.html"             --title "censo slot ${{ matrix.slot }} - run ${{ github.run_id }}" || true
 
       - uses: actions/upload-artifact@v4
         if: always()

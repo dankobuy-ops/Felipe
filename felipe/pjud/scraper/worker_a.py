@@ -136,8 +136,11 @@ def shot(page, tag):
     if not SHOTS:
         return
     try:
-        _shot_n[0] += 1
-        base = Path(SHOTS) / f"{_shot_n[0]:03d}-{tag}"
+        # ⚠️ ONE COUNTER FOR BOTH WRITERS. cdp_scrape has its own shot() and both write
+        # into the SAME directory, so a private counter here means 001-*.png twice and one
+        # of them silently overwritten. Share theirs.
+        C._shot_n[0] += 1
+        base = Path(SHOTS) / f"{C._shot_n[0]:03d}-{tag}"
         base.parent.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=str(base) + ".png", full_page=False)
         txt = page.evaluate("()=>({url:location.href,"
@@ -803,6 +806,7 @@ def enter_and_setup(ctx, net, desde, hasta, lock=None, gate_name="reentry"):
     lock.touch()                      # alive and on the form: do not let the stale timer fire
     if pg is None:
         return None, None, None
+    C.PHASE = "work"          # the arrival is over; `--trace entry` stops here
     note(f"in: {pg.url[:60]}")
     del net[:]
     pg.on("response", ojv.make_tap(net))
@@ -908,6 +912,12 @@ def main():
                          "search (rejF=1, 0 opens, twice, different IPs, quiet range). Runners "
                          "should use 'home' - the guest-gate route, the only one that has ever "
                          "searched remotely. Both links are still offered to a runner.")
+    ap.add_argument("--trace", choices=("off", "entry", "all"), default="off",
+                    help="a JPEG before and after EVERY action into <shots>/trace, plus a "
+                         "trace.jsonl. 'entry' is the arrival only, which is where a remote sweep "
+                         "dies; 'all' is the whole shift. Requires --shots.")
+    ap.add_argument("--trace-max", type=int, default=400,
+                    help="frame budget. A diagnostic that fills a runner's disk is an incident.")
     ap.add_argument("--idle-motion", action="store_true",
                     help="emit small pointer drift during the pacing waits, the way a resting "
                          "hand does. TESTED 2026-08-14 AND IT CHANGED NOTHING: two runner arms, "
@@ -981,6 +991,19 @@ def main():
     ojv.ENTRY_ROUTE = a.entry_route
     CUADERNO2 = not a.no_cuaderno2
     SHOTS = a.shots or None
+    # ⚠️⚠️ AND TURN ON THE SHARED ONE TOO. This worker carries its OWN shot()/SHOTS, and never set
+    # cdp_scrape.SHOTS -- so every C.shot() call on the shared entry path (ojv.walk_in's
+    # "entry button covered", human_click's refusal) has been a NO-OP for worker A since the day
+    # it was written. Measured 2026-08-18: the May sweep was refused at entry SIX times with
+    # `state=captcha`, the workflow passed --shots and uploaded the artifact, and the artifact
+    # contained zero frames. Two copies of the same facility, one wired, one blind -- the exact
+    # duplication failure this repo already documents for the rejection matchers.
+    C.SHOTS = a.shots or None
+    if a.trace != "off":
+        if not C.SHOTS:
+            raise SystemExit("--trace needs --shots DIR to write frames into")
+        C.TRACE, C.TRACE_SCOPE, C.PHASE = a.trace_max, a.trace, "entry"
+        note(f"step trace ON, scope={a.trace}, budget={a.trace_max} frames")
     if a.slot:
         DATA = HERE.parent / "data" / f"worker_a{a.slot}"
         PDFS = DATA / "pdfs"
