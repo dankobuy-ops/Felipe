@@ -482,6 +482,23 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
     # was ever asked for, or the click landed and the site did not answer. We already tap every
     # response; all this needs is a mark before the click.
     n0 = len(net) if net is not None else 0
+    # ⚠️ VERIFY THE ROW BEFORE CLICKING IT. We click `.nth(i)` from a list read earlier, and the
+    # handbook's oldest pagination warning is that "a row index belongs to the page it was read
+    # from". If the table redrew between the read and the click, index i is a DIFFERENT causa —
+    # and a click on a row whose handler has been rebound produces no request at all, which is
+    # indistinguishable from the site ignoring us. Measured: `[net] 0 responses` with the click
+    # NOT refused. One cheap comparison rules it in or out.
+    try:
+        at_i = page.evaluate(
+            "(i)=>{const tr=document.querySelectorAll('#dtaTableDetalleFecha tbody tr')[i];"
+            " if(!tr) return null; const td=tr.querySelectorAll('td');"
+            " return td[1] ? td[1].innerText.trim() : null;}", row["i"])
+    except Exception:
+        at_i = None
+    if at_i is not None and at_i != row["rol"]:
+        note(f"    [!] row {row['i']} now holds {at_i!r}, not {row['rol']!r} — the table redrew; "
+             f"re-reading instead of clicking the wrong causa")
+        return "stale-row"
     t_open = time.time()
     # ⚠️⚠️ CHECK THE CLICK. This return value was ignored, and that single omission produced the
     # failure this project has chased longest. human_click REFUSES an unreachable target on
@@ -1119,7 +1136,7 @@ def main():
                                   only_proc=a.only_proc, net=net)
                 tally["opens"] += 1
                 court["opens"] += 1
-                if rec == "click-refused":
+                if rec in ("click-refused", "stale-row"):
                     # our click never reached the row: one causa lost, session untouched
                     tally["refused"] = tally.get("refused", 0) + 1
                     read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
@@ -1215,7 +1232,7 @@ def main():
                                   only_proc=a.only_proc, net=net)
                     tally["opens"] += 1
                     court["opens"] += 1
-                    if rec == "click-refused":
+                    if rec in ("click-refused", "stale-row"):
                         # our click never reached the row: one causa lost, session untouched
                         tally["refused"] = tally.get("refused", 0) + 1
                         read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
