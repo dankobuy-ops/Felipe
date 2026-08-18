@@ -683,9 +683,24 @@ def launch_chrome(port, profile, slot=1, exe=None):
             "--disable-renderer-backgrounding",
             "--disable-background-timer-throttling"]
     if os.name == "nt":
-        # Windows are TILED rather than maximised so all four stay watchable.
-        x, y = (slot % 2) * 780, ((slot // 2) % 2) * 470
-        argv += [f"--window-size=760,440", f"--window-position={x},{y}"]
+        # ⚠️⚠️ THE WINDOW MUST BE BIG ENOUGH TO CONTAIN WHAT WE CLICK. This tiled four browsers at
+        # 760x440 "so all four stay watchable", which gives a 744x345 VIEWPORT — and the results
+        # table's magnifier column sits at x≈922. Every one of those clicks was outside the
+        # window, horizontally, where no amount of scrolling can reach it. human_click refused
+        # them correctly and said "objetivo tapado" with no overlay found; we read that as the
+        # site refusing us and spent weeks on it.
+        #
+        # Measured cost in ONE afternoon of fill runs (2026-08-17): 33 row clicks refused, and
+        # the Siguiente button unreachable on 71 of 181 courts — 1,224 causas never opened. The
+        # tell was there all along in the fleet size: the 4-worker June run had ZERO refusals,
+        # the 6-worker July runs had 33, because more workers meant smaller tiles.
+        #
+        # CI already used 1440x900 (below), which is why this never appeared on a runner and why
+        # comparing local against remote kept producing nonsense.
+        # Windows now CASCADE instead of tiling: still individually watchable, still all on
+        # screen, and each one large enough that everything we click is inside it.
+        x, y = (slot % 4) * 40, (slot % 4) * 40
+        argv += ["--window-size=1440,900", f"--window-position={x},{y}"]
     else:
         # ⚠️ --no-sandbox IS MANDATORY IN A CI CONTAINER. Without it Chrome dies before it ever
         # opens the debugging port, which reads as a WAF refusal and is nothing of the kind
