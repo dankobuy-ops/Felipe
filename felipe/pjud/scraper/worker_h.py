@@ -694,6 +694,12 @@ def main():
                          "re-entering before giving up. Worker A has had this since 08-07; worker "
                          "H shipped without it and one worker spent its whole hour skipping 38 "
                          "courts with a dead session.")
+    ap.add_argument("--window", default="1440x900",
+                    help="browser window size, WxH. The correctness fix is horizontal scrolling "
+                         "(human_scroll_x), not size -- a 744x345 window reaches an off-screen "
+                         "target once we scroll across, verified. So this is a PREFERENCE: small "
+                         "tiled windows stay watchable. Use 760x440 to reproduce the geometry "
+                         "that refused 3.5% of rows and truncated 39% of courts.")
     ap.add_argument("--gate", choices=("file", "none"), default="file",
                     help="serialise ARRIVALS through a lock file so concurrent workers never open "
                          "fresh browsers in the same instant. Released on the first confirmed "
@@ -823,7 +829,11 @@ def main():
         # ⚠️ SIZE THE WINDOW BEFORE TOUCHING THE FORM. The results table is ~1115 px wide; a
         # narrower viewport scrolls horizontally and puts the magnifier column outside the window,
         # where human_click correctly refuses it and we spend the afternoon blaming the site.
-        ok_w, vp = C.ensure_window(p, 1440, 900)
+        try:
+            _ww, _wh = (int(x) for x in a.window.lower().split("x"))
+        except Exception:
+            _ww, _wh = 1440, 900
+        ok_w, vp = C.ensure_window(p, _ww, _wh)
         note(f"window: {vp} {'ok' if ok_w else '*** TOO SMALL — clicks will be refused ***'}")
         p.on("response", ojv.make_tap(net))
         settler = A.Settler(p)
