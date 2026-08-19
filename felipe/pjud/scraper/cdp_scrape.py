@@ -92,7 +92,15 @@ def _human_pointer(page, x, y, press=True):
     if not press:
         return
     page.mouse.down()
-    page.wait_for_timeout(random.randint(55, 130))       # press duration
+    # ⚠️ THE HOLD IS A SIGNATURE, AND OURS WAS THE WRONG SHAPE. Measured over 332 real clicks
+    # (2026-08-19): median 99 ms, p10 78, p90 129, sd 24 — a tight bell around 100 ms. This was
+    # `randint(55, 130)`: a FLAT distribution whose bottom half the operator practically never
+    # visited, with the same mean and a completely different histogram. Nothing in a script
+    # decides how long a finger stays down, which is exactly why the value is worth getting right.
+    # Clamped, because a Gaussian tail can otherwise emit an 8 ms or a 400 ms press.
+    page.wait_for_timeout(int(min(200, max(45, random.gauss(100, 24)))))
+    # ⚠️ AND THE POINTER IS STILL WHILE THE BUTTON IS DOWN: drag during click measured median 0 px,
+    # p90 1 px, mean 0.2 over those same 332 clicks. Do not add motion between down and up.
     page.mouse.up()
 
 
@@ -216,7 +224,16 @@ def human_scroll(page, notches=None, down=True, settle=True):
         except Exception:
             spot, vw, vh = None, 1440, 900
         for i in range(n):
-            dy = random.uniform(90, 340) * (1 if down else -1)
+            # ⚠️⚠️ A WHEEL IS QUANTISED. MEASURED 2026-08-19 over 381 real notches: deltaY was
+            # 100 (297x), 200 (16x), 300 (3x), -100 (62x), -200 (3x) — INTEGER MULTIPLES OF 100
+            # AND NOTHING ELSE, every one with deltaMode 0. This line used to emit
+            # `random.uniform(90, 340)`, i.e. values like 237.42, which no mouse wheel on earth
+            # can produce. The old comment reasoned that "uniform input is suspicious" and varied
+            # the magnitude to avoid it — correct instinct, wrong channel: the variation a human
+            # produces is in the GAPS and in how many notches they roll, never in the notch size.
+            # Varying the notch is not human-like, it is the one thing a wheel cannot do.
+            notches = 1 if random.random() < 0.94 else (2 if random.random() < 0.85 else 3)
+            dy = 100 * notches * (1 if down else -1)
             page.mouse.wheel(0, dy)
             page.wait_for_timeout(random.uniform(70, 260))
             # A hand resting on a mouse is never perfectly still between notches.
