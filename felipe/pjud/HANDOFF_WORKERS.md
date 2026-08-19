@@ -1839,6 +1839,51 @@ belonging to a process that had already exited.
 3. **Run the smoke test down the path you are about to trust**, not around it with a hand-built
    command. `-MaxCausas` exists so the launcher itself is what gets tested.
 
+## ★★★ JULY DONE — 983 opens, 3,370 documents, 92 minutes, ONE lost click
+
+Six workers, `--speed 1.0`, one dispatch. Every shard ended `finished` — it exhausted its
+work-list — not on our clock and not on a refusal.
+
+| shard | opens | kept | gated | refused | documents | minutes |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 200 | 193 | 6 | **1** | 692 | 87.0 |
+| 2 | 177 | 176 | 1 | 0 | 601 | 77.0 |
+| 3 | 210 | 207 | 3 | 0 | 749 | 92.0 |
+| 4 | 141 | 135 | 6 | 0 | 467 | 61.5 |
+| 5 | 138 | 137 | 1 | 0 | 456 | 61.0 |
+| 6 | 117 | 115 | 2 | 0 | 405 | 52.2 |
+| **all** | **983** | **963** | **19** | **1** | **3,370** | **92** |
+
+**983 opens against a 983-causa work-list — exact, to the causa.** 2.3 opens/min per worker,
+~10.7 aggregate, 3.43 documents per causa (predicted 3.5 from disk).
+
+### ★★★ The document endpoint did NOT refuse. Not once.
+
+This is the finding worth carrying. `docuN.php`/`docuS.php` is the endpoint that refused 16 and 19
+times on 2026-08-13 and the reason worker A was redefined to metadata-only on 08-14. Six
+concurrent workers pulled **3,370 documents through it in 92 minutes with zero refusals** — no
+`Failed to fetch`, no APM interstitial, no challenge iframe.
+
+⚠️ **That does not clear the endpoint; it re-dates the evidence.** The 08-13 refusals came from
+worker B, which fetches **40+ documents per causa** against this pass's 3.4, and from a session
+whose other behaviour has since been rebuilt (pointer, keyboard, datepicker, horizontal scroll).
+Two variables moved. What can be said is narrow and useful: **at ~20 document GETs/min behind a
+worker-H session, this endpoint is not the wall we thought it was.**
+
+⇒ The suspicion attached to `docuS.php` should be re-read as a suspicion about **volume per
+session**, not about the endpoint. That is a testable difference and worker B is the arm.
+
+★ **The single refusal was the "lost click", not a block:**
+
+```
+[13:38:29]     modal did not open after 92s
+[13:38:29]       [net] 0 responses since the click, causaCivil.php=0 :: []
+[13:38:29]       our click produced no causa request — one causa lost, session untouched
+```
+
+The guard did exactly what it was built to do on 2026-08-17: cost it one causa, spend no recovery,
+and say plainly that the site was never asked. One in 983.
+
 ## The Santiago work-list
 
 `C.A. de Santiago` — **28 tribunales, 1,281 causas, 1,253 owing cuaderno-2 documents**, spanning

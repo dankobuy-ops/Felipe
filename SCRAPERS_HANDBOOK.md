@@ -1978,6 +1978,32 @@ the cost statement concrete enough to argue about. Confirmed live on the first t
 
 ---
 
+### ⚠️ An endpoint's reputation has a DATE and a DOSE on it
+
+One endpoint in this project had been the prime suspect for months: it refused 16 and 19 times in
+a day, and a whole worker was redesigned around never touching it. Six concurrent workers then
+pulled **3,370 files through that same endpoint in 92 minutes with zero refusals**.
+
+The temptation is to conclude it was never the problem. That is as unfounded as the original
+verdict. **Two things differed between the arms**: the old worker fetched 40+ files per record and
+this one fetches 3.4, and everything else about the session's behaviour had been rebuilt in
+between. What can honestly be claimed is narrow, and narrow is what makes it useful:
+
+> at ~20 fetches/minute behind this kind of session, this endpoint is not the wall we thought.
+
+- **Re-read a blocked-endpoint story as a story about DOSE per session**, not about the URL.
+  *That endpoint blocks* and *forty of those per record blocks* predict the same past and
+  different futures, and only one of them is worth redesigning a worker around.
+- **A reputation earned under old behaviour expires when the behaviour changes.** Every pacing
+  number in this project turned out to be compensation for something else; endpoint fear is the
+  same kind of debt, and it is paid off the same way — by re-measuring, not by remembering.
+- **Say which variables moved.** A clean run against a feared endpoint is evidence, and writing it
+  down as *it is fine now* throws away the half of it that was actually measured.
+
+(PJUD, 2026-08-19.)
+
+---
+
 ### ⚠️ A one-hour token means the expensive act cannot be split from the cheap one
 
 Every document behind this site's rows is fetched with a URL carrying a JWT: `iat`, `exp`, and
