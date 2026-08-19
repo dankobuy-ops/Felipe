@@ -1215,6 +1215,63 @@ def read_anexo_folder(page, modal):
     return [r for r in (d.get("rows") or []) if r.get("val")]
 
 
+def hidden_tab_pane(page, sel):
+    """If `sel` sits inside a tab-pane that is not showing, return that pane's id. Else None.
+
+    ⚠️ A 0x0 ELEMENT AT (0,0) THAT CALLS ITSELF VISIBLE IS USUALLY IN A HIDDEN TAB. getComputedStyle
+    reports the ELEMENT's own display, so an <a> inside a `display:none` tab-pane still says
+    "inline / visible" while occupying no space — and human_click then refuses it, correctly and
+    uninformatively. Measured 2026-08-19 on C-10359: `anexoSolicitudCivilEscrit`'s anchor lives in
+    #escritosCiv, `tab-pane fade`, display:none.
+    """
+    try:
+        return page.evaluate(
+            """(s)=>{const a=document.querySelector(s); if(!a) return null;
+               let q=a.parentElement;
+               while(q && q!==document.body){
+                 const st=getComputedStyle(q);
+                 if(q.classList && q.classList.contains('tab-pane') &&
+                    (st.display==='none' || !q.classList.contains('active'))) return q.id||null;
+                 q=q.parentElement;}
+               return null;}""", sel)
+    except Exception:
+        return None
+
+
+def show_tab(page, pane_id, clicker=None):
+    """Click the nav link that reveals `pane_id`, the way a person switches tabs. -> bool.
+
+    ⚠️ NEVER `$(...).tab('show')` OR .click(). That is the synthetic path this whole project is
+    built to avoid; the tab is a control a human operates with the pointer like any other.
+    `clicker` defaults to human_click so the arc and dwell come along.
+
+    ⚠️ AND VERIFY THE PANE, NOT THE NAV. This project's most expensive tab bug was a nav item that
+    said `active` while its pane had lost `in active` — Bootstrap then refused to switch to a tab
+    it already believed was current, so the click was delivered, trusted and inert. The pane
+    becoming visible is the only thing worth believing.
+    """
+    clicker = clicker or human_click
+    for sel in (f"a[href='#{pane_id}']", f"a[data-target='#{pane_id}']",
+                f"[role=tab][aria-controls='{pane_id}']"):
+        try:
+            if not page.query_selector(sel):
+                continue
+        except Exception:
+            continue
+        if not clicker(page, sel, timeout=6000):
+            continue
+        for _ in range(20):
+            page.wait_for_timeout(150)
+            try:
+                if page.eval_on_selector(
+                        f"#{pane_id}",
+                        "e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length)"):
+                    return True
+            except Exception:
+                pass
+    return False
+
+
 def anexo_anchors(page, fn):
     """EVERY anchor in the modal that opens this kind of anexo folder. -> [locator], never raises.
 

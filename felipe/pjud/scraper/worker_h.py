@@ -270,6 +270,62 @@ def fetch_row_docs(page, pres, causa_id, historia):
     return out
 
 
+# ⚠️ EVERY REASON A CLICK CAN BE REFUSED, IN ONE ROUND TRIP. Off-screen and covered and
+# display:none all produce the same "refused" from human_click, and guessing between them is how
+# "modal did not open" survived for weeks as an explanation of nothing.
+ANEXO_GEO_JS = r"""
+(sel) => {
+  const a = document.querySelector(sel);
+  if (!a) return {gone: true};
+  const r = a.getBoundingClientRect(), cs = getComputedStyle(a);
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const top = document.elementFromPoint(cx, cy);
+  const m = a.closest('.modal');
+  let sp = null, e = a.parentElement;
+  while (e) {
+    const s = getComputedStyle(e);
+    if (/auto|scroll/.test(s.overflowY) && e.scrollHeight > e.clientHeight + 4) {
+      sp = {id: e.id || (e.className || '').toString().slice(0, 24),
+            scrollTop: Math.round(e.scrollTop), clientH: e.clientHeight,
+            scrollH: e.scrollHeight};
+      break;
+    }
+    e = e.parentElement;
+  }
+  // ⚠️ A 0x0 ELEMENT AT (0,0) THAT REPORTS ITSELF VISIBLE IS USUALLY IN A HIDDEN ANCESTOR.
+  // getComputedStyle reports the ELEMENT's own display/visibility, so an <a> inside a
+  // display:none tab-pane still says "inline / visible" while occupying no space at all. Walk up
+  // and name the first ancestor that is actually hidden — this project has a scar from exactly
+  // that shape (#BusFecha, the Bootstrap tab whose nav said `active` while its pane did not).
+  let hidden = null, q = a.parentElement;
+  while (q && q !== document.body) {
+    const s = getComputedStyle(q);
+    if (s.display === 'none' || s.visibility === 'hidden' ||
+        (q.classList && q.classList.contains('tab-pane') && !q.classList.contains('active'))) {
+      hidden = {tag: q.tagName, id: q.id || '', cls: (q.className || '').toString().slice(0, 44),
+                display: s.display, visibility: s.visibility};
+      break;
+    }
+    q = q.parentElement;
+  }
+  return {hiddenAncestor: hidden,
+          x: Math.round(r.left), y: Math.round(r.top),
+          w: Math.round(r.width), h: Math.round(r.height),
+          vw: innerWidth, vh: innerHeight,
+          inView: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth,
+          display: cs.display, visibility: cs.visibility, opacity: cs.opacity,
+          pointerEvents: cs.pointerEvents,
+          topEl: top ? (top.tagName + '#' + (top.id || '') + '.' +
+                        (top.className || '').toString().slice(0, 30)) : null,
+          isSelf: top === a || (top && a.contains(top)) || (top && top.contains(a)),
+          inModal: m ? m.id : null,
+          modalShown: m ? !!(m.offsetWidth || m.offsetHeight) : null,
+          backdrops: document.querySelectorAll('.modal-backdrop').length,
+          scrollableParent: sp};
+}
+"""
+
+
 def fetch_anexos(page, pres, causa_id):
     """Enumerate the causa's anexo folders and download the ones that match. -> (inventory, tally).
 
@@ -311,8 +367,39 @@ def fetch_anexos(page, pres, causa_id):
                 pres.travel_to(page, f"#modalDetalleCivil a[onclick^='{fn}(']")
             except Exception:
                 pass
+            # ⚠️ THE CONTROL MAY BE ON A TAB WE ARE NOT LOOKING AT. `anexoSolicitudCivilEscrit`
+            # ("Escrit" = ESCRITO) lives in #escritosCiv, the Escritos tab-pane, which is
+            # display:none until someone selects it — so its anchor is 0x0 at (0,0) and
+            # human_click refuses it, correctly and uninformatively. A person clicks the tab
+            # first; so do we. Measured 2026-08-19 on C-10359, in both prior runs.
+            # ⚠️ There is a whole tab here we never activate, and it very likely also holds
+            # `docCertificadoEscrito.php` — the fourth endpoint from the human recording that
+            # appears nowhere in this codebase.
+            pane = C.hidden_tab_pane(page, f"#modalDetalleCivil a[onclick^='{fn}(']")
+            if pane:
+                note(f"      {fn}[{k}] is on the '{pane}' tab — selecting it first")
+                if not C.show_tab(page, pane):
+                    note(f"      [warn] could not bring up the '{pane}' tab; skipping {fn}[{k}]")
+                    continue
+                anchors = C.anexo_anchors(page, fn)   # the pane re-rendered; re-read them
+                if k >= len(anchors):
+                    continue
+                loc = anchors[k]
             if not C.human_click(page, loc, timeout=8000):
+                # ⚠️ MAKE THE REFUSAL DESCRIBE ITSELF. "click refused" is a LABEL, not an
+                # observation — the same mistake this project made for weeks with "modal did not
+                # open". human_click refuses a target it cannot reach, and there are several
+                # possible reasons: scrolled out of view, zero-sized, display:none, inside a
+                # scrollable pane, or genuinely covered. Each has a different fix and they are
+                # indistinguishable from outside. Ask the page which one it is.
+                try:
+                    geo = page.evaluate(ANEXO_GEO_JS,
+                                        f"#modalDetalleCivil a[onclick^='{fn}(']")
+                except Exception as e:
+                    geo = f"(probe failed: {str(e)[:50]})"
                 note(f"      [warn] anexo folder {fn}[{k}]: click refused")
+                note(f"        [geo] {geo}")
+                C.shot(page, f"anexo-refused-{causa_id}-{fn}", {"geo": str(geo)[:500]})
                 continue
             out["folders"] += 1
             # ⚠️⚠️ THE FOLDER MODAL IS ONE GLOBAL ELEMENT, REUSED BY EVERY CAUSA — so "the table
