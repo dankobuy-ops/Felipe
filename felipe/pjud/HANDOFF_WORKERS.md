@@ -1884,6 +1884,78 @@ session**, not about the endpoint. That is a testable difference and worker B is
 The guard did exactly what it was built to do on 2026-08-17: cost it one causa, spend no recovery,
 and say plainly that the site was never asked. One in 983.
 
+## ★ AUGUST BROUGHT UP TO TODAY — and the catch-up is TWO passes, not one
+
+Operator: *"do the same with august and june. update the causa of august until today."*
+
+June was a doc pass like July. **August was not**, and the difference is worth stating because it
+will recur every time a window is brought current:
+
+> `--fill --docs-c2` **cannot discover**. It re-opens causas the database already holds. The whole
+> corpus stopped at **07/08/2026**, because that is where sweeping stopped — so August needed a
+> **sweep first** (`Iniciar_Sweep_Corte.ps1`, worker A with the new `--corte`), then the doc pass.
+
+⚠️ **That is two opens per new causa**, and a causa open is the scarcest thing this project spends.
+It is the price of worker A being metadata-only by design — redefined 2026-08-14 precisely to stay
+clear of the document endpoint. Fine for a short catch-up; if whole-corte catch-ups become
+routine, the answer is a sweep that takes documents in the same open, not running this twice.
+
+### `worker_a --corte`
+
+Filters the tribunal list to one Corte de Apelaciones, read from Neon.
+
+⚠️ **Applied AFTER the `len(tl) < 50` national-list check, never before.** That check is how the
+worker knows it is looking at the national list rather than a wedged form's leftovers. Narrowing
+to 28 courts first would abort every run — or worse, pass a filtered list off as the whole country.
+Validate that all 230 are there, then take the slice. `--start`/`--end` then index the *filtered*
+list, which is what a sharded corte sweep wants, and the worker says so.
+
+### ⚠️ A slot's `state.json` belongs to the WINDOW that built it
+
+All four sweep workers refused to start: each slot still held July's state, and *completion is
+recorded per tribunal with no window attached*, so resuming would mark courts "done" that were
+never searched for August's dates — silent under-collection reported as a clean finish. worker A
+catches this at startup and is right to.
+
+⇒ The launcher now reads each slot's `meta.desde`/`meta.hasta` **before opening any browser**,
+names every mismatch and gives the remedy. Otherwise four workers launch, die into stderr, and
+leave four empty stdout logs — which looks like four workers still starting up.
+
+⚠️ **Archive, never delete.** A state file records which causas were GATED; deleting it buys
+those opens all over again on the next pass.
+
+### ⚠️ And the sweep must carry the corpus's own procedimiento filter
+
+`worker_a.py --only-proc` defaults to **empty** (store every procedimiento), while
+`Iniciar_Worker_A.ps1` and `ingest_worker_a` both use `obligaci.*dar`. A sweep launched without it
+would quietly widen the corpus's definition for one window only, and nothing downstream would
+flag the inconsistency. The launcher carries it as a parameter with that default.
+
+### ★ What August actually holds — 25 bank causas in 19 days
+
+28 courts, 4 workers, `range complete` on all four, **0 blocks / 0 recoveries / 0 swaps**.
+
+| | July (31 days) | August (19 days) |
+|---|---:|---:|
+| registros per court | ~500 | **53–58** |
+| bank causas per court | 40–100 | **0–2** |
+| bank causas, whole corte | 983 | **25** |
+| per day | ~32 | **~1.3** |
+
+Date spread of the 25: `01/08:1 · 03/08:6 · 04/08:8 · 05/08:3 · 06/08:2 · 07/08:1 · 13/08:1 ·
+18/08:2 · 19/08:1` — and **nothing at all on 08–12 or 14–17 August**.
+
+⚠️ **I reached for "publication lag" and it does not fit.** A lag leaves the *most recent* days
+empty, and 18–19 August have causas while 08–12 have none. The honest position is that the drop
+is measured and unexplained. Candidates worth one cheap test each before believing any of them:
+a genuine seasonal drop in filings; a bank-side pause; or something about how the OJV dates a
+causa that makes `f_ingreso` not the day it became listable.
+
+⇒ **Re-sweep August in a fortnight and compare.** If the empty stretches fill in, it is a listing
+delay after all and the lesson is that a window is not final until it has been swept twice. If
+they stay empty, the filings really were not there. Either way it is one search per court to find
+out, and searches are the cheap act.
+
 ## The Santiago work-list
 
 `C.A. de Santiago` — **28 tribunales, 1,281 causas, 1,253 owing cuaderno-2 documents**, spanning

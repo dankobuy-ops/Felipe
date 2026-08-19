@@ -2101,6 +2101,52 @@ a zero-byte log looks exactly like a process that has not printed yet.
 
 (PJUD, 2026-08-19.)
 
+### ⚠️ "Bring it up to date" is two jobs, and the completion worker cannot do the first
+
+A corpus stops wherever collection stopped, not at today. So *bring last month up to date* means
+**discover, then complete** — and the completion worker, which picks its work-list out of the
+database, is structurally incapable of the first half. Pointed at a window nothing was ever swept
+for, it does not fail: it finds an empty work-list, issues no requests at all, and reports
+something that reads exactly like a refusal.
+
+- **Sequence it explicitly: sweep, ingest, then complete.** Each stage's input is the previous
+  stage's *banked* output, not its run report.
+- **It costs two opens per new record** when the discovery worker deliberately does not collect
+  the expensive part. That is a fine price for a short catch-up and a bad one as a standing
+  pattern — if it becomes routine, make discovery take the expensive part in the same visit
+  rather than running the whole pipeline twice.
+- **Never run the two fleets at once.** They share the address, and aggregate rate is the wall.
+  The launcher should refuse, not trust the operator to remember.
+
+### ⚠️ Resumable state belongs to the QUERY that built it
+
+The discovery worker records completion **per container, with no window attached** — so a state
+file from last month's window, resumed against this month's, marks containers "done" that were
+never searched for these dates. Silent under-collection, reported as a clean finish.
+
+The worker refused at startup, which is right. The failure worth recording is what that looked
+like from outside: **all four workers launched, died into stderr, and left four empty stdout
+logs** — indistinguishable from four workers still starting up. The check belongs in the launcher
+too, *before any browser opens*, naming every mismatch and the remedy.
+
+⚠️ **Archive such a file, never delete it.** It records which records were REJECTED BY A FILTER —
+and that is exactly the knowledge that stops you buying those opens again. Deleting it looks like
+tidying and is a bill.
+
+### ⚠️ A tool's default and its launcher's default are two different defaults
+
+The sweep worker's `--only-proc` defaults to *empty* — store everything. Every launcher and the
+ingest use a real filter. A new launcher that simply omitted the flag would have widened the
+corpus's own definition for one window only, and nothing downstream would ever have flagged the
+inconsistency: the rows are valid, they are just answering a different question from their
+neighbours.
+
+⇒ **When you write a second launcher for an existing tool, diff its arguments against the first
+one** and carry every semantic flag across deliberately. The dangerous ones are those whose
+default is *permissive*, because omitting them produces more data rather than an error.
+
+(PJUD, 2026-08-19.)
+
 ---
 
 ## Quick checklist for a new scraper
