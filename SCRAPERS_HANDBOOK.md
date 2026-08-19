@@ -2133,6 +2133,25 @@ too, *before any browser opens*, naming every mismatch and the remedy.
 and that is exactly the knowledge that stops you buying those opens again. Deleting it looks like
 tidying and is a bill.
 
+### ⚠️ A multi-statement ingest has an inconsistent MIDDLE
+
+An ingest that writes several tables and then repairs one of them is not atomic from the outside.
+Sampling the database while it runs showed 21 records carrying the value a *superseded* row had
+set, and it looked exactly like a regression — the newer verdict overwritten by an older harvest.
+It was not. The bulk upsert writes whatever the newest *unfiltered* record says, and a targeted
+UPDATE that restores the filter's verdict runs afterwards, in the same job.
+
+- **Check the end state, not the middle.** A job that prints a final tally prints it for a reason;
+  read that line rather than querying underneath a run in progress.
+- **Know which of your writes is the authority for each column**, and in what order they fire. Two
+  writers to one column is fine when the order is deliberate and documented, and indistinguishable
+  from a bug when it is not.
+- ⇒ And this is why the filter's verdict must be *stored*: the next pass builds its work-list from
+  that column, so a retry offered ONE record instead of twenty-two. Recording why something was
+  rejected is not bookkeeping — it is what keeps the expensive act from being spent again.
+
+(PJUD, 2026-08-19.)
+
 ### ⚠️ A tool's default and its launcher's default are two different defaults
 
 The sweep worker's `--only-proc` defaults to *empty* — store everything. Every launcher and the

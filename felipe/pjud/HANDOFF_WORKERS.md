@@ -1956,6 +1956,48 @@ delay after all and the lesson is that a window is not final until it has been s
 they stay empty, the filings really were not there. Either way it is one search per court to find
 out, and searches are the cheap act.
 
+## ★★★ SANTIAGO COMPLETE — 1,270 causas, 4,368 documents, ONE failure in 1,293 opens
+
+| pass | opens | work-list | refused | documents | wall clock |
+|---|---:|---:|---:|---:|---:|
+| July docs, 6 workers | 983 | 983 | 1 | 3,370 | 92 min |
+| June docs, 6 workers | 263 | 263 | 0 | 884 | 28 min |
+| August sweep, 4 workers | 25 | — | 0 blocks | — | 21 min |
+| August docs, 4 workers | 22 | 22 | 0 | 105 | 6 min |
+
+Every doc pass hit its work-list **exactly, to the causa**, and every shard ended `finished` —
+having exhausted its list, not on our clock and not on a refusal.
+
+| | causas | documents |
+|---|---:|---:|
+| June | 265 | 891 |
+| July | 983 | 3,372 |
+| August (to 19/08) | 22 | 105 |
+| **total** | **1,270** | **4,368** |
+
+**Every cuaderno-2 row is accounted for.** 4,451 rows exist for the corte; 4,368 carry a document;
+the remaining 83 belong to **21 causas, all of them `8 Terminada`** — excluded by the etapa gate by
+design, their historia rows left over from harvests that predate the gate. Non-gated gaps: **zero**.
+Documents without a direct-download link: **zero**.
+
+★ **The one failure was the lost click, and it retried clean.** `277-C-9207-2026` produced
+`[net] 0 responses since the click, causaCivil.php=0` in July's shard 1; re-offered as a
+one-causa work-list it opened in **ten seconds** and gave up both its documents. That is the
+2026-08-17 guard paying out end to end: cost one causa, spend no recovery, say plainly that the
+site was never asked — and stay in the work-list so the next pass collects it.
+
+⚠️ **The gate is what makes the retry cheap.** `fill_targets` gates on the STORED etapa, so the
+re-run offered **1 causa, not 22** — the 21 Terminada were filtered out before a browser opened.
+Without `ingest_worker_h`'s `regated` UPDATE recording why each was rejected, that retry would
+have bought 21 opens to rediscover what we already knew.
+
+⚠️ **And read the table AFTER the ingest finishes, not during it.** I checked `causas.etapa`
+mid-run and found 21 causas reading `1 Notificación` where they had been `8 Terminada`, and
+called it a regression. It was not: the Causas upsert writes the newest non-gated record's etapa,
+and the `regated` UPDATE — which restores the gate verdict — runs *after* it, in the same job
+(`updated etapa on 674 gate-rejected causas`). A multi-statement ingest has an inconsistent
+middle; sampling it there tells you nothing about the end.
+
 ## The Santiago work-list
 
 `C.A. de Santiago` — **28 tribunales, 1,281 causas, 1,253 owing cuaderno-2 documents**, spanning
