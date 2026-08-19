@@ -1816,6 +1816,15 @@ ingest loop never looked at that key.
 caught by the same rule: **count it where it is meant to LAND.** Every counter on the way was
 healthy. `NEON NOW: ... 19 cuaderno-2 documents` is the only line that was ever going to say so.
 
+⚠️ **AND NOW THE INGEST IS ITSELF A LONG RUN — DETACH IT.** With ~3.5 documents per causa the
+Drive upload is thousands of files, not the dozens worker A's ebook pass produced. Run through the
+agent harness it was **killed at 2,406 uploads in flight**, after which the PDFs were partly in
+Drive and the `documentos` rows were not written at all, because the upsert comes after the
+upload. Launch it with `Start-Process` like any other long run and judge it by its log.
+
+Re-running is cheap and idempotent: `upload_pdfs_parallel` consults the Drive cache first and
+skips every name already in the folder, so a killed ingest resumes rather than re-uploading.
+
 ## ⚠️ PowerShell splits an -ArgumentList element on its spaces
 
 `"--corte", "C.A. de Santiago"` reaches the process as **three** arguments and argparse dies with

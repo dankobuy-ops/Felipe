@@ -32,6 +32,13 @@
 #   Rate:    python scraper\rate_watch.py
 #   Stop:    Get-Content <data>\worker_h\docs.pids | ForEach-Object { Stop-Process -Id $_ }
 #   Bank it: python scraper\ingest_worker_h.py      (safe at any time, including mid-run)
+#
+# ⚠️ THE INGEST IS ITSELF A LONG RUN NOW — DETACH IT TOO. At ~3.5 documents per causa the Drive
+# upload is thousands of files, not the dozens worker A's ebook pass produced. One run was killed
+# with 2,406 uploads in flight, leaving the PDFs partly in Drive and the `documentos` rows not
+# written at all, because the upsert comes after the upload. Re-running is cheap and resumes:
+# upload_pdfs_parallel consults the Drive cache first and skips every name already there
+# (measured: "1036 already in Drive; uploading 1664 new").
 
 param(
     [int]    $Workers  = 6,
