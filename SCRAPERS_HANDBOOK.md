@@ -2023,6 +2023,34 @@ healthy, and each one was counting something real.
 
 ---
 
+### ⚠️ A measuring tool has exactly the coverage of its glob
+
+Six workers were pulling files at full tilt and the project's own rate meter printed
+`0.00/min` and `[ok] within the range this address has sustained cleanly`. It globbed one
+worker's log directory — written when there was only one worker — and had no pattern for the new
+kind of request at all. The launcher told the operator to use it.
+
+**A measuring tool that cannot see the work is worse than no measuring tool, because it answers
+the question with a reassurance.** An absent tool sends you looking; a blind one ends the enquiry.
+
+- **Grep for every producer before trusting a consumer.** Same rule as the duplicated detectors
+  and the unwired screenshots — and it lands hardest on measurement, because what fails is your
+  ability to know anything is failing.
+- ⚠️ **One line can be N events.** The new worker reported a whole record's files in a single log
+  line (`docs: 4 pdf`), so the count had to be SUMMED, not counted. Counting it would have
+  under-reported the rate by 3.5× — in the direction that reads as headroom.
+- **Report separate axes separately.** Two endpoints with different histories should not be
+  merged into one number, or you end up comparing a new rate against a ceiling measured for
+  something else and calling the result safe.
+
+⇒ And the estimate the tool corrected was out by **2.7×**: the projection multiplied a throughput
+figure measured on small pages by a per-record cost measured on large ones. *Measure it, do not
+derive it* — one command answered what an afternoon of arithmetic got wrong.
+
+(PJUD, 2026-08-19.)
+
+---
+
 ### ⚠️ Watch the channel where failure actually speaks
 
 A worker was launched detached and a watch armed on its stdout log, filtering for progress lines

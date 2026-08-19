@@ -1746,11 +1746,41 @@ worker A to metadata-only existed precisely so it would stay clear of that endpo
 cannot: the documents are the job.** Expect refusals to be the first thing that appears, and read
 them as a rate verdict on the address rather than as a broken worker.
 
-⚠️ **Note which axis is actually gentler.** At six workers this fleet opens ~14 causas/min, i.e.
-~28 `causaCivil.php` POST/min — *below* the 32/min of the proven six-worker metadata fill. The new
-variable is purely the ~49 document GETs/min on top. Whether `docuN`/`docuS` draws on the same
-budget as `causaCivil` is **unknown and is what this run measures**. Judge it with `rate_watch.py`
-and the refusal counter, and if it is too much **take workers off** — never speed them up.
+### ★ What six workers actually produce — measured, and my estimate was 2.7× too high
+
+I projected ~77 requests/min for six workers and wrote that into the launcher as a danger. The
+first five minutes of steady state say otherwise:
+
+| axis | measured | the ceiling it should be read against |
+|---|---:|---|
+| `causaCivil.php` (searches + opens) | **9.0/min** | ~56/min killed four workers in 5 min; ~23/min ran the hour |
+| documents (`docuN`/`docuS`) | **19.6/min** | **none exists** — this run is the measurement |
+| everything | **28.6/min** | the proven six-worker metadata fill sat at ~32/min |
+| trouble events, all six shards | **0** | |
+
+**~7.8 causa opens/min, not the 14 I assumed.** Santiago's courts are large — 500+ registros, 21 s
+searches — and `--fill` must paginate to reach its rows, so the search cost per causa is far higher
+than in the small northern courts the 16 opens/min figure came from. The fleet is *gentler* than
+the metadata fill it was modelled on, on every axis.
+
+⚠️ **I derived the rate from a throughput figure measured somewhere else.** 16 opens/min came from
+courts with ~100 rows; Santiago's have 500. The handbook already says *measure it, do not derive
+it* — and `rate_watch.py` answered in one command what the estimate got wrong by a factor of 2.7.
+
+⚠️ **Report the two axes separately.** They are different endpoints, and the only measured
+ceilings belong to `causaCivil.php`. Merging them into one number silently compares a document
+rate against a modal-rate ceiling, and there is no evidence for that comparison either way.
+
+⚠️ **`rate_watch.py` COULD NOT SEE THIS FLEET.** It globbed `worker_a*/sweep.log` only, and had no
+pattern for documents — so with six workers pulling PDFs at full tilt it printed `0.00/min` and
+`[ok] within the range this IP has sustained cleanly`. **A rate tool that cannot see the fleet is
+worse than no rate tool, because it answers the question with a reassurance** — and the launcher
+tells the operator to use it. Fixed: it reads worker H's shard logs too, and `docs c2: N pdf` is
+**summed, not counted** (counting the line would have under-reported by 3.5×, in the direction
+that reads as headroom). Third time in three days that a capability existed in one worker and not
+another; grep for every producer before trusting a consumer.
+
+If it ever is too much, **take workers off** — never speed them up.
 
 ## Design decisions worth keeping
 
