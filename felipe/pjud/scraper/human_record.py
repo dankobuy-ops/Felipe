@@ -51,24 +51,71 @@ OUT = HERE.parent / "data" / "human"
 INJECT = r"""
 () => {
   if (window.__hr) return 'already';
+  // ⚠️ COUNTS PER SECOND CANNOT TELL A HUMAN FROM A METRONOME. A generator firing every 60 ms
+  // and a person both read as "16/s"; the difference is entirely in the DISTRIBUTION of the gaps,
+  // and until 2026-08-19 this recorder threw that away. `ev` keeps one [kind, t] per event so
+  // every channel's inter-arrival distribution can be recovered afterwards. The Python side
+  // drains every second, so nothing accumulates in the page and full rate is affordable.
+  const K = ['mousemove','mouseover','mouseout','wheel','mousedown','mouseup','keydown','keyup',
+             'click','scroll','focusin','focusout','contextmenu','dblclick','select','resize',
+             'visibilitychange','blur','selectionchange'];
   const S = window.__hr = {
     c: {mousemove:0, mouseover:0, mouseout:0, wheel:0, mousedown:0, mouseup:0,
-        keydown:0, keyup:0, click:0, scroll:0, focusin:0},
-    path: [], keys: [], sel: [], marks: [], t0: Date.now()
+        keydown:0, keyup:0, click:0, scroll:0, focusin:0, focusout:0, contextmenu:0,
+        dblclick:0, select:0, resize:0, visibilitychange:0, blur:0, selectionchange:0},
+    K: K, path: [], keys: [], sel: [], marks: [], ev: [], holds: [], wheels: [],
+    down: null, t0: Date.now()
   };
-  const bump = (n) => { S.c[n] = (S.c[n]||0) + 1; };
-  for (const n of ['mouseover','mouseout','mousedown','mouseup','click','focusin'])
+  const bump = (n) => {
+    S.c[n] = (S.c[n]||0) + 1;
+    const i = K.indexOf(n);
+    if (i >= 0) { S.ev.push([i, Date.now() - S.t0]); if (S.ev.length > 40000) S.ev.splice(0, 10000); }
+  };
+  for (const n of ['mouseover','mouseout','click','focusin','focusout','contextmenu','dblclick'])
     document.addEventListener(n, () => bump(n), true);
   for (const n of ['wheel','scroll'])
     document.addEventListener(n, () => bump(n), {capture:true, passive:true});
+  // ⚠️ THE HOLD IS A SIGNATURE. mousedown and mouseup were counted and their SEPARATION thrown
+  // away -- yet how long a button stays down is one of the few things a synthetic click cannot
+  // help but get wrong, because nothing in the code decides it. A person is 60-120 ms and varies.
+  document.addEventListener('mousedown', (e) => {
+    bump('mousedown');
+    S.down = {t: Date.now(), id: (e.target && e.target.id) || '',
+              tag: (e.target && e.target.tagName) || '', x: e.clientX, y: e.clientY};
+  }, true);
+  document.addEventListener('mouseup', (e) => {
+    bump('mouseup');
+    if (S.down) {
+      S.holds.push([S.down.t - S.t0, Date.now() - S.down.t, S.down.id || S.down.tag,
+                    Math.round(Math.hypot(e.clientX - S.down.x, e.clientY - S.down.y))]);
+      if (S.holds.length > 4000) S.holds.splice(0, 1000);
+      S.down = null;
+    }
+  }, true);
+  // ⚠️ A WHEEL NOTCH HAS A SHAPE. We emitted a count and compared it to a human's count; the
+  // delta magnitudes, their sign changes and the gaps between them were never looked at, and a
+  // fixed `wheel(0, 300)` is flat where a hand is not. deltaMode matters too (0=px, 1=line).
+  document.addEventListener('wheel', (e) => {
+    S.wheels.push([Date.now() - S.t0, Math.round(e.deltaX), Math.round(e.deltaY), e.deltaMode]);
+    if (S.wheels.length > 4000) S.wheels.splice(0, 1000);
+  }, {capture:true, passive:true});
+  for (const n of ['resize'])
+    window.addEventListener(n, () => bump(n), true);
+  document.addEventListener('visibilitychange', () => bump('visibilitychange'), true);
+  document.addEventListener('selectionchange', () => bump('selectionchange'), true);
   document.addEventListener('mousemove', (e) => {
     bump('mousemove');
     // Sampled, not every event: enough to draw the line, bounded so a long session cannot grow
     // without limit. Timestamps are what matter -- the shape is in the spacing.
+    // ⚠️ SAMPLE GATE LOWERED 40 ms -> 16 ms ON 2026-08-19 (one per frame, which is what the
+    // browser coalesces to anyway). At 40 ms the VELOCITY PROFILE was unrecoverable, and that
+    // profile is the point: a human move is ballistic then corrective -- fast out, overshoot,
+    // settle -- where an eased arc is smooth all the way. Recordings made before this date are
+    // coarser; do not compare their curvature against a new one without saying so.
     const p = S.path;
-    if (!p.length || Date.now() - p[p.length-1][2] > 40) {
+    if (!p.length || Date.now() - p[p.length-1][2] > 16) {
       p.push([Math.round(e.clientX), Math.round(e.clientY), Date.now()]);
-      if (p.length > 3000) p.splice(0, 1000);
+      if (p.length > 12000) p.splice(0, 4000);
     }
   }, true);
   document.addEventListener('keydown', (e) => {
@@ -97,9 +144,12 @@ READ = r"""
   if (!S) return null;
   const c = Object.assign({}, S.c);
   for (const k in S.c) S.c[k] = 0;              // deltas: read-and-clear
-  const path = S.path.splice(0, S.path.length);
-  const keys = S.keys.splice(0, S.keys.length);
-  const sel  = S.sel.splice(0, S.sel.length);
+  const path  = S.path.splice(0, S.path.length);
+  const keys  = S.keys.splice(0, S.keys.length);
+  const sel   = S.sel.splice(0, S.sel.length);
+  const ev    = S.ev.splice(0, S.ev.length);
+  const holds = S.holds.splice(0, S.holds.length);
+  const wheels= S.wheels.splice(0, S.wheels.length);
   const m = document.querySelector('#modalDetalleCivil');
   const vis = !!m && !!(m.offsetWidth || m.offsetHeight || m.getClientRects().length);
   let rol = '';
@@ -112,7 +162,8 @@ READ = r"""
   let cuad = '';
   const cs = document.querySelector('#selCuaderno, select[id*=uaderno], select[name*=uaderno]');
   if (cs) cuad = (cs.options[cs.selectedIndex] || {}).text || '';
-  return {c, path, keys, sel, modal: vis, rol, cuad, url: location.href.slice(0, 140)};
+  return {c, path, keys, sel, ev, holds, wheels, K: S.K,
+          modal: vis, rol, cuad, url: location.href.slice(0, 140)};
 }
 """
 
@@ -256,7 +307,14 @@ def main():
                     print(f"  ★ CUADERNO now {st['cuad']!r} on {st['rol']}")
 
                 if tot:
-                    rec.w("input", **c, path=st["path"][:60], nkeys=len(st["keys"]),
+                    # ⚠️ NO SILENT TRUNCATION. This wrote `path[:60]` and dropped the rest without
+                    # a word — at ~62 samples/s that is most of a second's pointer geometry gone,
+                    # in the one file the whole fidelity programme is calibrated from. If a cap is
+                    # ever needed again, record that it was hit.
+                    rec.w("input", **c, path=st["path"], npath=len(st["path"]),
+                          ev=st.get("ev", []), holds=st.get("holds", []),
+                          wheels=st.get("wheels", []), K=st.get("K"),
+                          nkeys=len(st["keys"]), keys=st["keys"],
                           modal=st["modal"], rol=st["rol"])
                     parts = " ".join(f"{k}={v}" for k, v in c.items() if v)
                     where = f"  [{st['rol']}]" if st["rol"] else ""
