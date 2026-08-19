@@ -80,6 +80,29 @@ if ($alive.Count -gt 0) {
     throw "$($alive.Count) worker process(es) already running (PID $($alive.ProcessId -join ', ')). Two fleets on one address is the one configuration measured to kill both — stop them first."
 }
 
+# ⚠️ A SLOT'S state.json BELONGS TO THE WINDOW THAT BUILT IT. Completion is recorded per tribunal
+# with NO window attached, so resuming a July state against an August window would mark courts
+# "done" that were never searched for these dates — silent under-collection, and the run would
+# report a clean finish. worker_a.py refuses this at startup, which is correct; the point of
+# checking here is that otherwise every worker launches, dies into stderr, and the operator sees
+# four empty logs. Say it once, before opening any browser, and name the remedy.
+$stale = @()
+for ($i = 1; $i -le $Workers; $i++) {
+    $sf = Join-Path $PSScriptRoot "data\worker_a$i\state.json"
+    if (-not (Test-Path $sf)) { continue }
+    try {
+        $meta = (Get-Content $sf -Raw | ConvertFrom-Json).meta
+        if ($meta.desde -ne $Desde -or $meta.hasta -ne $Hasta) {
+            $stale += "  slot ${i}: state holds $($meta.desde)..$($meta.hasta), you asked for $Desde..$Hasta"
+        }
+    } catch { $stale += "  slot ${i}: state.json unreadable — $($_.Exception.Message)" }
+}
+if ($stale.Count -gt 0) {
+    Write-Host "state from another window is in the way:"
+    $stale | ForEach-Object { Write-Host $_ }
+    throw "Archive them first (rename, do not delete -- a state file records which causas were GATED, and deleting it buys those opens again): Get-ChildItem data\worker_a[1-9]\state.json | Rename-Item -NewName { 'state-old-' + (Get-Date -Format yyyyMMdd-HHmmss) + '.json' }"
+}
+
 # ⚠️ --start/--end index the FILTERED list once --corte is given, so the slices are over this
 # corte's courts, not the country's. Disjoint by construction.
 $n = [int]$p[0]
