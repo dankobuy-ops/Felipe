@@ -27,6 +27,11 @@ param(
     [int]    $Workers  = 4,
     [double] $Minutes  = 180,
     [int]    $BasePort = 9800,
+    # ⚠️ MATCH THE FILTER THE CORPUS WAS BUILT WITH. worker_a.py's own default is EMPTY (store
+    # every procedimiento), while Iniciar_Worker_A.ps1 and ingest_worker_a both use
+    # 'obligaci.*dar' — so a sweep launched without this would quietly widen the corpus's
+    # definition for one window only, and nothing downstream would flag the inconsistency.
+    [string] $OnlyProc = "obligaci.*dar",
     [switch] $DryList
 )
 
@@ -95,6 +100,7 @@ for ($i = 1; $i -le $Workers; $i++) {
         "--start", $start, "--end", $end,
         "--desde", $Desde, "--hasta", $Hasta,
         "--slot", $i,
+        "--only-proc", "`"$OnlyProc`"",
         "--max-minutes", $Minutes,
         "--shots", "`"$(Join-Path $data 'shots')`""
     )
