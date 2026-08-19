@@ -440,9 +440,26 @@ def build_form_mouse(page, settler, desde, hasta):
     return lst
 
 
-def fill_targets(desde, hasta, limit=0):
-    """Causas we ALREADY hold that still have no cuaderno-2 rows. (todo, n) where todo is
+def fill_targets(desde, hasta, limit=0, corte="", mode="cuaderno2"):
+    """Causas we ALREADY hold that still owe us something. (todo, n) where todo is
     {tribunal_id: {rol: causa_id}}.
+
+    Two modes, because "what is missing" is not one question:
+
+      cuaderno2   causas with NO cuaderno-2 rows at all — the metadata backfill (the original)
+      docs-c2     causas that HAVE a cuaderno 2 but no DOCUMENTO for any of its rows
+
+    `corte` restricts the work-list to one Corte de Apelaciones by name (e.g. 'C.A. de Santiago').
+    ⚠️ It matches `tribunales.corte` EXACTLY, and that column is populated from the site's own
+    spelling — 25 tribunales carry an empty corte and would silently vanish from any filtered
+    work-list. The caller prints the count it got; a count of zero means the name is wrong, not
+    that the work is done.
+
+    ⚠️ THE DATE WINDOW IS NOT OPTIONAL, even in fill. A fill run still finds its causa by SEARCHING
+    the tribunal over a date range and clicking the row — so a causa whose f_ingreso falls outside
+    [desde, hasta] can never be reached, however much it owes. And the OJV refuses a range longer
+    than one month. Filling a corte that spans June to August is therefore three dispatches, not
+    one; the launcher does exactly that.
 
     ⚠️ SWEEPING TO FILL IS MOSTLY RE-DISCOVERY. There are ~4,500 banked causas for June+July and
     13 of them have a second cuaderno, so the work is "open this known list", not "find causas".
@@ -455,16 +472,32 @@ def fill_targets(desde, hasta, limit=0):
     import dbstore
     conn = psycopg2.connect(**dbstore._conn_kwargs())
     conn.autocommit = True
-    sql = """select c.causa_id, c.rol, c.tribunal_id, c.etapa
-             from causas c
-             where c.f_ingreso between %s and %s
-               and c.rol like 'C-%%'
-               and not exists (select 1 from cuadernos q
-                               where q.causa_id = c.causa_id and q.cuaderno ilike '2%%')
-             order by c.tribunal_id, c.rol"""
+    # ⚠️ THE TWO MODES ASK OPPOSITE QUESTIONS OF THE SAME TABLE. cuaderno2 wants causas with NO
+    # book-2 rows; docs-c2 wants causas WITH book-2 rows but no document behind them. Getting
+    # these the wrong way round produces a work-list that is silently empty, or one that re-opens
+    # everything — and both look like a healthy run.
+    if mode == "docs-c2":
+        want = """exists (select 1 from cuadernos q
+                          where q.causa_id = c.causa_id and q.id like '%%-c2-%%')
+                  and not exists (select 1 from documentos d join cuadernos q2
+                                    on d.cuaderno_id = q2.id
+                                  where q2.causa_id = c.causa_id and q2.id like '%%-c2-%%')"""
+    else:
+        want = """not exists (select 1 from cuadernos q
+                              where q.causa_id = c.causa_id and q.cuaderno ilike '2%%')"""
+    corte_join = "join tribunales t on t.id = c.tribunal_id" if corte else ""
+    corte_where = "and t.corte = %s" if corte else ""
+    sql = f"""select c.causa_id, c.rol, c.tribunal_id, c.etapa
+              from causas c {corte_join}
+              where c.f_ingreso between %s and %s
+                and c.rol like 'C-%%'
+                {corte_where}
+                and {want}
+              order by c.tribunal_id, c.rol"""
+    params = [desde, hasta] + ([corte] if corte else [])
     todo, n = {}, 0
     with conn.cursor() as k:
-        k.execute(sql, (desde, hasta))
+        k.execute(sql, params)
         for causa_id, rol, tid, etapa in k.fetchall():
             # The header gate, applied from what we already know — an open we can skip entirely
             # is worth more than a fast one. Causas banked before the gate existed have no etapa
@@ -487,6 +520,92 @@ def counters(page):
         return page.evaluate(human_record.READ)
     except Exception:
         return None
+
+
+DOCS_C2 = False              # --docs-c2: fetch the PDF behind every cuaderno-2 historia row
+DOC_READ = (1.4, 2.4)        # a person opens documents one at a time; this is the look at each
+PDFS = OUT / "pdfs"
+
+
+def fetch_row_docs(page, pres, causa_id, historia):
+    """Fetch the PDF behind every row of the historia CURRENTLY ON SCREEN.
+
+    Writes each file to data/worker_h/pdfs/ and stamps its historia row with `_doc_file`. The
+    ingest uploads that file and sets `doc_url`, and ingest_cdp's EXISTING Documentos builder
+    turns it into a row keyed `<causa>-c<n>-<folio>-<k>-doc`. ⚠️ No second row-builder here: that
+    id is derived in exactly one place and a private copy of the derivation is how book 2's
+    historia once came within an inch of being stamped `-c1-` over worker B's data.
+
+    ⚠️ READ THE FORMS FROM THE DOM, NOT FROM THE PARSED HISTORIA. `parse_historia` captures the
+    action and value but assumes the input is named `dtaDoc`, and the row documents are served by
+    two different endpoints (docuN.php 60%, docuS.php 40%, measured over 23,286 banked rows). One
+    evaluate costs nothing and gives the live truth including the real input name.
+
+    ⚠️ STOP AT THE FIRST NETWORK-LEVEL REFUSAL. "TypeError: Failed to fetch" carries no rejection
+    page and no challenge iframe, so `blocked()` sees nothing — on 2026-08-10 a worker went on
+    buying causa opens whose every document was being denied. If one is refused, the rest of this
+    causa's documents are being refused too; spending three more requests to confirm it is how a
+    session gets spent proving something we already know.
+    """
+    out = {"n": 0, "bytes": 0, "refused": 0, "not_pdf": 0, "missing": 0, "rows": len(historia)}
+    try:
+        forms = page.evaluate(
+            r"""()=>[...document.querySelectorAll('#historiaCiv table tbody tr')].map((tr,i)=>{
+                  const td=tr.querySelectorAll('td');
+                  const f=td[1] ? td[1].querySelector('form') : null;
+                  if(!f) return {i:i, none:true};
+                  const inp=f.querySelector("input[name='dtaDoc'], input");
+                  return {i:i, action:f.getAttribute('action')||'',
+                          param: inp ? (inp.name||'dtaDoc') : 'dtaDoc',
+                          val: inp ? inp.value : ''};})""")
+    except Exception as e:
+        note(f"      [warn] could not read the book-2 document forms: {str(e)[:60]}")
+        return out
+    # ⚠️ IF THE TWO READINGS DISAGREE, DO NOT GUESS. The stamp back onto the historia is BY INDEX,
+    # so a table that re-rendered between parse_historia and this read would attach every document
+    # to the wrong trámite — silently, and in a column nobody re-checks. A mismatch is rare and
+    # cheap to skip; a mis-filed document is permanent.
+    if len(forms) != len(historia):
+        note(f"      [warn] historia has {len(historia)} rows but the DOM shows {len(forms)} — "
+             f"not fetching documents for this causa")
+        return out
+    PDFS.mkdir(parents=True, exist_ok=True)
+    for k, f in enumerate(forms):
+        if f.get("none") or not f.get("val"):
+            out["missing"] += 1
+            continue
+        if out["n"] or out["not_pdf"]:
+            read(pres, page, DOC_READ, "#modalDetalleCivil")   # the look between two documents
+        d = C.fetch_doc_detail(page, f["action"], f["val"], f.get("param") or "dtaDoc")
+        if d.get("refused"):
+            out["refused"] += 1
+            note(f"      [!] document {k + 1}/{len(forms)} REFUSED at the network layer "
+                 f"({d.get('why', '')[:50]}) — abandoning this causa's documents")
+            C.shot(page, f"doc-refused-{causa_id}", {"row": k, "detail": d.get("why", "")})
+            break
+        if d.get("bytes"):
+            fn = PDFS / f"{causa_id}__c2-{k:02d}.pdf"
+            fn.write_bytes(d["body"])
+            historia[k]["_doc_file"] = fn.name
+            historia[k]["_doc_bytes"] = d["bytes"]
+            out["n"] += 1
+            out["bytes"] += d["bytes"]
+        elif d.get("not_pdf"):
+            out["not_pdf"] += 1
+            # An answer, not a failure — unless it is the anti-bot interstitial, which is one.
+            note(f"      [warn] document {k + 1}: {d.get('status')} {d.get('ct')} "
+                 f"{d.get('n')} B is not a pdf ({d.get('why')})")
+            if d.get("why") == "apm":
+                out["refused"] += 1
+                note("      that was F5's APM interstitial — abandoning this causa's documents")
+                break
+        else:
+            out["missing"] += 1
+    note(f"      docs c2: {out['n']} pdf ({out['bytes'] / 1024:.0f} KB)"
+         f"{f' · {out['refused']} REFUSED' if out['refused'] else ''}"
+         f"{f' · {out['not_pdf']} not-pdf' if out['not_pdf'] else ''}"
+         f"{f' · {out['missing']} without a form' if out['missing'] else ''}")
+    return out
 
 
 def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
@@ -682,6 +801,16 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
         else:
             note("      [warn] could not switch to cuaderno 2")
 
+        # ── the documents of book 2, while book 2 is the one on screen ──
+        # ⚠️ THIS IS THE ONLY MOMENT THEY CAN BE TAKEN. Each row's form carries a fresh HS256 JWT
+        # with `iat`/`exp` ONE HOUR APART (decoded from banked records, 2026-08-19), minted when
+        # the modal renders. So a document URL cannot be banked and fetched later, and it cannot
+        # be fetched while book 1 is displayed — the historia in the DOM is book 1's. Every
+        # document costs the causa open it is attached to, which is why this rides along with the
+        # book-2 switch instead of being its own worker.
+        if DOCS_C2 and rec.get("historia_c2"):
+            rec["docs_c2"] = fetch_row_docs(page, pres, causa_id, rec["historia_c2"])
+
     note(f"      {len(rec.get('litigantes') or [])} litigantes · "
          f"{len(rec.get('historia_c1') or [])} hist c1 · "
          f"{len(rec.get('historia_c2') or [])} hist c2 · "
@@ -720,6 +849,19 @@ def main():
                          "still have no cuaderno-2 rows, instead of sweeping to re-find them. "
                          "~4,500 of June+July are in that state and 13 are not. Paginates, "
                          "because a wanted rol can sit past row 100.")
+    ap.add_argument("--docs-c2", action="store_true",
+                    help="with --fill: fetch the PDF behind EVERY cuaderno-2 historia row, and "
+                         "select causas that have a cuaderno 2 but no document for it. "
+                         "⚠️ 3.5 documents per causa (measured over 23,286 banked rows), so this "
+                         "is ~2.7x the requests per open that a metadata fill makes. It also "
+                         "hits docuN.php/docuS.php, the endpoint worker A was redefined in "
+                         "August to stay clear of. Hold the AGGREGATE rate, not the worker count "
+                         "— see --speed and HANDOFF_WORKERS.md section 0.")
+    ap.add_argument("--corte", default="",
+                    help="with --fill: only causas whose tribunal belongs to this Corte de "
+                         "Apelaciones, spelled as the site spells it (e.g. 'C.A. de Santiago'). "
+                         "An exact match on tribunales.corte; a wrong name yields an EMPTY "
+                         "work-list, which is reported rather than run as if finished.")
     ap.add_argument("--shard", type=int, default=1,
                     help="which slice of the work this worker takes (1-based), used with --of")
     ap.add_argument("--of", type=int, default=1,
@@ -869,9 +1011,21 @@ def main():
             idle=lambda pg, s: C.human_idle(pg, s))
         note(f"STEP MODE: waiting for an instruction before each action "
              f"(run_id={C.STEPPER.run_id}, {a.step_timeout:.0f}s -> {a.step_on_timeout})")
-    global RAMP_EVERY, RAMP_STEP, SPEED
+    global RAMP_EVERY, RAMP_STEP, SPEED, DOCS_C2
     RAMP_EVERY, RAMP_STEP = a.ramp_every, a.ramp_step
     SPEED = a.speed
+    DOCS_C2 = a.docs_c2
+    if DOCS_C2:
+        if not a.fill:
+            raise SystemExit("--docs-c2 needs --fill: it opens a work-list of causas that already "
+                             "have a cuaderno 2, which a sweep cannot know")
+        # ⚠️ SAY WHAT THIS COSTS, BEFORE IT COSTS IT. The one law this project has measured is
+        # that the binding limit is the AGGREGATE REQUEST RATE PER ADDRESS (2026-08-17: four
+        # workers at ~56 POST/min were all dead by minute 5; the same four at ~23/min ran the
+        # hour and produced ten times the output). A metadata open is 2 requests. This is 2 + ~3.5.
+        note("DOCS MODE: every cuaderno-2 row's PDF as well — about 5.5 requests per causa "
+             "against 2 for a metadata fill. Watch the aggregate with rate_watch.py, and add "
+             "workers rather than speed if it is too slow.")
     if SPEED != 1.0:
         note(f"reading times fixed at x{SPEED} of the operator's"
              + ("  (TOP SPEED: only the site and the pointer are left)" if SPEED <= 0.01 else ""))
@@ -1014,10 +1168,21 @@ def main():
         if a.fill:
             def iso(v):
                 return "-".join(reversed(v.split("/")))
-            todo, n_todo = fill_targets(iso(a.desde), iso(a.hasta), a.max_causas)
+            mode = "docs-c2" if a.docs_c2 else "cuaderno2"
+            todo, n_todo = fill_targets(iso(a.desde), iso(a.hasta), a.max_causas,
+                                        corte=a.corte, mode=mode)
             targets = [t for t in lst if t["v"] in todo]
-            note(f"fill: {n_todo} causas need cuaderno 2, across {len(todo)} tribunales "
+            owed = ("the documents of cuaderno 2" if mode == "docs-c2" else "cuaderno 2")
+            note(f"fill[{mode}]: {n_todo} causas need {owed}"
+                 f"{f' in {a.corte}' if a.corte else ''}, across {len(todo)} tribunales "
                  f"({len(targets)} of them selectable in this form)")
+            # ⚠️ AN EMPTY WORK-LIST IS NOT A BLOCK, AND IT IS NOT NECESSARILY SUCCESS EITHER.
+            # `--fill` re-opens causas the database already holds; pointed at a window nothing was
+            # ever swept for it searches NOTHING and reports `nothing-searched`, which reads
+            # exactly like a refusal (measured 2026-08-18, the May dispatch). Say which it is.
+            if not n_todo:
+                note("  nothing owed for this window — either it is finished, or it was never "
+                     "swept (a --corte name that does not match spells itself the same way)")
             # ⚠️ SHARD THE COURT LIST, NOT THE DATE WINDOW. --start/--end are indices into the
             # NATIONAL list and mean nothing here: fill's targets are only the courts that still
             # owe us a cuaderno 2, and which those are changes after every ingest. Six workers

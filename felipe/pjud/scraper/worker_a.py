@@ -203,22 +203,9 @@ CIVIL = "3"
 net = []
 # ── pdf capture ──────────────────────────────────────────────────────────────
 
-def classify(body):
-    """'pdf' | 'apm' | 'other' — what did the document endpoint actually return?
-
-    ⚠️ "It is over 1000 bytes" is NOT a document. That test is why three files sat on disk named
-    *.pdf for a day while every one of them was really F5's <APM_DO_NOT_TOUCH> anti-bot
-    interstitial: ~8-14 KB of obfuscated JavaScript, comfortably over any size threshold, with a
-    perfectly ordinary 200 status. Check the magic bytes; nothing else is evidence.
-    """
-    if not body:
-        return "other"
-    if body[:4] == b"%PDF":
-        return "pdf"
-    head = body[:400].lstrip()
-    if b"APM_DO_NOT_TOUCH" in head or b"TSPD" in body[:2000]:
-        return "apm"
-    return "other"
+# ⚠️ classify() MOVED to cdp_scrape on 2026-08-19 so the document fetch there can use it too.
+# Re-exported under its old name: every call site in this file still says classify(body).
+classify = C.classify
 
 
 def needs_visit(st, causa_id, want_ebook):

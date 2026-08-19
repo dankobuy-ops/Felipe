@@ -36,12 +36,26 @@ for _s in (sys.stdout, sys.stderr):
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dbstore
+import gstore
 import ingest_cdp
 import run
-from ingest_worker_a import ORDER, as_causa
+from ingest_worker_a import as_causa
 
 HERE = Path(__file__).parent
 DATA = HERE.parent / "data" / "worker_h"
+PDFS = DATA / "pdfs"
+
+# ⚠️⚠️ NOT `ingest_worker_a.ORDER`. That list is ["Ruts","Causas","Litigantes","Cuadernos",
+# "Escritos"] — correct for worker A, which is metadata-only and produces no documents. Worker H
+# with --docs-c2 DOES, and importing A's list meant `ingest_cdp.build` built the Documentos rows
+# and this file silently dropped them: the smoke run uploaded 7 PDFs to Drive, printed "7 link(s)
+# returned", upserted five tables, and finished green with the document count UNCHANGED at 12.
+# Every counter looked healthy and the thing the run existed to collect was thrown away — the
+# same failure as worker H having no ingest at all, one layer further in.
+# ⇒ Take the canonical order from ingest_cdp, which owns the row builders, and subtract only
+# Tribunales (insert-if-absent below, because worker H sweeps Corte=Todos and knows no corte).
+# The order matters: Documentos references a Cuadernos row, so it must be written after it.
+ORDER = [t for t in ingest_cdp.ORDER if t != "Tribunales"]
 
 
 def load(paths):
@@ -95,11 +109,80 @@ def load(paths):
     return causas, dupes, gated, headerless, regated
 
 
+def upload_c2_docs(causas, dry=False, upload=True):
+    """Push the cuaderno-2 PDFs worker H fetched to Drive, and stamp `doc_url` on their rows.
+
+    ⚠️ NO NEW ROW-BUILDER. `ingest_cdp.build` ALREADY emits a Documentos row for any historia row
+    carrying `doc_url` — id `<causa>-c<n>-<folio>-<k>-doc`, keyed on the cuaderno row, not on the
+    causa. All this has to do is put the URL there. Writing a second builder is precisely how book
+    2's historia once came within an inch of being stamped `-c1-` over worker B's data.
+
+    ⚠️ CONSULT THE DRIVE CACHE BEFORE READING ANY BYTES. Worker A's ingest once loaded the entire
+    PDF corpus into memory on every hourly run only to discard it, because it read the files first
+    and asked Drive second. At ~3.5 documents per causa this corpus is several times that one.
+
+    ⚠️ NEVER PUBLISH A CHALLENGE PAGE AS A DOCUMENT. The bytes are re-checked for %PDF here even
+    though the worker already checked: a file on disk is not the file the worker verified if
+    anything else has since written to that name.
+
+    Drive traffic goes to Google, not to the OJV, so it costs nothing against the WAF and is
+    parallel. A causa whose documents are already in Drive is skipped without a read.
+    """
+    todo = [(cid, rec) for cid, rec in sorted(causas.items())
+            if any(h.get("_doc_file") for h in (rec.get("historia_c2") or []))]
+    if not todo:
+        return
+    n_files = sum(1 for _, r in todo for h in r["historia_c2"] if h.get("_doc_file"))
+    print(f"  {n_files} cuaderno-2 pdf(s) on disk across {len(todo)} causa(s)")
+    if dry or not upload:
+        print("  (not uploading: --dry or --no-upload)")
+        return
+    store = dbstore.Store()
+    cache = store._load_doc_cache()
+    items, known, missing, notpdf = [], 0, 0, 0
+    for cid, rec in todo:
+        for k, h in enumerate(rec["historia_c2"]):
+            fname = (h.get("_doc_file") or "").strip()
+            if not fname:
+                continue
+            obj = f"{cid}/c2-{k:02d}.pdf"
+            hit = cache.get(gstore._flatten_name(obj))
+            if hit:
+                h["doc_url"] = dbstore.direct_link(hit)
+                known += 1
+                continue
+            f = PDFS / fname
+            if not f.is_file():
+                missing += 1
+                continue
+            body = f.read_bytes()
+            if body[:4] != b"%PDF":
+                print(f"  [warn] {f.name} is not a pdf — skipped")
+                notpdf += 1
+                continue
+            items.append((obj, body))
+    print(f"  {known} already in Drive; uploading {len(items)} new"
+          + (f"; {missing} recorded but not on disk" if missing else "")
+          + (f"; {notpdf} not a pdf" if notpdf else "") + "...")
+    links = store.upload_pdfs_parallel(items) if items else {}
+    for cid, rec in todo:
+        for k, h in enumerate(rec["historia_c2"]):
+            url = links.get(f"{cid}/c2-{k:02d}.pdf")
+            if url:
+                h["doc_url"] = url
+    if items:
+        print(f"  {len(links)} link(s) returned")
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Ingest worker H's JSON records into Neon. Reuses worker A's row builders.")
     ap.add_argument("--file", default="", help="one file instead of every h-*.json")
     ap.add_argument("--dry", action="store_true", help="count and report, write nothing")
+    ap.add_argument("--no-upload", dest="upload_pdfs", action="store_false",
+                    help="skip pushing cuaderno-2 PDFs to Drive (leaves documentos untouched). "
+                         "The Drive traffic never touches the OJV, so there is no scrape cost to "
+                         "saving — this exists for a metadata-only re-ingest.")
     a = ap.parse_args()
 
     if a.file:
@@ -116,6 +199,8 @@ def main():
           f"{headerless} with no header)")
     with_c2 = sum(1 for r in causas.values() if r.get("historia_c2"))
     print(f"  of those, {with_c2} carry a cuaderno-2 historia")
+
+    upload_c2_docs(causas, dry=a.dry, upload=a.upload_pdfs)
 
     merged, tribs, ids = {}, {}, []
     for cid, rec in sorted(causas.items()):
@@ -212,7 +297,11 @@ def main():
         n2 = k.fetchone()[0]
         k.execute("select count(*) from causas")
         tot = k.fetchone()[0]
-    print(f"\nNEON NOW: {tot} causas, {n2} of them with a cuaderno-2 historia")
+        k.execute("""select count(*) from documentos d join cuadernos q on q.id = d.cuaderno_id
+                     where q.id like '%%-c2-%%'""")
+        nd = k.fetchone()[0]
+    print(f"\nNEON NOW: {tot} causas, {n2} of them with a cuaderno-2 historia, "
+          f"{nd} cuaderno-2 documents")
 
 
 if __name__ == "__main__":

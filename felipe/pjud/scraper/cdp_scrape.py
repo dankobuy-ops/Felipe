@@ -1120,32 +1120,89 @@ def download_doc(api, action, val, param="dtaDoc"):
 # In-page fetch: same URL, but issued BY the page, so it inherits the document's origin,
 # referer and cookie handling and lands inside Shape's instrumented XHR path instead of
 # beside it. Bytes come back base64 (chunked so a big ebook doesn't blow the argument stack).
+def classify(body):
+    """'pdf' | 'apm' | 'other' — what did the document endpoint actually return?
+
+    ⚠️ "It is over 1000 bytes" is NOT a document. That test is why three files sat on disk named
+    *.pdf for a day while every one of them was really F5's <APM_DO_NOT_TOUCH> anti-bot
+    interstitial: ~8-14 KB of obfuscated JavaScript, comfortably over any size threshold, with a
+    perfectly ordinary 200 status. Check the magic bytes; nothing else is evidence.
+
+    ⚠️ Lives HERE, not in worker_a, since 2026-08-19 — `fetch_doc_detail` needs it and a second
+    copy of a "what did we actually get" test is the exact shape of the duplicated rejection
+    matchers that went blind together. worker_a imports it from this module.
+    """
+    if not body:
+        return "other"
+    if body[:4] == b"%PDF":
+        return "pdf"
+    head = body[:400].lstrip()
+    if b"APM_DO_NOT_TOUCH" in head or b"TSPD" in body[:2000]:
+        return "apm"
+    return "other"
+
+
 _JS_FETCH_DOC = """
 async ([url, param, val]) => {
   const u = url + '?' + param + '=' + encodeURIComponent(val);
+  const t0 = performance.now();
   const r = await fetch(u, {credentials: 'include'});
-  if (!r.ok) return null;
   const bytes = new Uint8Array(await r.arrayBuffer());
   let s = '', CH = 0x8000;
   for (let i = 0; i < bytes.length; i += CH)
     s += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
-  return btoa(s);
+  return {status: r.status, ok: r.ok, ct: r.headers.get('content-type'), n: bytes.length,
+          ms: Math.round(performance.now() - t0), b64: btoa(s)};
 }
 """
 
 
-def download_doc_inpage(page, action, val, param="dtaDoc"):
-    """Same fetch as download_doc but performed BY THE PAGE. -> PDF bytes or None."""
+def fetch_doc_detail(page, action, val, param="dtaDoc"):
+    """The in-page document fetch, reporting WHY it failed. -> dict, never raises.
+
+    ⚠️ A DOCUMENT FETCH HAS THREE FAILURE MODES AND THEY NEED DIFFERENT ANSWERS. The old
+    `download_doc_inpage` returned None for all of them, and that cost a session on 2026-08-10:
+    "TypeError: Failed to fetch" is the request being REFUSED at the network layer, which carries
+    no rejection frame and no challenge iframe, so `blocked()` sees nothing — slot 1 went on
+    buying causa opens whose every document was being denied while its sibling had already taken
+    a visible block. A missing document and a refused one look identical from a None.
+
+      {"bytes": n, "b64": ...}                 got it, and it starts %PDF
+      {"bytes": 0, "refused": True}            denied at the network layer — this is TROUBLE
+      {"bytes": 0, "not_pdf": True, ...}       answered with something else (rejection HTML, apm)
+      {"bytes": 0, "missing": True}            no action/val to fetch with
+
+    ⚠️ NEVER JUDGE A DOCUMENT BY SIZE OR STATUS — check for %PDF. A clicked PDF hands back
+    Chrome's viewer wrapper, ~14 KB of HTML with status 200; that one fact produced two opposite
+    wrong calls in a single day (see grab_doc in worker_a.py).
+    """
     if not action or not val:
-        return None
+        return {"bytes": 0, "missing": True, "why": "no action/val"}
     try:
-        b64 = page.evaluate(_JS_FETCH_DOC, [f"{OJV}/{action.lstrip('/')}", param, val])
-        if not b64:
-            return None
-        body = base64.b64decode(b64)
-        return body if body[:4] == b"%PDF" else None
-    except Exception:
-        return None
+        res = page.evaluate(_JS_FETCH_DOC, [f"{OJV}/{action.lstrip('/')}", param, val])
+    except Exception as e:
+        msg = str(e)
+        refused = "Failed to fetch" in msg or "ERR_" in msg
+        return {"bytes": 0, "refused": refused, "threw": not refused, "why": msg[:90]}
+    if not res:
+        return {"bytes": 0, "missing": True, "why": "no response object"}
+    body = base64.b64decode(res.get("b64") or "")
+    if body[:4] != b"%PDF":
+        return {"bytes": 0, "not_pdf": True, "status": res.get("status"),
+                "ct": res.get("ct"), "n": res.get("n"), "ms": res.get("ms"),
+                "why": classify(body) if body else "empty body"}
+    return {"bytes": len(body), "body": body, "status": res.get("status"),
+            "ct": res.get("ct"), "ms": res.get("ms")}
+
+
+def download_doc_inpage(page, action, val, param="dtaDoc"):
+    """Same fetch as download_doc but performed BY THE PAGE. -> PDF bytes or None.
+
+    Kept as the simple form for callers that only want the bytes; there is exactly ONE
+    implementation underneath (`fetch_doc_detail`), because two copies of a facility is how the
+    block detectors in this repo drifted apart and went blind together."""
+    d = fetch_doc_detail(page, action, val, param)
+    return d.get("body") if d.get("bytes") else None
 
 
 def fetch_doc(page, api, action, val, param="dtaDoc"):

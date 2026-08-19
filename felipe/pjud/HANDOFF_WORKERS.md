@@ -12,8 +12,10 @@ did not work before 2026-08-06 and does now. Re-verify anything load-bearing bef
 ## 0. READ THIS FIRST — the current best configuration (2026-08-17)
 
 > **Newer than this section:** [THE 2026-08-18 SESSION](#the-2026-08-18-session--the-runner-can-be-single-stepped-and-the-block-is-one-causa)
-> at the end of this file — `--trace`/`--step` (photograph and single-step a runner), the
-> datepicker's disabled days, worker A's blind screenshots, and **the May block is ONE CAUSA**.
+> — `--trace`/`--step` (photograph and single-step a runner), the datepicker's disabled days,
+> worker A's blind screenshots, and **the May block is ONE CAUSA**. Then
+> [WORKER H TAKES DOCUMENTS](#worker-h-takes-documents--cuaderno-2s-pdfs-by-corte-2026-08-19)
+> — `--docs-c2 --corte`, the cuaderno-2 PDFs, at **~5.5 requests per open instead of 2**.
 > Corpus as of 2026-08-18: **5,510 causas, 5,377 with a cuaderno 2 (97.6%)**; June and July are
 > done, May is the outstanding window.
 
@@ -1669,3 +1671,156 @@ already paid for three times in one session.
 
 The trace startup line prints a Windows backslash (`.../data/shots\trace`) on Linux runners. The
 path itself is correct; only the message is wrong. Recorded so it is not chased as a path bug.
+
+---
+
+# WORKER H TAKES DOCUMENTS — cuaderno 2's PDFs, by corte (2026-08-19)
+
+Asked for: *"6 local h workers, to retrieve all the PDFs of cuaderno 2, for the tribunales of
+corte de santiago."* Worker H had **no document capability at all** — it is the metadata mimic,
+1 open and 0 fetches — so this is new, and it is the first thing in this project that deliberately
+aims at the endpoint worker A was rebuilt to avoid.
+
+```powershell
+.\Iniciar_Docs_Santiago.ps1 -Workers 6 -Desde 01/07/2026 -Hasta 31/07/2026
+.\Iniciar_Docs_Santiago.ps1 -Workers 1 -MaxCausas 2 -DryList   # the work-list, or a smoke test
+python scraper\ingest_worker_h.py            # Drive + Documentos, safe mid-run
+```
+
+| piece | where |
+|---|---|
+| one document fetch that reports WHY it failed | `cdp_scrape.fetch_doc_detail()` |
+| `classify()` — pdf / apm / other | moved `worker_a` → `cdp_scrape`, re-exported under its old name |
+| work-list mode `docs-c2`, and `--corte` | `worker_h.fill_targets(mode=, corte=)` |
+| the document pass | `worker_h.fetch_row_docs()` |
+| Drive upload, then `doc_url` on the row | `ingest_worker_h.upload_c2_docs()` |
+| six detached workers, one month per launch | `Iniciar_Docs_Santiago.ps1` |
+
+## ★★ The cost was measured BEFORE anything ran, off disk
+
+188 banked worker-H JSON files already held the answer, so the sizing question cost no session,
+no probe and no request:
+
+| | |
+|---|---:|
+| cuaderno-2 historia rows examined | 23,326 |
+| of those, carrying a document form | **23,286 — 99.8%** |
+| documents per causa | **3.5** (median 3; 1:93 2:2158 3:2150 4:987 5:469 6:238 7:213) |
+| endpoint split | `docuN.php` 60% / `docuS.php` 40% |
+
+⇒ **an open goes from 2 requests to ~5.5.** Six workers here make roughly the request rate of
+sixteen doing metadata, against the one law this project has measured — *the binding limit is the
+aggregate request rate per address*.
+
+★ **Ask the data you already hold before you ask the site.** This changed the pacing, the warning
+printed at startup and the whole plan (three launches, not one) before a browser opened. Confirmed
+live on the first two causas: 4 and 3 documents, **exactly 3.5 per causa**.
+
+⚠️ **The endpoint split is why the input NAME is read from the DOM.** `parse_historia` captures
+the form action and value but assumes the input is called `dtaDoc`. Two endpoints serve these
+rows; one evaluate costs nothing and gives the live truth.
+
+## ⚠️ The document token is a ONE-HOUR JWT — a document cannot be banked and fetched later
+
+Decoded from a banked record: HS256, `{iss, aud, iat, exp, data}`, **`exp − iat` = 3600 s**, with
+`data` an opaque ciphertext. The site mints a fresh one every time the modal renders.
+
+Two consequences, both structural:
+
+- **Every document costs the causa open it hangs off.** There is no pass that "collects the URLs
+  now and fetches them tonight". That is why this rides along with the book-2 switch instead of
+  being its own worker.
+- **It must be fetched while book 2 is the one on screen**, because the historia in the DOM is
+  book 1's until the switch lands.
+
+⚠️ Carry this to the C-936 question. `set_select_mouse` already records that the *cuaderno* option
+values are JWTs the site re-mints per render; the document tokens are the same shape. If these are
+opaque ciphertext with a rotating `iat`, **"C-936's token contains a byte sequence F5 rejects" is
+a weak hypothesis** — the bytes are different on every render. Worth knowing before spending a
+session on it.
+
+## ⚠️ It aims at the endpoint worker A was REDEFINED to avoid
+
+`docuN.php`/`docuS.php` refused 16 and 19 times on 2026-08-13, and the 2026-08-14 redefinition of
+worker A to metadata-only existed precisely so it would stay clear of that endpoint. **This job
+cannot: the documents are the job.** Expect refusals to be the first thing that appears, and read
+them as a rate verdict on the address rather than as a broken worker.
+
+⚠️ **Note which axis is actually gentler.** At six workers this fleet opens ~14 causas/min, i.e.
+~28 `causaCivil.php` POST/min — *below* the 32/min of the proven six-worker metadata fill. The new
+variable is purely the ~49 document GETs/min on top. Whether `docuN`/`docuS` draws on the same
+budget as `causaCivil` is **unknown and is what this run measures**. Judge it with `rate_watch.py`
+and the refusal counter, and if it is too much **take workers off** — never speed them up.
+
+## Design decisions worth keeping
+
+- **Stop at the first network-level refusal, per causa.** `TypeError: Failed to fetch` carries no
+  rejection page and no challenge iframe, so `blocked()` sees nothing — on 2026-08-10 a worker
+  went on buying opens whose every document was being denied. Spending three more requests to
+  confirm what the first one said is how a session gets spent proving what it already knows.
+- **`not_pdf` is an ANSWER, not a failure** — unless it is F5's APM interstitial, which is a
+  refusal wearing a 200. `classify()` tells them apart; size and status never can.
+- **Refuse to fetch when the DOM and the parsed historia disagree on row count.** The stamp back
+  onto the historia is BY INDEX, so a table that re-rendered in between would attach every
+  document to the wrong trámite — silently, in a column nobody re-checks. A skipped causa is
+  cheap; a mis-filed document is permanent.
+- **No second row-builder.** `ingest_cdp.build` already emits a `Documentos` row for any historia
+  row carrying `doc_url`, keyed `<causa>-c<n>-<folio>-<k>-doc`. Verified against a synthetic
+  record before a real one existed.
+
+## ⚠️⚠️ THE GREEN RUN THAT THREW THE DOCUMENTS AWAY
+
+The smoke run fetched 7 PDFs, verified every one as `%PDF`, uploaded all 7 to Drive, printed
+`7 link(s) returned`, upserted five tables and finished **green**. The cuaderno-2 document count
+in Neon stayed at **12**.
+
+`ingest_worker_h` imports its table order from `ingest_worker_a`, whose `ORDER` is
+`["Ruts","Causas","Litigantes","Cuadernos","Escritos"]` — **correct for worker A, which is
+metadata-only and produces no documents**. So `ingest_cdp.build` built the Documentos rows and the
+ingest loop never looked at that key.
+
+⇒ Fixed by taking the canonical order from `ingest_cdp`, which owns the row builders, minus
+`Tribunales` (insert-if-absent). **Do not hand-list tables in a consumer.**
+
+★ This is the same failure as worker H having no ingest at all, one layer further in, and it was
+caught by the same rule: **count it where it is meant to LAND.** Every counter on the way was
+healthy. `NEON NOW: ... 19 cuaderno-2 documents` is the only line that was ever going to say so.
+
+## ⚠️ PowerShell splits an -ArgumentList element on its spaces
+
+`"--corte", "C.A. de Santiago"` reaches the process as **three** arguments and argparse dies with
+`unrecognized arguments: de Santiago`. Instantly, into **stderr**, leaving an empty stdout log
+that looks exactly like a worker still starting up — ten minutes were spent watching a log file
+belonging to a process that had already exited.
+
+1. **The quotes must be part of the value**: `"`"$Corte`""`.
+2. **A watch that reads only stdout has no coverage for the crash.** The failure was in the file
+   the watch was not reading; silence read as progress. Same shape as every empty-channel bug
+   here, and the fix is the same — watch the channel where failure actually speaks.
+3. **Run the smoke test down the path you are about to trust**, not around it with a hand-built
+   command. `-MaxCausas` exists so the launcher itself is what gets tested.
+
+## The Santiago work-list
+
+`C.A. de Santiago` — **28 tribunales, 1,281 causas, 1,253 owing cuaderno-2 documents**, spanning
+19/06 to 07/08, so **~4,400 PDFs**.
+
+| window | causas owing | tribunales |
+|---|---:|---:|
+| June | 265 | 7 |
+| **July** | **983** | **28** |
+| August | 5 | 3 |
+
+⚠️ **One month per launch, and it is not a preference.** The OJV refuses a range longer than a
+month, and a fill run still finds its causa by SEARCHING the window and clicking the row — so a
+causa outside the window can never be reached however much it owes. The launcher refuses a wider
+window before six browsers arrive to be told the same thing.
+
+⚠️ **Shard by court, so the court count must exceed the worker count.** July's 28 courts split
+5/5/5/5/4/4 across six workers; June's 7 would leave five workers with one court each and one with
+two. Run the wide month with the fleet, the narrow ones with fewer workers.
+
+⚠️ **An empty work-list is neither success nor a block.** `--corte` matches `tribunales.corte`
+exactly, and 25 tribunales carry an empty corte. A name that does not match yields zero causas,
+which is now reported as *"either it is finished, or it was never swept"* rather than run as if
+finished — the same trap as the May `nothing-searched` dispatch of 2026-08-18.

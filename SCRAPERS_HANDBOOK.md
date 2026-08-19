@@ -1949,6 +1949,104 @@ Everything about the diagnosis had to be inferred from the two frames bracketing
 (PJUD, 2026-08-18. The same shape as the blind copy of a facility recorded above — there the eyes
 were unwired, here they were pointed at the wrong verb.)
 
+### ★★★ Ask the data you already hold before you ask the site
+
+"How many documents per record?" decided the pacing, the worker count, the warning printed at
+startup and whether the job was one launch or three. The obvious way to find out is a probe: open
+a session, visit some records, count. That costs the scarcest thing the project spends.
+
+It was already on disk. 188 banked JSON files from earlier runs held **23,326 sub-rows**, and
+parsing them took one command and no requests:
+
+    99.8% of rows carry a document form (23,286 of 23,326)
+    3.5 documents per record, median 3
+    two endpoints, 60/40 — so the input NAME cannot be assumed
+
+Every one of those changed the build. The density set the request-rate estimate; the 60/40 split
+is why the form's input name is read from the DOM instead of hardcoded; the per-record count made
+the cost statement concrete enough to argue about. Confirmed live on the first two records: 4 and
+3 documents — exactly 3.5.
+
+- **Your own output is a corpus.** A scraper that has run for weeks has already answered most
+  questions about the shape of the target; it just answered them into files nobody queries.
+- **A free measurement beats a cheap probe**, and a cheap probe beats an assumption. The ordering
+  is obvious and gets skipped anyway, because writing the probe feels like the real work.
+- **Say what the job will cost before it costs it.** "2 requests per record becomes 5.5" is a
+  sentence that can be checked, disputed and acted on. "It might be a bit heavier" is not.
+
+(PJUD, 2026-08-19.)
+
+---
+
+### ⚠️ A one-hour token means the expensive act cannot be split from the cheap one
+
+Every document behind this site's rows is fetched with a URL carrying a JWT: `iat`, `exp`, and
+**one hour between them**, minted fresh each time the page renders, with an opaque ciphertext
+payload.
+
+That single fact rules out the design everybody reaches for first — *collect the links now, fetch
+the files tonight, out of hours, in bulk*. There is no "later": the link is dead before any queue
+drains, so **every file costs the page-open it hangs off**, and the fetch must happen while the
+right view is on screen.
+
+- **Decode the token before designing around it.** It takes one command. Discovering the hour
+  limit after building the deferred-download queue costs the queue.
+- **Rotating opaque tokens also weaken a whole class of hypothesis.** "That record's token
+  contains something the WAF rejects" cannot be true of a value that is different ciphertext on
+  every render — worth knowing before spending a session testing it.
+
+(PJUD, 2026-08-19. Same shape as the option values the select helper already refuses to compare
+against, for the same reason: never verify against a value that rotates.)
+
+---
+
+### ⚠️ A consumer that hand-lists its tables drops the one you just added
+
+The run fetched the files, verified every one, uploaded them all, printed `7 link(s) returned`,
+wrote five tables and finished **green**. The document count in the database did not move.
+
+The ingest imported its table order from a *sibling* ingest whose worker is metadata-only and
+produces no documents — so the row builder built the document rows and the write loop, iterating a
+list that never mentioned them, threw them away. Nothing errored. Every counter on the path was
+healthy, and each one was counting something real.
+
+- **Take the canonical list from whoever owns the builders**, not from a sibling consumer whose
+  needs are a subset of yours. A hand-maintained list of tables/fields/columns rots silently the
+  first time the producer grows.
+- **The failure is invisible from every intermediate counter.** Bytes fetched, files verified,
+  uploads returned, rows upserted — all true, all beside the point.
+- ⇒ **Count it where it is meant to LAND**, and print that number at the end of every ingest. It
+  is the only line in the run that was ever going to say so. (Third time this rule has paid out in
+  this project, each time one layer further in than the last.)
+
+(PJUD, 2026-08-19.)
+
+---
+
+### ⚠️ Watch the channel where failure actually speaks
+
+A worker was launched detached and a watch armed on its stdout log, filtering for progress lines
+and for the words that mean trouble. Ten minutes later the watch had said nothing, which read as
+"still starting up". The process had died **one second after launch**: a shell had split a
+command-line argument on its spaces, the argument parser rejected it, and the message went to
+**stderr** — a file the watch was not reading. The stdout log it *was* reading was zero bytes, and
+a zero-byte log looks exactly like a process that has not printed yet.
+
+- **If the process died right now, would the watch emit anything?** Ask it before arming. If the
+  answer is no, the filter is not selective, it is blind.
+- **Silence is the one signal with two meanings** — healthy-and-quiet, and dead. Anything that
+  makes those distinguishable (a heartbeat, a stderr tail, an exit notification) is worth more
+  than a tighter filter on the happy path.
+- **Quote every argument containing a space, inside the string.** A launcher that joins an
+  argument array with spaces will hand three arguments to a program expecting one, and the error
+  arrives instantly, on the channel nobody is watching, at the moment that looks most like normal
+  startup.
+- **Smoke-test down the path you are about to trust.** The first attempt used a hand-built command
+  rather than the launcher, so it tested something that was never going to run again. Give the
+  launcher a "just N records" flag instead.
+
+(PJUD, 2026-08-19.)
+
 ---
 
 ## Quick checklist for a new scraper
