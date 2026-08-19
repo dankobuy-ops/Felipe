@@ -169,6 +169,21 @@ def counters(page):
         return None
 
 
+ANEXOS = False               # --anexos: enumerate the anexo folders, download what matches
+# ⚠️ THE DEFAULT MATCHES WHAT THE OPERATOR NAMED, AND NOTHING IS GATED ON IT EXCEPT THE DOWNLOAD.
+# Real Referencia labels seen in two consecutive causas: '1. CONTRATO DE ARRENDAMIENTO',
+# 'pagare', 'mandato claudio altamirano', 'CERTIFICADO LABORAL CLAUDIO ALTAMIRANO'. Free text,
+# any case, sometimes numbered, sometimes carrying a person's name — and for Promotora CMR
+# Falabella the contrato is 'CTO' or 'ctoi'. A pattern WILL miss; that is why the inventory is
+# always recorded whole, so the pattern can be widened later from evidence instead of guesswork.
+# ⚠️ TWO NAMES ON PURPOSE. `--anexo-match` needs a default at argparse time, and reading
+# the mutable global there is a USE before main()'s `global` statement, which Python rejects
+# at COMPILE time ("name used prior to global declaration").
+# ⚠️ And note how it was caught: `ast.parse` accepted this file happily. A syntax-tree check
+# is NOT a compile check — use compile(src, name, "exec") in a smoke test.
+ANEXO_MATCH_DEFAULT = r"contrato|cto|ctoi|pagar[eé]"
+ANEXO_MATCH = ANEXO_MATCH_DEFAULT
+ANEXO_ALL = False            # --anexo-all: download every anexo, not just the matches
 DOCS_C2 = False              # --docs-c2: fetch the PDF behind every cuaderno-2 historia row
 DOC_READ = (1.4, 2.4)        # a person opens documents one at a time; this is the look at each
 PDFS = OUT / "pdfs"
@@ -253,6 +268,81 @@ def fetch_row_docs(page, pres, causa_id, historia):
          f"{f' · {out['not_pdf']} not-pdf' if out['not_pdf'] else ''}"
          f"{f' · {out['missing']} without a form' if out['missing'] else ''}")
     return out
+
+
+def fetch_anexos(page, pres, causa_id):
+    """Enumerate the causa's anexo folders and download the ones that match. -> (inventory, tally).
+
+    ⚠️ ENUMERATE ALWAYS, DOWNLOAD SELECTIVELY. Opening a folder is ONE request and yields every
+    label in it; downloading is one request per document, and a causa can hold six. Recording the
+    whole inventory for free is what lets ANEXO_MATCH be widened later from thousands of real
+    labels — rather than from the guess we would otherwise be stuck with. A causa whose folder we
+    opened and found no match is a DIFFERENT fact from one whose folder we never opened, and the
+    inventory is what tells them apart.
+
+    ⚠️ The folder is a modal over a modal. Close it before moving on, or the next row click lands
+    on its backdrop — the exact "modal did not open" signature this project chased for weeks.
+    """
+    inv, out = [], {"folders": 0, "listed": 0, "got": 0, "bytes": 0, "refused": 0, "not_pdf": 0}
+    rx = None if ANEXO_ALL else re.compile(ANEXO_MATCH, re.I)
+    for fn, modal in C.ANEXO_SOURCES:
+        loc = C.anexo_anchor(page, fn)
+        if loc is None:
+            continue
+        pres.travel_to(page, f"#modalDetalleCivil a[onclick^='{fn}']")
+        if not C.human_click(page, loc, timeout=8000):
+            note(f"      [warn] anexo folder {fn}: click refused")
+            continue
+        out["folders"] += 1
+        # A condition, not a duration: the folder arrives when its table does.
+        pres.run(6.0, poll=lambda: bool(C.read_anexo_folder(page, modal)), poll_every=0.25)
+        rows = C.read_anexo_folder(page, modal)
+        out["listed"] += len(rows)
+        note(f"      anexo folder {fn}: {len(rows)} document(s)")
+        for r in rows:
+            hit = True if rx is None else bool(rx.search(r.get("ref") or ""))
+            rec = {"src": fn, "i": r["i"], "fecha": r.get("fecha", ""),
+                   "ref": r.get("ref", ""), "action": r.get("action", ""), "matched": hit}
+            if not hit:
+                inv.append(rec)
+                continue
+            read(pres, page, DOC_READ, modal)
+            d = C.fetch_doc_detail(page, r["action"], r["val"], r.get("param") or "dtaDoc")
+            if d.get("refused"):
+                out["refused"] += 1
+                note(f"      [!] anexo REFUSED at the network layer ({d.get('why','')[:50]}) "
+                     f"— abandoning this causa's anexos")
+                C.shot(page, f"anexo-refused-{causa_id}", {"ref": r.get("ref"), "why": d.get("why")})
+                rec["refused"] = True
+                inv.append(rec)
+                C.close_modal(page, modal)
+                return inv, out
+            if d.get("bytes"):
+                PDFS.mkdir(parents=True, exist_ok=True)
+                fnm = PDFS / f"{causa_id}__anx-{fn[:9]}-{r['i']:02d}.pdf"
+                fnm.write_bytes(d["body"])
+                rec["file"] = fnm.name
+                rec["bytes"] = d["bytes"]
+                out["got"] += 1
+                out["bytes"] += d["bytes"]
+                note(f"        {r.get('ref','')[:44]!r} -> {d['bytes'] / 1024:.0f} KB")
+            elif d.get("not_pdf"):
+                out["not_pdf"] += 1
+                rec["not_pdf"] = d.get("why")
+                note(f"      [warn] anexo {r.get('ref','')[:30]!r} is not a pdf ({d.get('why')})")
+                if d.get("why") == "apm":
+                    out["refused"] += 1
+                    inv.append(rec)
+                    C.close_modal(page, modal)
+                    return inv, out
+            inv.append(rec)
+        C.close_modal(page, modal)
+        pres.run(3.0, poll=lambda: not C.modal_open(page, modal), poll_every=0.2)
+    if out["folders"]:
+        note(f"      anexos: {out['got']} of {out['listed']} downloaded "
+             f"({out['bytes'] / 1024:.0f} KB)"
+             + (f" · {out['refused']} REFUSED" if out["refused"] else ""))
+    return inv, out
 
 
 def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
@@ -408,6 +498,14 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
         rec["cuadernos"] = [c["txt"] for c in (C.cuaderno_options(page) or [])]
     except Exception:
         rec["cuadernos"] = []
+    # ── the anexos, while book 1 is on screen ──
+    # ⚠️ BOOK 1, DELIBERATELY. The caratulado anchors belong to the causa, not to a cuaderno, but
+    # the modal re-renders on every switch — so taking them before the book-2 switch means one
+    # less thing whose staleness we have to reason about. The historia-level Anexo column is
+    # book 1's too (operator: for Promotora CMR Falabella that is where the contrato lives).
+    if ANEXOS:
+        rec["anexos"], rec["anexo_tally"] = fetch_anexos(page, pres, causa_id)
+
     proc = (rec.get("header") or {}).get("procedimiento", "")
     if only_proc and not re.search(only_proc, C.norm(proc), re.I):
         rec["skipped_proc"] = True
@@ -504,6 +602,20 @@ def main():
                          "hits docuN.php/docuS.php, the endpoint worker A was redefined in "
                          "August to stay clear of. Hold the AGGREGATE rate, not the worker count "
                          "— see --speed and HANDOFF_WORKERS.md section 0.")
+    ap.add_argument("--anexos", action="store_true",
+                    help="enumerate the causa's ANEXO folders and download the ones whose "
+                         "Referencia matches --anexo-match. The inventory (every label, matched "
+                         "or not) is recorded either way, which is what lets the pattern be "
+                         "widened later from real labels. ⚠️ Found 2026-08-19 by watching a human: "
+                         "anexoDocCivil.php outnumbered docuN.php five to one and we had never "
+                         "fetched a single one.")
+    ap.add_argument("--anexo-match", default=ANEXO_MATCH_DEFAULT,
+                    help="regex on the anexo's Referencia, case-insensitive. Default covers the "
+                         "labels seen so far, incl. Promotora CMR Falabella's 'CTO'/'ctoi'. "
+                         "Referencia is FREE TEXT typed by the filer, so expect to widen this.")
+    ap.add_argument("--anexo-all", action="store_true",
+                    help="download every anexo, not only the matches. A causa can hold six, so "
+                         "this multiplies the requests per open — measure before running it wide.")
     ap.add_argument("--corte", default="",
                     help="with --fill: only causas whose tribunal belongs to this Corte de "
                          "Apelaciones, spelled as the site spells it (e.g. 'C.A. de Santiago'). "
@@ -658,7 +770,16 @@ def main():
             idle=lambda pg, s: C.human_idle(pg, s))
         note(f"STEP MODE: waiting for an instruction before each action "
              f"(run_id={C.STEPPER.run_id}, {a.step_timeout:.0f}s -> {a.step_on_timeout})")
-    global DOCS_C2
+    global DOCS_C2, ANEXOS, ANEXO_MATCH, ANEXO_ALL
+    ANEXOS, ANEXO_ALL = a.anexos, a.anexo_all
+    ANEXO_MATCH = a.anexo_match
+    if ANEXOS:
+        try:
+            re.compile(ANEXO_MATCH)
+        except re.error as e:
+            raise SystemExit(f"--anexo-match is not a valid regex: {e}")
+        note("ANEXOS: enumerating every folder; downloading "
+             + ("EVERY document in them" if ANEXO_ALL else f"those matching /{ANEXO_MATCH}/i"))
     # ⚠️⚠️ SET THEM ON THE ENGINE, NOT ON THIS MODULE. `read()` now lives in human_engine and
     # divides by human_engine.SPEED; a worker-local SPEED would be set, printed, ramped and
     # reported while every reading span went on using 1.0. That is precisely the "two copies of

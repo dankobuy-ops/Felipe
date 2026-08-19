@@ -1120,6 +1120,88 @@ def download_doc(api, action, val, param="dtaDoc"):
 # In-page fetch: same URL, but issued BY the page, so it inherits the document's origin,
 # referer and cookie handling and lands inside Shape's instrumented XHR path instead of
 # beside it. Bytes come back base64 (chunked so a big ebook doesn't blow the argument stack).
+# ── ANEXOS — the document class this scraper never knew existed (2026-08-19) ──────────────────
+#
+# ⚠️⚠️ FOUND BY WATCHING A HUMAN, NOT BY READING THE DOM. A 40-minute recorded session produced
+# `anexoDocCivil.php` THIRTY times against `docuN.php` six — the document class the operator uses
+# most, and we had fetched exactly zero. `parse_historia` looks for the anexo as a `<form>` in
+# `td[2]`, and across 117,173 banked historia rows it found NONE. The column was right; the shape
+# was wrong. The site puts an ANCHOR there, and in the caratulado:
+#
+#     <a onclick="anexoCausaCivil('<JWT>')">        opens #modalAnexoCausaCivil — A FOLDER
+#     <a onclick="anexoSolicitudCivil('<JWT>')">    opens #modalAnexoSolicitudCivil
+#
+# and inside that folder is a table, one row per document:
+#
+#     Doc. | Fecha | Referencia
+#     <form action=".../anexoDocCivil.php" target="N"><input name="dtaDoc" value="<JWT>">
+#     <a onclick='$(this).closest("form").submit();'>Descargar Documento</a>
+#
+# ⇒ TWO ACTS, NOT ONE: open the folder, then take what is in it. Anything that looks for a direct
+# link concludes the causa has no anexos — which is what we concluded, silently, for months.
+#
+# ⚠️ `Referencia` IS FREE TEXT TYPED BY WHOEVER FILED, and it is the only thing naming the
+# document. Two real causas, minutes apart:
+#     '1. CONTRATO DE ARRENDAMIENTO' / '2. COPIA INSCRIPCIÓN DE DOMINIO' / '6. MANDATO JUDICIAL'
+#     'pagare' / 'mandato claudio altamirano'
+# Numbered or not, upper or lower, sometimes carrying a person's name. Operator: for Promotora CMR
+# Falabella the contrato is called "CTO" or "ctoi". **Never gate the ENUMERATION on a name match** —
+# a pattern that misses looks exactly like a causa with no anexos, which is the same failure that
+# hid this whole class from us. Enumerate always; match only to decide what to DOWNLOAD.
+ANEXO_SOURCES = (("anexoCausaCivil", "#modalAnexoCausaCivil"),
+                 ("anexoSolicitudCivil", "#modalAnexoSolicitudCivil"))
+
+_JS_READ_ANEXO_FOLDER = r"""
+(sel) => {
+  const m = document.querySelector(sel);
+  if (!m) return null;
+  if (!(m.offsetWidth || m.offsetHeight || m.getClientRects().length)) return {shown: false};
+  const out = [];
+  m.querySelectorAll('table tbody tr').forEach((tr, i) => {
+    const td = [...tr.querySelectorAll('td')];
+    const f = tr.querySelector('form');
+    if (!f) return;
+    const inp = f.querySelector("input[name='dtaDoc'], input[type=hidden], input");
+    out.push({
+      i: i,
+      fecha: td[1] ? (td[1].innerText || '').trim() : '',
+      // The label is the LAST cell with text that is not the download link and not the date.
+      ref: td.length ? (td[td.length - 1].innerText || '').trim() : '',
+      action: f.getAttribute('action') || '',
+      param: inp ? (inp.name || 'dtaDoc') : 'dtaDoc',
+      val: inp ? inp.value : '',
+    });
+  });
+  return {shown: true, rows: out};
+}
+"""
+
+
+def read_anexo_folder(page, modal):
+    """Read an already-open anexo folder. -> [{i, fecha, ref, action, param, val}] (never raises)."""
+    try:
+        d = page.evaluate(_JS_READ_ANEXO_FOLDER, modal)
+    except Exception:
+        return []
+    if not d or not d.get("shown"):
+        return []
+    return [r for r in (d.get("rows") or []) if r.get("val")]
+
+
+def anexo_anchor(page, fn):
+    """The caratulado anchor that opens one kind of anexo folder, or None.
+
+    ⚠️ IT HAS NO id, NO class AND NO TEXT — it is an icon. The first probe built a selector only
+    when there was an id, found none, and reported "no id to click", which reads exactly like the
+    control being absent. The onclick PREFIX is the only stable handle it has.
+    """
+    try:
+        loc = page.locator(f"#modalDetalleCivil a[onclick^='{fn}']").first
+        return loc if loc.count() else None
+    except Exception:
+        return None
+
+
 def classify(body):
     """'pdf' | 'apm' | 'other' — what did the document endpoint actually return?
 
