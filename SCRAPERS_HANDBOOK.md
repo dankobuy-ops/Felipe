@@ -2166,6 +2166,83 @@ default is *permissive*, because omitting them produces more data rather than an
 
 (PJUD, 2026-08-19.)
 
+### ★★★★★ SPLIT THE SCRAPER IN TWO: SPECS AND SETTINGS
+
+The most useful architectural line this project has drawn, and it took four workers and two months
+of divergence to find it:
+
+```
+   SPECS      how human the worker is       one shared engine   ALWAYS THE BEST YOU HAVE
+   SETTINGS   what job it does, and where   the workers         chosen per run
+```
+
+**A fidelity fix that lives in a worker protects one worker.** Four workers meant four behavioural
+engines, and they silently drifted apart because nobody diffs four files against each other. Three
+months after the newest one was rebuilt from a recorded human session, the other three were still:
+
+    typing into `readonly` input fields  (an act no user can perform)
+    driving every dropdown with ~54 keystrokes  (the recorded human emitted ZERO all session)
+    emitting no pointer motion at all between clicks  (the human: 25.8 moves/s on 98% of seconds)
+    never scrolling horizontally  (so a wide table's right-hand column was unreachable)
+
+And the day this was noticed, the *discovery* pass — the job that must visit pages it has never
+seen — was running on the least human worker of the four.
+
+- **Enumerate the acts, then grep every worker for each one.** One table settled it: dates,
+  selects, pointer presence, sideways scroll. Four rows, four columns, and the answer was obvious
+  the moment it was written down and invisible before.
+- **The engine must not import a worker.** A constant that looked worker-owned (`CIVIL = "3"`) was
+  a property of the *site*, and moving it with the engine broke the last dependency.
+- ⚠️ **A module-level global is part of the facility.** The speed multiplier lived beside the
+  reading-time function; moving the function without moving who *writes* the global would have
+  left the worker setting, printing, ramping and reporting a value that nothing read. The log line
+  reporting the speed reads the wrong copy, so nothing would ever have said so.
+
+⇒ The end state is ONE program whose settings pick the job. Everything behavioural is shared and
+is always the best known; everything else is an argument.
+
+### ⚠️ THE OPTIMUM IS NOT THE MAXIMUM
+
+Once fidelity is a first-class goal there is a strong pull toward "more human = more events". It
+is wrong. **A pointer emitting 40 moves/s is as anomalous as one emitting 0** — the target is the
+recorded human's *distribution*, and being above it is as distinguishable as being below.
+
+Which means every spec needs a measured value, not a direction — and **no spec may be turned up
+without a recording that justifies the new number.**
+
+### ⚠️ Motion during a wait must have a DESTINATION
+
+"Keep the pointer alive while waiting" is right, and the obvious implementation — a small tremor —
+is the one variant already measured to produce nothing. Vibration in place **crosses no element
+boundaries**, and `mouseover` fires only on crossing one, so it generated exactly zero of the
+channel it was added to fill.
+
+The recorded human during a wait was not trembling; they were **travelling over content** — 25.2
+mousemove/s and 6.4 mouseover/s *while a record loaded*. Aim at something and traverse it.
+
+(Physiological tremor is real and may be worth adding on top, if the defence reads raw coordinates.
+It cannot replace travel, and it is unproven.)
+
+### ★★ Two kinds of wait, and one primitive that does both
+
+    wait for the SITE to answer      driven by the server   ->  a CONDITION, never a duration
+    wait because a HUMAN is not instant   driven by the person   ->  a DURATION, from a distribution
+
+Conflating them cost real data here: a cleanup that removed "padding" also removed the pause after
+an AJAX control change, so the page was parsed before it had re-rendered and records were banked
+with an empty section *while the action itself had succeeded*. Silent loss, from an over-applied
+rule.
+
+⇒ The protocol, stated once: **act → wait for the reaction (condition) → pause as a person would
+(duration) → act again**, with the hand moving over content for the whole of both waits. That is
+one primitive, not two, and it belongs between *every* action — nothing a person does is instant.
+
+⚠️ And then check it is actually applied. Eleven raw `sleep`/`wait_for_timeout` calls survived in
+the *most* human worker; each one is a stretch of dead telemetry in the middle of a session built
+to look alive.
+
+(PJUD, 2026-08-19. `human_engine.py`.)
+
 ---
 
 ## Quick checklist for a new scraper
@@ -2186,6 +2263,7 @@ default is *permissive*, because omitting them produces more data rather than an
 [ ] Storage: deterministic IDs, never blanket-upsert, direct file links, confirm date order.
 [ ] Unattended: detached, log-file liveness, rotate logs, own and close your browser.
 [ ] Probes: one variable, network verdict, a canary.
+[ ] SPECS (how human) in ONE shared engine; SETTINGS (what job) in the workers.
 [ ] Update THIS FILE with what the build taught you.
 ```
 

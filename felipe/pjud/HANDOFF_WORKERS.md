@@ -1,5 +1,16 @@
 # PJUD — Worker architecture handoff (2026-08-07)
 
+> ## ⚠️⚠️ READ THE LAST SECTION FIRST: [THE SPLIT — SPECS vs SETTINGS](#-the-split--specs-vs-settings-2026-08-19)
+>
+> Since 2026-08-19 there is **one behavioural engine** (`human_engine.py`) and the workers are
+> only jobs. Everything in this file that describes a worker's *behaviour* is history: how it
+> moves, types, waits and clicks now comes from one place, for all of them.
+>
+> **SPECS** = how human it is. Always the best we have. **SETTINGS** = what job, where, how fast.
+>
+> The section that forced it shows worker A, B and C still typing into `readonly` date fields —
+> an act no user can perform — three days after worker H stopped.
+
 Companion to `HANDOFF_CDP.md`, which remains the reference for **the site and the WAF** (entry
 gates, block tiers, the corte-change burst, the two-button trap). This file covers **the workers**:
 what they do, why they are shaped this way, and every trap that cost real time.
@@ -2022,3 +2033,144 @@ two. Run the wide month with the fleet, the narrow ones with fewer workers.
 exactly, and 25 tribunales carry an empty corte. A name that does not match yields zero causas,
 which is now reported as *"either it is finished, or it was never swept"* rather than run as if
 finished — the same trap as the May `nothing-searched` dispatch of 2026-08-18.
+
+---
+
+# ★★★★★ THE SPLIT — SPECS vs SETTINGS (2026-08-19)
+
+Operator: *"the settings can change, the specs have to always be the best."*
+
+```
+   SPECS      how human the worker is       human_engine.py     ALWAYS THE BEST WE HAVE
+   SETTINGS   what job it does, and where   worker_*.py         chosen per run
+```
+
+**Everything above this section was written when there were four workers and therefore FOUR
+behavioural engines.** They were not equal, and the inequality was invisible because it lived in
+four files nobody diffed against each other.
+
+## Why this had to happen — the table that forced it
+
+Measured 2026-08-19, by grepping each worker for the acts we know a human does and does not do:
+
+| worker | dates | selects | pointer presence | sideways scroll |
+|---|---|---|---|---|
+| A | **types into `readonly`** | keyboard | **none** | **none** |
+| B | **types into `readonly`** | keyboard | **none** | **none** |
+| C | **types into `readonly`** | keyboard | **none** | **none** |
+| **H** | mouse picker | mouse | 19 call sites | yes |
+
+`type_date_kbd` deletes the `readOnly` property, types into the unlocked field and presses Escape
+— **a sequence no user can produce** — on the form where the session token is minted. Worker H
+stopped doing it on 2026-08-16 and became the only worker that has never been blocked at scale.
+A, B and C were still doing it three days later.
+
+⇒ And on 2026-08-19 the August catch-up ran its **discovery** pass on worker A: the least human
+worker we owned, sent to do the one job that must visit courts it has never seen.
+
+★ **A fidelity fix that lives in a worker protects one worker.** That is the same failure this
+handbook already records for the rejection matchers, for worker A's unwired screenshots, and for
+`rate_watch` being blind to worker H — except here the thing that silently differed was *the
+behaviour the whole project is built on*.
+
+## What moved
+
+`human_engine.py` — imported by A, B, C and H, and it imports no worker (`CIVIL` moved with it,
+because competencia 3 is a property of the SITE, not of a worker).
+
+| | |
+|---|---|
+| `jitter`, `read` | reading times, spent moving over the content being read |
+| `hover` | reach a control and stop; **never click a `<select>`** (native popup = an OS surface no CDP event reaches) |
+| `set_select_mouse` | pointer arrival, zero keystrokes, poll the value back by INDEX |
+| `pick_date_mouse` | drive the site's own jQuery picker with the mouse |
+| `close_modal_human` | close, then wait for it to actually be GONE |
+| `build_form_mouse` | the whole search form, mouse only |
+| `READ_BOOK1/BOOK2/LIST`, `SPEED`, `RAMP_*` | the measured human's timings |
+
+Still shared from `cdp_scrape`: `human_click` (arc, dwell, refuses covered targets),
+`human_scroll` / `human_scroll_x`, `human_idle`, `fetch_doc_detail`. `human_motion.Presence` is
+the hand itself.
+
+⚠️ **`type_date_kbd` is kept but marked SUPERSEDED**, because three probes still call it — and a
+probe that types where the worker now picks **is not measuring the worker any more.** Fix the
+probe before trusting any comparison it produces.
+
+## ⚠️ Setting a spec on the worker instead of the engine is the same bug, one layer in
+
+`read()` divides by `human_engine.SPEED`. `main()` originally set a worker-local `SPEED`, which
+would have been assigned, printed, ramped and written into the run report **while every reading
+span went on using 1.0** — and the log line reporting the speed reads the wrong copy, so nothing
+would ever have said so. Workers now set `E.SPEED`, `E.RAMP_EVERY`, `E.RAMP_STEP`.
+
+⇒ **A module-level global is part of the facility.** Move the function and you must move who
+writes to it.
+
+## ★★ THE OPTIMUM IS NOT THE MAXIMUM
+
+The target is the recorded human's **distribution**, not more of everything. A pointer emitting
+40 moves/s is as anomalous as one emitting 0 — just in the other direction.
+
+| channel | human | worker H |
+|---|---:|---:|
+| `mousemove` | 25.8/s, on 98% of seconds | ~16/s |
+| `mouseover` inside the modal | 6.4/s | 4.5–7.5/s ✓ |
+| `keydown` | **0 all session** | **0** ✓ |
+| wheel inside the modal | **0** | **0** ✓ |
+
+We are **under** on `mousemove` and capped by CDP round-trip cost on a heavy page — raising the
+target from 34 to 52 moved the achieved rate not at all. Under is the direction to fix. **No spec
+may be "turned up" without a recording that justifies the new value.**
+
+## ⚠️ EVERY NUMBER IN THE ENGINE RESTS ON n=1
+
+One operator, one 6.5-minute session, 15 causas
+(`data/human/session-20260816-212249.jsonl`). It is the best evidence this project has and it is
+still one person on one evening. **The search wait cannot be derived from it at all** — they
+searched exactly once. Treat the constants as the best current estimate, never as settled.
+
+## ⚠️ TWO KINDS OF WAIT, AND CONFLATING THEM COST REAL DATA
+
+| | driven by | correct form |
+|---|---|---|
+| wait for the SITE to answer | the server | **a CONDITION**, never a duration |
+| wait because a HUMAN is not instant | the person | **a DURATION**, from a distribution |
+
+Stripping "padding" once removed the pause after the cuaderno switch, so the historia was parsed
+before the AJAX had re-rendered it — causas banked with an empty book 2 while the switch itself
+had succeeded. Silent data loss, from an over-applied rule.
+
+`Presence.run(secs, poll=…)` is the first kind; `read()` is the second; **both keep the pointer
+alive throughout**, which is what makes them one primitive rather than two.
+
+★ **The protocol, stated once:** *act → wait for the reaction (a condition) → pause as a person
+would (a duration) → act again*, with the hand moving over content for the whole of both waits.
+
+⚠️ **Not yet applied everywhere.** 11 raw `wait_for_timeout`/`time.sleep` calls survive in worker
+H against 19 presence-backed ones. Every one of them is a stretch of dead telemetry, and they are
+the next thing to close.
+
+## ⚠️⚠️ TREMOR IS NOT THE MECHANISM — this was already measured
+
+The instinct that a hand keeps moving during a wait is right and is exactly what presence does.
+**Tremor is the one implementation already proven to produce nothing.**
+
+`--idle-motion` emitted ~1/s and *vibrated in place*: it crossed no element boundaries, so it
+generated **zero `mouseover`**. `mouseover` only fires on crossing a boundary. The recorded human
+during a wait was not trembling — they were **travelling over content**, 25.2 mousemove/s and
+6.4 mouseover/s.
+
+⇒ Motion during a wait must have a DESTINATION. Physiological tremor may well be worth adding on
+top of travel if F5 reads raw coordinates — but it is unproven, and it cannot replace travel.
+
+## Where the split is not finished
+
+1. **Presence is still worker-H-only.** A, B and C now use the engine's dates, selects and
+   datepicker, but their harvest loops emit no `mousemove` between clicks. That is the largest
+   remaining fidelity gap and it needs their loops restructured, not a one-line swap.
+2. **The four workers are still four programs.** The end state is ONE worker whose settings pick
+   the job — discovery / collection / documents / refresh. A, B and C keep only their *jobs* now;
+   folding those into settings is what retires them.
+3. **`worker_h`'s sweep is page-1-only** by design (fidelity: the recording read one page). That
+   is why discovery still needs worker A, and it is a spec/settings conflict worth deciding
+   deliberately rather than by default.

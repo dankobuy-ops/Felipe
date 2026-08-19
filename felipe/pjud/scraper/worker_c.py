@@ -44,6 +44,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import psycopg2
 import cdp_scrape as C
+import human_engine as E     # THE SPECS. Never re-implement behaviour in a worker.
 import dbstore
 import ojv
 import run
@@ -286,7 +287,10 @@ def main():
             if a.max_causas and checked >= a.max_causas:
                 note(f"  --max-causas {a.max_causas} reached — stopping cleanly")
                 break
-            if not C.select_tribunal_kbd(p, tid):
+            # ⚠️ Pointer arrival, not ~54 keystrokes per tribunal (fixed 2026-08-19). The dates
+            # came right for free: this worker builds its form through A.enter_and_setup, which
+            # now uses the engine's mouse-driven datepicker.
+            if not E.set_select_mouse(p, "#fecTribunal", tid):
                 note(f"  [{tid}] could not select — skip")
                 continue
             ojv.click_away(p)

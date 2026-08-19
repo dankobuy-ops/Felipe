@@ -1321,7 +1321,22 @@ def _wait_opts(page, sel, secs):
 
 
 def type_date_kbd(page, sel, value):
-    """Set a readonly datepicker input with TRUSTED keystrokes. `readOnly` is cleared as a DOM
+    """⚠️⚠️ SUPERSEDED 2026-08-19 — USE `human_engine.pick_date_mouse`. NO USER CAN DO THIS.
+
+    Every worker was moved off this on 2026-08-19. It is kept because three probes still call it
+    and because the isTrusted reasoning below is correct and worth preserving — but it is correct
+    about the WRONG QUESTION. The keystrokes are genuine; the problem is that `#fecDesde` and
+    `#fecHasta` are `readonly` with `hasDatepicker`, so **a person physically cannot type into
+    them** — the operator found it by simply trying. Clearing `readOnly` and typing is a sequence
+    no user can produce, performed on the form where the session token is minted, in every run
+    this project made until worker H. The site ships a jQuery UI datepicker; drive it with the
+    mouse.
+
+    ⚠️ A probe that calls this is not measuring the worker any more. Fix the probe before trusting
+    a comparison against a run that used the picker.
+
+    ── the original note, still true about isTrusted ──
+    Set a readonly datepicker input with TRUSTED keystrokes. `readOnly` is cleared as a DOM
     PROPERTY — a mutation, not an event, so nothing untrusted is ever dispatched — and then the
     value is TYPED for real, so the browser itself emits genuine isTrusted=true input/change
     events. Do NOT go back to `e.value=...` + `dispatchEvent(new Event('change'))`: that fires

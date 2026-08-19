@@ -42,6 +42,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import cdp_scrape as C
+import human_engine as E     # THE SPECS. Never re-implement behaviour in a worker.
 import ojv
 import live_view                 # --live: the runner, watchable while it runs
 import run                       # etapa_rejected: the header gate, shared with C and ingest
@@ -802,7 +803,9 @@ def enter_and_setup(ctx, net, desde, hasta, lock=None, gate_name="reentry"):
     # Competencia is the ONLY cascade we trigger; corte stays on "Todos"
     if pg.eval_on_selector("#fecCompetencia", "e=>e.value") != CIVIL:
         note("Competencia = Civil")
-        C.select_by_kbd(pg, "#fecCompetencia", CIVIL)
+        # ⚠️ Pointer arrival, not keystrokes. The recorded human emitted ZERO keydowns in a whole
+        # session; worker A emitted ~54 per tribunal plus ~20 for the dates.
+        E.set_select_mouse(pg, "#fecCompetencia", CIVIL)
         ojv.click_away(pg)
         settler.wait(need="document.querySelectorAll('#fecTribunal option').length>50",
                      quiet_ms=1200, timeout=60, label="all-tribunales")
@@ -812,7 +815,16 @@ def enter_and_setup(ctx, net, desde, hasta, lock=None, gate_name="reentry"):
         raise SystemExit(2)
     for sel, val in (("#fecDesde", desde), ("#fecHasta", hasta)):
         if pg.eval_on_selector(sel, "e=>e.value") != val:
-            C.type_date_kbd(pg, sel, val)
+            # ⚠️⚠️ WAS `C.type_date_kbd`, WHICH IS AN ACT NO USER CAN PERFORM (fixed 2026-08-19).
+            # #fecDesde/#fecHasta are `readonly` with `hasDatepicker`; type_date_kbd deletes the
+            # readOnly property, types into the unlocked field and presses Escape — on the form
+            # where the session token is minted, in every worker-A run this project ever made.
+            # Worker H drove the site's own jQuery picker with the mouse from the day it was
+            # built and stopped getting blocked; A kept typing for five more days because the fix
+            # lived in a worker instead of in a shared engine. That is the whole reason
+            # human_engine.py exists.
+            if not E.pick_date_mouse(pg, sel, val):
+                raise SystemExit(f"could not pick {val} in {sel} with the datepicker")
             ojv.click_away(pg)
         # Read it BACK. Typing is not proof it arrived, and a wrong window does not fail
         # loudly — it returns plausible-looking results for the wrong dates.
@@ -1445,7 +1457,7 @@ def main():
                 last_search = 0.0
                 idx -= 1                       # retry the tribunal we were about to do
                 continue
-            if not C.select_tribunal_kbd(p, tgt["v"]):
+            if not E.set_select_mouse(p, "#fecTribunal", tgt["v"]):
                 # ⚠️ SAY WHY. An instant failure means the VALUE IS NOT IN THE OPTION LIST — the
                 # select was re-populated or emptied under us — while a slow one means the arrows
                 # were pressed and the value would not stick. They are different faults and the
