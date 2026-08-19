@@ -274,7 +274,7 @@ def fetch_anexos(page, pres, causa_id):
     """Enumerate the causa's anexo folders and download the ones that match. -> (inventory, tally).
 
     ⚠️ ENUMERATE ALWAYS, DOWNLOAD SELECTIVELY. Opening a folder is ONE request and yields every
-    label in it; downloading is one request per document, and a causa can hold six. Recording the
+    label in it; downloading is one request per document. Recording the
     whole inventory for free is what lets ANEXO_MATCH be widened later from thousands of real
     labels — rather than from the guess we would otherwise be stuck with. A causa whose folder we
     opened and found no match is a DIFFERENT fact from one whose folder we never opened, and the
@@ -286,58 +286,77 @@ def fetch_anexos(page, pres, causa_id):
     inv, out = [], {"folders": 0, "listed": 0, "got": 0, "bytes": 0, "refused": 0, "not_pdf": 0}
     rx = None if ANEXO_ALL else re.compile(ANEXO_MATCH, re.I)
     for fn, modal in C.ANEXO_SOURCES:
-        loc = C.anexo_anchor(page, fn)
-        if loc is None:
-            continue
-        pres.travel_to(page, f"#modalDetalleCivil a[onclick^='{fn}']")
-        if not C.human_click(page, loc, timeout=8000):
-            note(f"      [warn] anexo folder {fn}: click refused")
-            continue
-        out["folders"] += 1
-        # A condition, not a duration: the folder arrives when its table does.
-        pres.run(6.0, poll=lambda: bool(C.read_anexo_folder(page, modal)), poll_every=0.25)
-        rows = C.read_anexo_folder(page, modal)
-        out["listed"] += len(rows)
-        note(f"      anexo folder {fn}: {len(rows)} document(s)")
-        for r in rows:
-            hit = True if rx is None else bool(rx.search(r.get("ref") or ""))
-            rec = {"src": fn, "i": r["i"], "fecha": r.get("fecha", ""),
-                   "ref": r.get("ref", ""), "action": r.get("action", ""), "matched": hit}
-            if not hit:
-                inv.append(rec)
+        # ⚠️ EVERY ANCHOR, NOT `.first`. Measured 2026-08-19: one causa carried TWO
+        # `anexoSolicitudCivil` anchors (rows 22 and 38) and another had one in the caratulado
+        # plus one in the HISTORIA. Taking only the first silently dropped whole folders, and the
+        # loss is invisible — fewer documents looks exactly like a causa with fewer documents.
+        # Re-read the anchors each pass: opening and closing a folder re-renders the modal, so a
+        # locator list captured once goes stale underneath us.
+        for k in range(len(C.anexo_anchors(page, fn))):
+            anchors = C.anexo_anchors(page, fn)
+            if k >= len(anchors):
+                break
+            loc = anchors[k]
+            try:
+                pres.travel_to(page, f"#modalDetalleCivil a[onclick^='{fn}(']")
+            except Exception:
+                pass
+            if not C.human_click(page, loc, timeout=8000):
+                note(f"      [warn] anexo folder {fn}[{k}]: click refused")
                 continue
-            read(pres, page, DOC_READ, modal)
-            d = C.fetch_doc_detail(page, r["action"], r["val"], r.get("param") or "dtaDoc")
-            if d.get("refused"):
-                out["refused"] += 1
-                note(f"      [!] anexo REFUSED at the network layer ({d.get('why','')[:50]}) "
-                     f"— abandoning this causa's anexos")
-                C.shot(page, f"anexo-refused-{causa_id}", {"ref": r.get("ref"), "why": d.get("why")})
-                rec["refused"] = True
-                inv.append(rec)
-                C.close_modal(page, modal)
-                return inv, out
-            if d.get("bytes"):
-                PDFS.mkdir(parents=True, exist_ok=True)
-                fnm = PDFS / f"{causa_id}__anx-{fn[:9]}-{r['i']:02d}.pdf"
-                fnm.write_bytes(d["body"])
-                rec["file"] = fnm.name
-                rec["bytes"] = d["bytes"]
-                out["got"] += 1
-                out["bytes"] += d["bytes"]
-                note(f"        {r.get('ref','')[:44]!r} -> {d['bytes'] / 1024:.0f} KB")
-            elif d.get("not_pdf"):
-                out["not_pdf"] += 1
-                rec["not_pdf"] = d.get("why")
-                note(f"      [warn] anexo {r.get('ref','')[:30]!r} is not a pdf ({d.get('why')})")
-                if d.get("why") == "apm":
+            out["folders"] += 1
+            # A condition, not a duration: the folder arrives when its table does.
+            pres.run(6.0, poll=lambda: bool(C.read_anexo_folder(page, modal)), poll_every=0.25)
+            rows = C.read_anexo_folder(page, modal)
+            out["listed"] += len(rows)
+            note(f"      anexo folder {fn}[{k}]: {len(rows)} document(s)")
+            # ⚠️ HOW MANY ANEXOS CAN A CAUSA HOLD? UNKNOWN — and an early draft of this file said
+            # "six" as though it were a bound. Six was simply the LARGEST OF FIVE observations
+            # (6, 5, 3, 3, 3) on the day it was written. It drives the requests-per-causa estimate,
+            # so it matters, and a sample maximum is not a maximum. THE CHEAP TEST, costing no
+            # downloads at all:  worker_h --anexos --anexo-match "$^"  — a pattern that matches
+            # nothing enumerates every folder and fetches none, one request per folder, so a few
+            # hundred causas give the real distribution from `listed`. Read it out of the banked
+            # records; do not read it out of this comment.
+            for r in rows:
+                hit = True if rx is None else bool(rx.search(r.get("ref") or ""))
+                rec = {"src": fn, "i": r["i"], "fecha": r.get("fecha", ""),
+                       "ref": r.get("ref", ""), "action": r.get("action", ""), "matched": hit}
+                if not hit:
+                    inv.append(rec)
+                    continue
+                read(pres, page, DOC_READ, modal)
+                d = C.fetch_doc_detail(page, r["action"], r["val"], r.get("param") or "dtaDoc")
+                if d.get("refused"):
                     out["refused"] += 1
+                    note(f"      [!] anexo REFUSED at the network layer ({d.get('why','')[:50]}) "
+                         f"— abandoning this causa's anexos")
+                    C.shot(page, f"anexo-refused-{causa_id}", {"ref": r.get("ref"), "why": d.get("why")})
+                    rec["refused"] = True
                     inv.append(rec)
                     C.close_modal(page, modal)
                     return inv, out
-            inv.append(rec)
-        C.close_modal(page, modal)
-        pres.run(3.0, poll=lambda: not C.modal_open(page, modal), poll_every=0.2)
+                if d.get("bytes"):
+                    PDFS.mkdir(parents=True, exist_ok=True)
+                    fnm = PDFS / f"{causa_id}__anx-{fn[:9]}-{r['i']:02d}.pdf"
+                    fnm.write_bytes(d["body"])
+                    rec["file"] = fnm.name
+                    rec["bytes"] = d["bytes"]
+                    out["got"] += 1
+                    out["bytes"] += d["bytes"]
+                    note(f"        {r.get('ref','')[:44]!r} -> {d['bytes'] / 1024:.0f} KB")
+                elif d.get("not_pdf"):
+                    out["not_pdf"] += 1
+                    rec["not_pdf"] = d.get("why")
+                    note(f"      [warn] anexo {r.get('ref','')[:30]!r} is not a pdf ({d.get('why')})")
+                    if d.get("why") == "apm":
+                        out["refused"] += 1
+                        inv.append(rec)
+                        C.close_modal(page, modal)
+                        return inv, out
+                inv.append(rec)
+            C.close_modal(page, modal)
+            pres.run(3.0, poll=lambda: not C.modal_open(page, modal), poll_every=0.2)
     if out["folders"]:
         note(f"      anexos: {out['got']} of {out['listed']} downloaded "
              f"({out['bytes'] / 1024:.0f} KB)"
@@ -614,8 +633,11 @@ def main():
                          "labels seen so far, incl. Promotora CMR Falabella's 'CTO'/'ctoi'. "
                          "Referencia is FREE TEXT typed by the filer, so expect to widen this.")
     ap.add_argument("--anexo-all", action="store_true",
-                    help="download every anexo, not only the matches. A causa can hold six, so "
-                         "this multiplies the requests per open — measure before running it wide.")
+                    help="download every anexo, not only the matches. This multiplies the "
+                         "requests per open by however many a causa holds — which is NOT a "
+                         "known number (5 causas gave 6/5/3/3/3). Measure it first with "
+                         "--anexo-match '$^', which enumerates every folder and downloads "
+                         "nothing.")
     ap.add_argument("--corte", default="",
                     help="with --fill: only causas whose tribunal belongs to this Corte de "
                          "Apelaciones, spelled as the site spells it (e.g. 'C.A. de Santiago'). "

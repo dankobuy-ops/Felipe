@@ -1165,8 +1165,18 @@ def download_doc(api, action, val, param="dtaDoc"):
 # Falabella the contrato is called "CTO" or "ctoi". **Never gate the ENUMERATION on a name match** —
 # a pattern that misses looks exactly like a causa with no anexos, which is the same failure that
 # hid this whole class from us. Enumerate always; match only to decide what to DOWNLOAD.
+# ⚠️ THREE FUNCTIONS, AND ONE IS A PREFIX OF ANOTHER. Census over the probe dumps (2026-08-19):
+# anexoSolicitudCivil x10, anexoCausaCivil x6, anexoSolicitudCivilEscrit x1. Because the anchors
+# are matched by their onclick, `anexoSolicitudCivil` PREFIX-MATCHES `anexoSolicitudCivilEscrit`
+# — so a selector of `a[onclick^='anexoSolicitudCivil']` grabs the Escrito anchors too, clicks
+# them, and then waits for #modalAnexoSolicitudCivil, which never opens. The selector therefore
+# includes the opening PAREN, which is what makes it an exact function match.
+# ⚠️ KNOWN UNKNOWN: the page also declares #modalAnexoSolicitudCivilSII, and no anchor for it has
+# been observed yet. It is deliberately NOT listed — an entry here should mean "seen in the wild",
+# not "the id exists". Add it when a dump shows one.
 ANEXO_SOURCES = (("anexoCausaCivil", "#modalAnexoCausaCivil"),
-                 ("anexoSolicitudCivil", "#modalAnexoSolicitudCivil"))
+                 ("anexoSolicitudCivil", "#modalAnexoSolicitudCivil"),
+                 ("anexoSolicitudCivilEscrit", "#modalAnexoSolEscritoCivil"))
 
 _JS_READ_ANEXO_FOLDER = r"""
 (sel) => {
@@ -1205,18 +1215,35 @@ def read_anexo_folder(page, modal):
     return [r for r in (d.get("rows") or []) if r.get("val")]
 
 
-def anexo_anchor(page, fn):
-    """The caratulado anchor that opens one kind of anexo folder, or None.
+def anexo_anchors(page, fn):
+    """EVERY anchor in the modal that opens this kind of anexo folder. -> [locator], never raises.
 
     ⚠️ IT HAS NO id, NO class AND NO TEXT — it is an icon. The first probe built a selector only
     when there was an id, found none, and reported "no id to click", which reads exactly like the
     control being absent. The onclick PREFIX is the only stable handle it has.
+
+    ⚠️⚠️ AND THERE CAN BE MORE THAN ONE. This returned `.first` until 2026-08-19, when a probe that
+    reported WHERE each control lives found them in two different places in one causa:
+
+        {'where': 'caratulado', 'fn': 'anexoCausaCivil',     'row': 0}
+        {'where': 'HISTORIA',   'fn': 'anexoSolicitudCivil', 'row': 3}
+
+    The selector is scoped to #modalDetalleCivil, which CONTAINS #historiaCiv, so the historia-level
+    folders were being reached all along — but only ever one per function name. A causa with anexos
+    on several historia rows silently lost all but the first, and the loss is invisible: fewer
+    documents looks exactly like a causa that has fewer documents.
+    (Operator: for Promotora CMR Falabella the contrato usually lives in the historia, not the
+    caratulado — so this is the path that matters most for the job this was built for.)
     """
+    out = []
     try:
-        loc = page.locator(f"#modalDetalleCivil a[onclick^='{fn}']").first
-        return loc if loc.count() else None
+        # The paren is load-bearing: without it this prefix-matches a longer function name.
+        loc = page.locator(f"#modalDetalleCivil a[onclick^='{fn}(']")
+        for i in range(loc.count()):
+            out.append(loc.nth(i))
     except Exception:
-        return None
+        pass
+    return out
 
 
 def classify(body):

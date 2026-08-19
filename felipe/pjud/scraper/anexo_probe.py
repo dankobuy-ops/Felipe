@@ -85,6 +85,25 @@ DUMP_JS = r"""
   const hh = [...document.querySelectorAll('#historiaCiv table thead th, #historiaCiv table tr th')]
                .map(t => (t.innerText||'').trim());
 
+  // 4b. ⚠️ EVERY row's Anexo cell, not the first three. The operator says the folder is
+  //     sometimes in the historia rather than the caratulado (and usually so for Promotora CMR
+  //     Falabella). Three rows is not a sample — a causa can have thirty, and the one with an
+  //     anexo can be any of them. Report every non-empty one, and say WHERE each anexo-ish
+  //     control lives, because `.first` only ever opens one folder.
+  const anexoCells = [];
+  document.querySelectorAll('#historiaCiv table tbody tr').forEach((tr, i) => {
+    const td = tr.querySelectorAll('td');
+    if (td[2] && (td[2].innerHTML || '').trim()) {
+      anexoCells.push({row: i, txt: (td[2].innerText||'').trim().slice(0,40),
+                       html: (td[2].innerHTML||'').replace(/\s+/g,' ').trim().slice(0,300)});
+    }
+  });
+  const located = [...m.querySelectorAll('a[onclick]')]
+    .filter(e => /anexo/i.test(e.getAttribute('onclick')||''))
+    .map(e => ({where: e.closest('#historiaCiv') ? 'HISTORIA' : 'caratulado',
+                fn: (e.getAttribute('onclick')||'').split('(')[0],
+                row: e.closest('tr') ? [...(e.closest('tbody')?e.closest('tbody').rows:[])].indexOf(e.closest('tr')) : -1}));
+
   // 4. The first few historia rows, CELL BY CELL, with each cell's inner HTML.
   //    parse_historia assumes doc=td[1], anexo=td[2]. This is how we find out if that is true.
   const rows = [...document.querySelectorAll('#historiaCiv table tbody tr')].slice(0, 3).map(tr => ({
@@ -97,7 +116,8 @@ DUMP_JS = r"""
   // 5. The caratulado / header block, so the folder control there can be spotted.
   const head = m.querySelector('.modal-header, .caratulado, #caratulado');
   return {
-    anexoish, forms, historiaHeaders: hh, rows,
+    anexoish, forms, historiaHeaders: hh, rows, anexoCells, located,
+    nRows: document.querySelectorAll('#historiaCiv table tbody tr').length,
     headerHTML: head ? head.innerHTML.replace(/\s+/g,' ').slice(0, 1500) : null,
     modalIds: [...m.querySelectorAll('[id]')].map(e => e.id).filter(Boolean).slice(0, 60),
     otherModals: [...document.querySelectorAll('.modal[id]')].map(e => e.id),
@@ -142,13 +162,23 @@ def main():
         state = ojv.wait_results(p, S, net)
         note(f"search -> {state}")
 
-        n = p.eval_on_selector_all("#dtaTableDetalleFecha tbody tr", "e=>e.length")
-        note(f"{n} rows on page 1")
-        for i in range(min(a.rows, n)):
-            rol = p.evaluate(
-                "(i)=>{const tr=document.querySelectorAll('#dtaTableDetalleFecha tbody tr')[i];"
-                " const td=tr.querySelectorAll('td'); return td[1]?td[1].innerText.trim():'';}", i)
-            note(f"opening row {i} — {rol}")
+        # ⚠️⚠️ THE PROBE MUST OBEY THE SAME GATE AS THE WORKERS. The first version took rows 0..N
+        # straight off the table with no filter, and promptly spent four causa opens on E- rols —
+        # EXHORTOS, which this project does not collect. Two costs, and the second is the worse:
+        #   1. a causa open is the scarcest thing here, spent on causas we will never store;
+        #   2. the EVIDENCE is then about the wrong population. Every multi-anchor anexo
+        #      observation from that run came from an E- rol; the C- causas showed at most one
+        #      anchor per function. A probe that samples a different population than the worker
+        #      answers a different question, and nothing in its output says so.
+        # `page_bank_causas` is the workers' own filter — C- rol AND a bank plaintiff.
+        rows_all = p.eval_on_selector_all("#dtaTableDetalleFecha tbody tr", "e=>e.length")
+        cands = C.page_bank_causas(p)
+        note(f"{rows_all} rows on page 1, {len(cands)} of them bank C- causas (the worker's gate)")
+        if not cands:
+            note("no bank causa on this page — nothing a worker would open here")
+        for row in cands[:a.rows]:
+            i, rol = row["i"], row["rol"]
+            note(f"opening row {i} — {rol}  {row.get('car','')[:44]}")
             if not C.human_click(p, p.locator("#dtaTableDetalleFecha tbody tr").nth(i)
                                  .locator("a[onclick*='detalleCausaCivil']").first, timeout=8000):
                 note("  click refused, next"); continue
@@ -175,7 +205,12 @@ def main():
                 print(f"    {e['tag']:<7} id={e['id']!r} cls={e['cls'][:28]!r} txt={e['txt']!r}")
                 if e["onclick"]:
                     print(f"            onclick={e['onclick'][:120]}")
-            print(f"  other modals present: {d.get('otherModals')}")
+            print(f"  historia rows: {d.get('nRows')}  | Anexo cells with content: "
+                  f"{len(d.get('anexoCells') or [])}")
+            for ac in (d.get("anexoCells") or [])[:6]:
+                print(f"    row {ac['row']}: txt={ac['txt']!r}")
+                print(f"      html={ac['html'][:200]}")
+            print(f"  WHERE each anexo control lives: {d.get('located')}")
 
             # ⚠️ THE ANEXO ANCHOR HAS NO id AND NO TEXT — it is an icon. The first version built a
             # selector only when there was an id, so it never clicked anything and reported "no id
