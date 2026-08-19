@@ -843,6 +843,11 @@ def main():
             pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=9337)
+    ap.add_argument("--corte", default="",
+                    help="sweep only the tribunales Neon says belong to this Corte de "
+                         "Apelaciones, spelled as the site spells it (e.g. 'C.A. de Santiago'). "
+                         "Applied AFTER the national-list check, so --start/--end then index the "
+                         "filtered list. An unmatched name aborts rather than sweeping nothing.")
     ap.add_argument("--start", type=int, default=0, help="tribunal index to resume at")
     ap.add_argument("--end", type=int, default=0,
                     help="stop AFTER this tribunal index (0 = to the end). With --start this "
@@ -1137,6 +1142,34 @@ def main():
             live(p, f"on the form — {len(tl or [])} tribunales")
         if len(tl) < 50:
             raise SystemExit("not the national list — aborting")
+
+        # ⚠️ FILTER THE LIST AFTER VALIDATING IT, NEVER BEFORE. The `len(tl) < 50` check above is
+        # how this worker knows it is looking at the national tribunal list rather than a court's
+        # own short list — a wedged form's leftovers, say. Narrowing to one corte first would
+        # leave 28 entries and abort every time, or worse, pass a filtered list off as the whole
+        # country. Validate that we have all 230, then take our slice of it.
+        if a.corte:
+            import psycopg2
+            import dbstore
+            _cn = psycopg2.connect(**dbstore._conn_kwargs())
+            with _cn.cursor() as _k:
+                _k.execute("select id from tribunales where corte = %s", (a.corte,))
+                want_ids = {str(r[0]) for r in _k.fetchall()}
+            _cn.close()
+            before = len(tl)
+            tl = [t for t in tl if str(t["v"]) in want_ids]
+            note(f"corte filter '{a.corte}': {len(tl)} of {before} tribunales "
+                 f"({len(want_ids)} known to Neon for that corte)")
+            # ⚠️ AN EMPTY SLICE IS A TYPO, NOT AN EMPTY CORTE. `tribunales.corte` carries the
+            # site's own spelling and 25 rows have it blank, so a near-miss name yields zero
+            # courts — which would otherwise sweep nothing and report a clean finish.
+            if not tl:
+                raise SystemExit(f"no tribunal in Neon carries corte={a.corte!r} — check the "
+                                 f"spelling against `select distinct corte from tribunales`")
+            # --start/--end are indices into THIS list once filtered, which is what a sharded
+            # corte sweep wants; say so, because for an unfiltered run they index the country.
+            if a.start or a.end:
+                note(f"  (--start/--end index the FILTERED list: {a.start}..{a.end or len(tl) - 1})")
 
         recoveries = 0
         clean_since_block = 0

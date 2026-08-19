@@ -97,8 +97,13 @@ if ($DryList) { return }
 
 # ⚠️ REFUSE TO DOUBLE-START. Two fleets on one address is the one thing measured to kill a fleet,
 # and the second one would be invisible in the first one's logs.
+# ⚠️ AND MATCH THE WORKER, NOT ITS INGEST. `-like "*worker_h.py*"` also matches
+# `ingest_worker_h.py`, so a perfectly correct detached ingest blocked the next month's launch.
+# The lookbehind refuses a preceding word character, which is what separates "worker_h.py" from
+# "…_worker_h.py". It failed SAFE — refusing to launch, not launching twice — which is the right
+# direction for a guard to be wrong in, but it was still wrong.
 $alive = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
-           Where-Object { $_.CommandLine -like "*worker_h.py*" })
+           Where-Object { $_.CommandLine -match '(?<!\w)worker_h\.py' })
 if ($alive.Count -gt 0) {
     throw "$($alive.Count) worker_h process(es) already running (PID $($alive.ProcessId -join ', ')). Stop them first — a second fleet on this address doubles the aggregate rate, which is the one thing measured to kill a fleet."
 }
