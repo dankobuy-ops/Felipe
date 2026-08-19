@@ -297,6 +297,16 @@ def fetch_anexos(page, pres, causa_id):
             if k >= len(anchors):
                 break
             loc = anchors[k]
+            # ⚠️⚠️ A FOLDER IS A MODAL OVER A MODAL, AND ITS BACKDROP OUTLIVES THE CLOSE. Exactly
+            # the trap close_modal_human already documents — "the modal's fade plus its
+            # .modal-backdrop outlive the close call, the next click lands on the backdrop" — and
+            # I walked into it anyway by polling only for the folder being hidden. Measured
+            # 2026-08-19: after closing anexoCausaCivil the NEXT anchor was refused by human_click
+            # as covered. The guard was right; the target really was under a stale backdrop.
+            try:
+                bd0 = page.evaluate("()=>document.querySelectorAll('.modal-backdrop').length")
+            except Exception:
+                bd0 = 0
             try:
                 pres.travel_to(page, f"#modalDetalleCivil a[onclick^='{fn}(']")
             except Exception:
@@ -305,8 +315,31 @@ def fetch_anexos(page, pres, causa_id):
                 note(f"      [warn] anexo folder {fn}[{k}]: click refused")
                 continue
             out["folders"] += 1
-            # A condition, not a duration: the folder arrives when its table does.
-            pres.run(6.0, poll=lambda: bool(C.read_anexo_folder(page, modal)), poll_every=0.25)
+            # ⚠️⚠️ THE FOLDER MODAL IS ONE GLOBAL ELEMENT, REUSED BY EVERY CAUSA — so "the table
+            # is non-empty" is satisfied INSTANTLY BY THE PREVIOUS CAUSA'S ROWS. Measured
+            # 2026-08-19 and it is not theoretical: C-10100 (BancoEstado/VARAS) and C-10101
+            # (BCI/MANSILLA) were filed with BYTE-IDENTICAL PAGARÉ and CONTRATO — same md5, two
+            # different banks and two different debtors. A pagaré carries the debtor's own
+            # details; identical across two debtors is impossible. We had simply re-read the
+            # previous causa's folder and re-downloaded its documents under the new causa's id.
+            #
+            # This is the oldest trap in this project wearing new clothes: "freshness must be
+            # proven by the NETWORK, not the DOM — the site leaves the previous results on screen
+            # while a new one loads". Mis-attributed documents are far worse than missing ones:
+            # nothing downstream can tell them apart, and the file is named after the wrong causa.
+            #
+            # The `dtaDoc` JWTs are minted per render, so they are the freshness signal. Wait for
+            # them to CHANGE. ⚠️ If two consecutive causas somehow render identical tokens this
+            # times out and we take nothing — the safe direction to fail in.
+            stale = "|".join(r.get("val", "")[:40] for r in C.read_anexo_folder(page, modal))
+            fresh = pres.run(8.0, poll=lambda: bool(
+                (rr := C.read_anexo_folder(page, modal))
+                and "|".join(x.get("val", "")[:40] for x in rr) != stale), poll_every=0.25)
+            if not fresh:
+                note(f"      [warn] anexo folder {fn}[{k}] did not refresh — it still holds the "
+                     f"previous causa's rows. Taking nothing rather than mis-filing them.")
+                C.close_modal(page, modal)
+                continue
             rows = C.read_anexo_folder(page, modal)
             out["listed"] += len(rows)
             note(f"      anexo folder {fn}[{k}]: {len(rows)} document(s)")
@@ -356,7 +389,15 @@ def fetch_anexos(page, pres, causa_id):
                         return inv, out
                 inv.append(rec)
             C.close_modal(page, modal)
-            pres.run(3.0, poll=lambda: not C.modal_open(page, modal), poll_every=0.2)
+            # ⚠️ AND THE ENGINE'S CONDITION IS WRONG FOR A NESTED MODAL. close_modal_human waits for
+            # NO .modal-backdrop at all — right for the causa modal, impossible here, because the
+            # causa modal underneath keeps its own the whole time. Bootstrap STACKS backdrops, so the
+            # condition is that the count returns to what it was before this folder opened.
+            gone = pres.run(6.0, poll=lambda: (not C.modal_open(page, modal)) and page.evaluate(
+                "(n)=>document.querySelectorAll('.modal-backdrop').length <= n", bd0),
+                poll_every=0.2)
+            if not gone:
+                note(f"      [warn] {fn}[{k}] folder or its backdrop still up after 6s")
     if out["folders"]:
         note(f"      anexos: {out['got']} of {out['listed']} downloaded "
              f"({out['bytes'] / 1024:.0f} KB)"
