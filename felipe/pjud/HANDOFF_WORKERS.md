@@ -2174,3 +2174,183 @@ top of travel if F5 reads raw coordinates — but it is unproven, and it cannot 
 3. **`worker_h`'s sweep is page-1-only** by design (fidelity: the recording read one page). That
    is why discovery still needs worker A, and it is a spec/settings conflict worth deciding
    deliberately rather than by default.
+
+---
+
+# ANEXOS — the document class we never knew existed (2026-08-19)
+
+Operator wants the **contrato**, because a demandado's email address is sometimes in it. (Email
+extraction stays a human job — we download the PDF, a person reads it.)
+
+## ★★★ It was found by WATCHING, and it had been invisible for months
+
+A 40-minute recorded human session produced four endpoints that appear **nowhere in this
+codebase**, and the biggest of them outnumbered the one we do fetch five to one:
+
+| endpoint | hits in one session | known to our code |
+|---|---:|---|
+| `anexoDocCivil.php` | **30** | **no** |
+| `anexoCausaCivil.php` | 7 | **no** |
+| `docCertificadoEscrito.php` | 4 | **no** |
+| `anexoCausaSolicitudCivil.php` | 1 | **no** |
+| `causaCivil.php` | 17 | yes |
+| `docuN.php` | 6 | yes |
+
+`parse_historia` looks for the anexo as a `<form>` in `td[2]`. Across **117,173 banked historia
+rows it found NONE.** The column was right — the headers really are
+`['Folio','Doc.','Anexo','Etapa',…]` — and the *shape* was wrong. The site puts an **anchor** there.
+
+⇒ **"We never look for it" and "these causas have none" produce identical evidence: zero.** That is
+what made this invisible, and it is the same shape as every other silent gap in this project.
+
+## The structure
+
+```
+<a onclick="anexoCausaCivil('<JWT>')">            opens #modalAnexoCausaCivil
+<a onclick="anexoSolicitudCivil('<JWT>')">        opens #modalAnexoSolicitudCivil
+<a onclick="anexoSolicitudCivilEscrit('<JWT>')">  opens #modalAnexoSolEscritoCivil
+
+  the folder is a table:   Doc. | Fecha | Referencia
+  <form action=".../anexoDocCivil.php"><input name="dtaDoc" value="<JWT>">
+  <a onclick='$(this).closest("form").submit();'>Descargar Documento</a>
+```
+
+**TWO ACTS, NOT ONE:** open the folder, then take what is in it. Anything looking for a direct
+link concludes the causa has no anexos.
+
+⚠️ **The anchor has no id, no class and no text** — it is an icon. It is located by its `onclick`
+prefix, and **the opening paren is load-bearing**: `anexoSolicitudCivil` is a PREFIX of
+`anexoSolicitudCivilEscrit`, so without it the Escrito anchors get clicked against the wrong modal.
+
+⚠️ `#modalAnexoSolicitudCivilSII` exists in the page and is deliberately **not** in `ANEXO_SOURCES`.
+An entry should mean "observed in the wild", not "the id exists".
+
+## ★★ Where it lives: the HISTORIA as often as the caratulado
+
+Operator said the folder is *"almost always in the caratulado, sometimes in the historia of book 1"*.
+Six **gated** bank C- causas in the 19º Juzgado Civil de Santiago:
+
+| causa | where |
+|---|---|
+| C-10359 | caratulado ×2 (`anexoCausaCivil` + `anexoSolicitudCivilEscrit`) |
+| C-10317 | caratulado |
+| C-10268 | **HISTORIA** row 9 |
+| C-10101 | **HISTORIA** row 6 |
+| C-10100 | caratulado **+ HISTORIA** row 7 |
+| C-10089 | **HISTORIA** row 3 |
+
+**Four of six in the historia** — in this court the majority, not the exception.
+
+⚠️ **I claimed the historia path was unreachable. It never was**: the selector is scoped to
+`#modalDetalleCivil`, which *contains* `#historiaCiv`. And my "the Anexo cell is always empty" came
+from dumping only the first three historia rows when the anexo sits at rows 3, 6, 7 and 9. **Three
+rows is not a sample.**
+
+## ⚠️⚠️ THE FOLDER MODAL IS ONE GLOBAL ELEMENT — it filed one causa's documents under another
+
+The worst bug of the day, caught by a test run that was only meant to confirm a refactor.
+
+`#modalAnexoCausaCivil` and friends are **one element reused by every causa**. The wait condition
+was *"is the folder table non-empty?"* — satisfied INSTANTLY by the previous causa's rows.
+
+```
+277-C-10100 (BancoEstado/VARAS)   md5 82983c28   229785
+277-C-10101 (BCI/MANSILLA)        md5 82983c28   229785
+```
+
+Two banks, two debtors, **byte-identical PAGARÉ and CONTRATO**. A pagaré carries the debtor's own
+details; identical across two debtors is impossible. Three of nine PDFs were mis-filed, and the
+FIRST smoke test had it too — which I had reported as a clean success.
+
+⇒ **This is the oldest trap in this project wearing new clothes.** `HANDOFF_WORKERS` already says
+it about search results: *freshness must be proven by the NETWORK, not the DOM, because the site
+leaves the previous content on screen while the new one loads.* I wrote the same bug anyway, in a
+new place, three months later.
+
+⚠️ **Mis-attributed documents are much worse than missing ones.** Nothing downstream can tell them
+apart, the file is named after the wrong causa, and the entire point of this class is to read a
+NAMED PERSON's contract.
+
+**The fix:** the `dtaDoc` JWTs are minted per render, so they are the freshness signal — wait for
+them to CHANGE, and if they do not, **take nothing and say so.** Failing closed is the only safe
+direction.
+
+**Verified, same 6 causas, same court, before and after:**
+
+| | before | after |
+|---|---:|---:|
+| cross-causa duplicate PDFs | **3** | **0** |
+| inventories matching their causa | no | yes |
+
+The before-run was lagging by exactly one causa throughout: C-10317 reported C-10359's 9 documents,
+and C-10089's "1 document, PAGARÉ 883 KB" was C-10100's content arriving late.
+
+⚠️ A duplicate *within* one causa is fine — C-10100 really does carry the same pagaré in both its
+caratulado and its solicitud folder. That is a filer's choice, not our bug.
+
+## ⚠️ A folder is a modal OVER a modal
+
+Closing one leaves its `.modal-backdrop` behind, so the next anchor is refused as covered — exactly
+what `close_modal_human` documents. **But the engine's condition cannot be reused here**: it waits
+for NO `.modal-backdrop` at all, which is right for the causa modal and impossible for a nested
+one, because the causa modal underneath keeps its own the whole time. Bootstrap STACKS backdrops,
+so the condition is that the **count returns to what it was** before this folder opened.
+
+⚠️ **Still unexplained, failing safe:** `anexoSolicitudCivilEscrit`'s anchor is refused by
+`human_click` on C-10359 in both runs, with no backdrop warning — so the backdrop fix, though
+correct, is not what blocks it. 1 of ~16 anchors seen. It skips and logs. **Diagnose it; do not
+guess at it.**
+
+## ★★★ ENUMERATE ALWAYS, DOWNLOAD SELECTIVELY — and it paid out immediately
+
+Opening a folder is **one request and yields every label**; downloading is one request each.
+So `--anexos` records the whole inventory for every causa and downloads only what matches
+`--anexo-match` (default `contrato|cto|ctoi|pagaré`).
+
+⚠️ **`Referencia` is FREE TEXT typed by the filer.** Real labels, minutes apart:
+
+```
+'1. CONTRATO DE ARRENDAMIENTO'   '2. COPIA INSCRIPCIÓN DE DOMINIO'   '6. MANDATO JUDICIAL'
+'pagare'   'mandato claudio altamirano'   'CERTIFICADO LABORAL CLAUDIO ALTAMIRANO'
+'MUTUO'    'EP MUTUO HIPOTECARIO Repertorio Nº 10.180-20'   'Cartola operaciones créditos'
+```
+
+Numbered or not, any case, sometimes carrying a person's name. Operator: for Promotora CMR
+Falabella the contrato is **'CTO'** or **'ctoi'**. **A pattern WILL miss** — which is exactly why
+the enumeration is never gated on it, and why "we looked and found no match" must stay
+distinguishable from "we never looked".
+
+★ **It earned its keep on the first real run:** `MUTUO` appears in **three of five** causas'
+inventories and the default pattern matches none of them. A *mutuo* is the loan contract itself in
+a mortgage-backed case — the contrato equivalent. We know that from real labels across real banks,
+instead of discovering in six months that mortgage cases silently yielded nothing.
+
+## ⚠️ How many anexos can a causa hold? UNKNOWN
+
+An early draft of the code said "six" as though it were a bound. Six was the largest of FIVE
+observations (6, 5, 3, 3, 3). **One causa later showed NINE.** A sample maximum is not a maximum,
+and this number drives the requests-per-causa estimate.
+
+**The cheap test costs no downloads at all:**
+
+```
+worker_h --anexos --anexo-match "$^"     # a pattern that matches nothing
+```
+
+enumerates every folder and fetches none — one request per folder — so a few hundred causas give
+the real distribution out of `listed`.
+
+## ⚠️ And the probe must obey the worker's gate
+
+The first `anexo_probe` took rows 0..N straight off the results table and promptly spent four causa
+opens on **E- rols — exhortos**, which this project does not collect. Two costs, the second worse:
+
+1. a causa open is the scarcest thing here, spent on causas we will never store;
+2. **the evidence was then about the wrong population.** Every multi-anchor observation I first
+   cited came from an exhorto; the C- causas showed at most one anchor per function.
+
+It now uses `C.page_bank_causas` — the workers' own gate (C- rol AND a bank party). 101 rows → 31
+candidates, the first at row 9.
+
+⇒ **A probe that samples a different population than the worker answers a different question, and
+nothing in its output says so.**

@@ -2243,6 +2243,111 @@ to look alive.
 
 (PJUD, 2026-08-19. `human_engine.py`.)
 
+### ★★★★★ Watch a human use the site. You are not scraping what you think you are scraping.
+
+Forty minutes of a recorded human session produced **four request endpoints that appeared nowhere
+in the codebase** — and the biggest of them outnumbered the one endpoint we did collect **five to
+one**. It was the document class the operator used most, and we had fetched exactly zero of them,
+for months, across a hundred thousand records.
+
+The parser was looking in the right column and for the wrong *shape*: a `<form>` where the site
+puts an `<a onclick=…>`. Across 117,173 rows it matched none.
+
+⇒ **"We never look for it" and "these records don't have one" produce IDENTICAL EVIDENCE: zero.**
+That is what makes this class of gap invisible, and no amount of reading your own code finds it —
+your code is the thing that is wrong. Only watching someone who knows the site does.
+
+- **Record the network, not just the screen.** The endpoint list was the finding. A screenshot of
+  the same session would have shown a person clicking icons and taught nothing.
+- **Diff the endpoints you saw against the endpoints you implement.** One `grep` per endpoint name
+  turned "here is a busy log" into "four of these do not exist anywhere in our source".
+- **Ask the operator where things live, then verify BOTH answers.** Told the control was "usually
+  in the header, sometimes in the row", we found it in the row in four of six records — the
+  majority. Had we checked only the header we would have called the other answer rare.
+- ⚠️ **Three rows is not a sample.** The row-level control sat at rows 3, 6, 7 and 9; a dump of the
+  first three rows showed an empty column every time and produced a confident wrong conclusion.
+
+### ⚠️⚠️ A modal reused for every record will hand you the PREVIOUS record's contents
+
+The folder listing the documents is **one global element**, re-populated per record. The wait
+condition was the obvious one — *"is the list non-empty?"* — and it is satisfied INSTANTLY by the
+previous record's rows.
+
+The result was documents filed under the wrong record: two different lenders, two different
+debtors, **byte-identical PDFs under both ids**. A third of everything the new code had ever
+fetched. The first smoke test had it too, and was reported as a clean success.
+
+This is the same rule this handbook already states about paginated results — *freshness must be
+proven by the network, not the DOM, because the site leaves the previous content on screen* —
+rediscovered three months later in a different widget by the same author.
+
+- **Every reused container needs a freshness proof, not just tables of results.** Modals, drawers,
+  side panels, detail panes: if it is populated by AJAX and reused, "it has content" is not
+  "it has THIS record's content".
+- **Use a per-render token as the signal.** These rows carry short-lived JWTs minted per render, so
+  "the tokens changed" is a reliable proof where "the row count changed" is not.
+- **Fail CLOSED.** If freshness cannot be established, take nothing and say so. A missing document
+  is a gap; a mis-attributed one is a corruption that nothing downstream can detect, because the
+  file is named after the wrong record.
+- ⚠️ **Byte-compare your output across records.** One md5 pass over the downloads found it in
+  seconds. Identical bytes under two ids is nearly always a staleness bug, and nothing else in the
+  run reports it — every counter was healthy and every file was a valid PDF.
+
+### ⚠️ A nested modal's backdrop is not the outer modal's backdrop
+
+Closing an inner modal leaves a backdrop behind for a moment, so the next click is refused as
+covered. The existing helper waits for **no backdrop at all** — correct for a top-level modal, and
+impossible for a nested one, because the modal underneath keeps its own the whole time. Bootstrap
+STACKS them.
+
+⇒ The condition is that the backdrop count **returns to what it was before you opened**, not that
+it reaches zero. A helper written for depth 1 is not automatically right at depth 2.
+
+### ★★★ Enumerate always, fetch selectively — and never gate the ENUMERATION on a name
+
+When a container lists items and only some are wanted, the listing is usually **one request for
+all the labels** while fetching is one request each. So record the entire inventory every time and
+download only what matches.
+
+This is not tidiness, it is the difference between two failure modes:
+
+    matched nothing        -> "we looked, and this record has no contract"
+    never enumerated       -> "we never looked"
+
+A name filter alone cannot tell those apart, and the second silently looks like the first.
+
+⚠️ **The labels are free text typed by whoever filed them.** Real examples from one afternoon:
+`'1. CONTRATO DE ARRENDAMIENTO'`, `'pagare'`, `'mandato claudio altamirano'`, `'MUTUO'`,
+`'EP MUTUO HIPOTECARIO Repertorio Nº 10.180-20'` — numbered or not, any case, sometimes containing
+a person's name, and for one particular counterparty abbreviated to `'CTO'`. **Any pattern will
+miss.**
+
+★ It paid out on the first real run: a label the default pattern did not match turned up in
+**three of five** records and was, on inspection, the very instrument being sought under another
+legal name. That was learnable only because the non-matching labels had been recorded anyway.
+
+### ⚠️ A sample maximum is not a maximum
+
+"A record can hold six" went into a code comment and a commit message as though it were a bound.
+It was the largest of five observations. The seventh record had nine.
+
+It mattered because that number drove the requests-per-record estimate, and therefore the pacing.
+**The cheap test is to run the enumeration with a filter that matches nothing** — every container
+opened, nothing downloaded — which yields the true distribution for one request each.
+
+### ⚠️ A probe must obey the same gate as the worker
+
+A diagnostic that took the first N rows off the results page spent four expensive opens on record
+types the project does not collect — and worse, **the evidence it produced was about the wrong
+population**. Every "look, there are several of these controls!" observation came from those
+out-of-scope records; the in-scope ones had at most one.
+
+⇒ **A probe that samples a different population than the worker answers a different question, and
+nothing in its output says so.** Reuse the worker's own selection function, not a fresh
+approximation of it.
+
+(PJUD, 2026-08-19.)
+
 ---
 
 ## Quick checklist for a new scraper
@@ -2253,6 +2358,8 @@ to look alive.
 [ ] Launch a REAL browser yourself; attach over CDP. Persistent profile. Headed, always.
 [ ] Human at the gate: log in / solve the challenge by hand, with nothing attached.
 [ ] Identify the SCARCE act. Harvest everything free around it.
+[ ] WATCH A HUMAN USE IT, recording the network. Diff their endpoints against yours.
+[ ] Any container reused per record needs a FRESHNESS PROOF, or it serves you the last one.
 [ ] Input: real keystrokes, correct blur, read the value BACK.
 [ ] Pointer: arc + dwell, refuse covered targets — UNLESS the site just needs el.click().
 [ ] Refusal detection: from the RESPONSE, all frames, every language, one shared implementation.
