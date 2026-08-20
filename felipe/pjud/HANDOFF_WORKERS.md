@@ -2563,7 +2563,17 @@ reproduce; arm 2 was not launched.
 meant to END UP — matching `(tribunal_id, rol)` against Neon, because a `rol` alone repeats across
 the 230 courts and matching on it gave more hits than there were causas:
 
-    589 opened   254 already banked   335 NEW   ->  13.3 new records/min, 57% of opens useful
+    589 opened
+     33 gated (etapa/proc rejected -- deliberately never stored)
+    556 kept
+    254 already in Neon
+    312 NEW records LANDED        ->  12.4 new records/min, 53% of opens useful
+
+The accounting closes exactly: 589 on disk against 566 now in Neon leaves 23 unstored, which is
+the 33 gated minus the 10 of them the bank already held. ⚠️ The first estimate of 335/13.3 counted
+gated causas as deliverable; the gates reject them precisely because there is no harvest to store,
+so they are opens spent, not records won. **Verified after ingest by counting rows in Neon, not by
+reading the run's own tally** -- which is the failure `ingest_worker_h.py` exists to prevent.
 
 ★ Still the best figure this project has recorded (previous best 9.9 OPENS/min, 4 workers at
 operator pace, 2026-08-17 — and that number was never discounted for duplicates either, so the
