@@ -226,9 +226,15 @@ last night assumed, and it rules out the ladder-until-it-breaks approach on a si
 should be treated as the *test* one, not the work one.
 ⇒ **Check `site_health.py` before AND after every arm.** Before, so a degraded start is not read as
 a result; after, so a trip is detected in one check instead of eight hours of canaries.
-⚠️ **And the tethered address is a mobile/CGNAT one** — it may be shared, rate-limited or classified
-differently from residential. Do not carry measurements between the two without re-verifying; that
-is exactly the trap this file records for local-vs-runner.
+★ **How the address was recovered: the operator RESET THE HOME ROUTER and got a new IP.** The phone
+was only the diagnostic — it proved the site was up and the block was per-address. The fix was a new
+residential address on the SAME line, so bandwidth, latency and everything else about the uplink are
+unchanged, and measurements taken before and after the reset ARE comparable.
+
+⇒ **IP rotation clears this block immediately.** An eight-hour wall became a router reset — worth
+knowing before ever planning a long cool-off again, and the cheapest second address there is.
+⚠️ It also means the old address is burnt rather than healed: we still do not know how long the
+block runs, only that it exceeded eight hours and that we stopped waiting.
 
 ---
 
@@ -3357,6 +3363,12 @@ Per-open time drifts up with fleet size:
 
     4 workers   8.6 - 11.8 s per open
     8 workers   9.7 - 12.2 s per open
+
+⚠️ **UPDATE 2026-08-20: a SOLO worker on the same line lands at 9.75 s per open** — in the middle
+of both ranges, not below them. Contention up to eight workers is therefore small enough to be
+invisible, and per-open time is dominated by the SITE rather than by the fleet or the line. The
+caveat below still holds for a REMOTE fleet, where the uplink genuinely differs; it no longer
+explains these numbers.
 
 I called that contention. ⚠️ **On a local machine the operator's own uplink is a shared variable**,
 and eight browsers pulling causa pages through one residential connection can throttle each other
