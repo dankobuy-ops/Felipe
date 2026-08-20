@@ -19,6 +19,7 @@ look like hammering it.
 """
 import argparse
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -37,7 +38,11 @@ from playwright.sync_api import sync_playwright
 
 HREF = "https://oficinajudicialvirtual.pjud.cl/includes/sesion-consultaunificada.php"
 PORT = 9590
-PROF = r"C:\Users\Danko\AppData\Local\Temp\pjud_health"
+# WARN: NOT A HARDCODED WINDOWS PATH. This also runs on Linux runners, where the block check
+# is worth MORE than it is here -- a runner has no screen, and a blocked address there is
+# served the same healthy-looking page with no search form. A Windows-only profile path
+# would fail both checks on exactly the machine nobody can look at.
+PROF = str(Path(tempfile.gettempdir()) / "pjud_health")
 
 
 def check(pw):

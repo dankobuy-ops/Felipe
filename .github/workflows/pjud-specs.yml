@@ -1,0 +1,186 @@
+name: PJUD — specs remotas (worker H barriendo, por demanda)
+
+# Does the configuration that runs clean LOCALLY also run on a datacenter runner?
+#
+# The number to beat is 306 CAUSA OPENS — worker A, probe_pace, 2026-08-13, old code, and it ended
+# on our own --max-minutes rather than a refusal, so the real remote ceiling has never been found.
+# Worker H has never posted a remote sweep at all: its 1,046 opens in 150 min is LOCAL.
+#
+# ⚠️ WHY A SWEEP AND NOT --fill. pjud-fill.yml already runs worker H remotely, but a fill opens a
+# work-list from Neon while worker A's 306 was a sweep. Comparing a fill against a sweep compares
+# two different jobs. This exists to be like-for-like with the record it is aiming at.
+#
+# ⚠️ EVERY SPEC HERE IS A LOCAL MEASUREMENT AND NONE OF IT TRANSFERS UNTIL PROVEN HERE. Measured
+# 2026-08-20 on residential: 8.6-9.0 s per open solo, 480x300 clean over 1,129 opens, --speed 0
+# safe for 3 hours. A datacenter round-trip is 17-23 s against a local 12-26 s, so the thing most
+# likely to break is not the pacing but anything that WAITS A FIXED NUMBER OF MILLISECONDS.
+#
+# ⚠️ KNOWN SUSPECT, NOT YET FIXED: cdp_scrape.select_cuaderno waits a flat 1600 ms for the historia
+# to reload over AJAX, then verifies only that the <select> index moved -- not that the historia
+# actually changed. It fires once per causa with a cuaderno 2. Its own docstring calls it the prime
+# suspect for the only block left, and notes it was measured residentially and inherited unchanged.
+# If this workflow stalls or produces cuaderno-2 rows that belong to cuaderno 1, that is the first
+# place to look, and "wait for the historia to CHANGE" is the fix.
+#
+# ⚠️ ONE MONTH PER DISPATCH. The OJV refuses a longer range and the refusal arrives as a sweet
+# alert that reads like an empty result. worker_h refuses such a window at the door.
+
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Desde (dd/mm/aaaa) — máximo UN MES"
+        required: true
+        default: "01/07/2026"
+      hasta:
+        description: "Hasta (dd/mm/aaaa)"
+        required: true
+        default: "31/07/2026"
+      shards:
+        description: "Runners en paralelo — EMPIEZA EN 1 (el récord a batir es de un solo runner)"
+        required: false
+        default: "1"
+      minutes:
+        description: "Vida de cada runner en minutos"
+        required: false
+        default: "180"
+      window:
+        description: "Tamaño de ventana WxH (local: 480x300, verificado en 1.129 opens)"
+        required: false
+        default: "480x300"
+      trace:
+        description: "trace: off | entry | all"
+        required: false
+        default: "entry"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - id: gen
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          n = max(1, min(8, int("${{ inputs.shards }}" or 1)))
+          print("matrix=" + json.dumps({"include": [{"shard": i + 1, "of": n} for i in range(n)]}))
+          PY
+
+  sweep:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install playwright psycopg2-binary requests \
+                      google-auth google-auth-oauthlib google-api-python-client
+          playwright install chromium --with-deps
+
+      - name: Xvfb (headed, never headless)
+        run: |
+          # ⚠️ F5's challenge script tests document.visibilityState: a headless browser never
+          # completes it. Measured 2026-08-11, same code both ways — headed under Xvfb entered and
+          # swept; --headless=new failed entry after 102 s.
+          sudo apt-get install -y --no-install-recommends xvfb >/dev/null 2>&1 || true
+          Xvfb :99 -screen 0 1600x1000x24 >/dev/null 2>&1 &
+          sleep 2
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Restore config (Neon)
+        working-directory: felipe/pjud/scraper
+        env:
+          PJUD_CONFIG: ${{ secrets.PJUD_CONFIG }}
+        run: |
+          printf '%s' "$PJUD_CONFIG" > pjud_config.json
+          python -c "import json;d=json.load(open('pjud_config.json'));print('config keys:',sorted(d))"
+
+      # ⚠️ ASK WHETHER THIS ADDRESS IS BLOCKED *BEFORE* SPENDING THE RUN, AND AGAIN AFTER.
+      # A blocked address is served a page that RENDERS PERFECTLY and is missing the search form
+      # (measured 2026-08-20: no #fecCompetencia, no gate, no <form>, HTTP 200, no captcha). It is
+      # indistinguishable from a site redesign unless you check. A run that starts blocked produces
+      # a confident zero, and a run that ENDS blocked is the only way to tell a trip from a clean
+      # finish -- both write the same thing to the log.
+      - name: Block check (before)
+        working-directory: felipe/pjud/scraper
+        run: python -u site_health.py || echo "::warning::address is NOT clean before the run"
+
+      - name: Sweep shard ${{ matrix.shard }}/${{ matrix.of }}
+        working-directory: felipe/pjud/scraper
+        run: |
+          # ⚠️ --entry-route home ON RUNNERS. Measured 2026-08-14: a datacenter session that takes
+          # the DIRECT link lands on the form perfectly and then cannot complete a single search
+          # (rejF=1, 0 opens, twice, different IPs). Every remote run that HAS searched went
+          # through /home/ and the guest gate. This one flag decides whether the run does any work.
+          # ⚠️ --gate db: separate machines share no filesystem, so the arrival gate lives in Neon.
+          #
+          # 230 courts nationally, split evenly across the shards, disjoint by construction.
+          # WARN: NOT $GITHUB_ENV. Values written there reach the NEXT step, not this one, so
+          # the sweep would have run with empty --start/--end and swept court 0 only. Shell
+          # variables, used in the same step, are what this needs.
+          read SW_START SW_END <<<"$(python3 -c "
+          import math
+          n, i = ${{ matrix.of }}, ${{ matrix.shard }}
+          per = math.ceil(230 / n)
+          start = (i - 1) * per
+          print(start, min(start + per - 1, 229))
+          ")"
+          echo "courts $SW_START..$SW_END"
+          python -u worker_h.py \
+            --launch --port 9222 \
+            --start "$SW_START" --end "$SW_END" \
+            --entry-route home --gate db --gate-release form \
+            --window "${{ inputs.window }}" \
+            --speed 0 --duty off --focus off \
+            --max-recover 3 --measure \
+            --shots "$GITHUB_WORKSPACE/felipe/pjud/data/shots" \
+            --trace ${{ inputs.trace }} \
+            --max-minutes ${{ inputs.minutes }} \
+            --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta }}"
+
+      # A trip and a clean finish write the same DONE line. Only this tells them apart.
+      - name: Block check (after)
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: python -u site_health.py || echo "::warning::address is BLOCKED after the run"
+
+      - name: Contact sheet
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          python -u trace_sheet.py \
+            --dir "$GITHUB_WORKSPACE/felipe/pjud/data/shots/trace" \
+            --out "$GITHUB_WORKSPACE/felipe/pjud/data/shots/trace.html" \
+            --title "specs s${{ matrix.shard }} · run ${{ github.run_id }}" || true
+
+      - name: Ingest to Neon
+        if: always()
+        working-directory: felipe/pjud/scraper
+        run: |
+          # ⚠️ ALWAYS, AND LOUD. The runner is ephemeral: whatever is not ingested dies with it.
+          # A worker's own tally is not evidence the data landed — count it where it ends up.
+          # And never `|| echo`: a swallowed failure makes a run that stored nothing look green.
+          python -u ingest_worker_h.py --no-upload
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: specs-s${{ matrix.shard }}-${{ github.run_id }}
+          path: felipe/pjud/data/worker_h/
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots-s${{ matrix.shard }}-${{ github.run_id }}
+          path: felipe/pjud/data/shots/
+          if-no-files-found: ignore
