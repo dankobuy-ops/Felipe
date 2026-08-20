@@ -16,6 +16,35 @@ drawn from four scrapers and one of them is `cias/HDI-Ruts-Scraper/`. Leave it t
 This project is **scrapers**. Before building or substantially changing one, read
 **[`SCRAPERS_HANDBOOK.md`](../SCRAPERS_HANDBOOK.md)**.
 
+## The ultimate goal
+
+> **Sustained records collected per hour, without ever tripping.**
+
+That is the benchmark, and it is measured against the **site**, not against a recording.
+
+The one rule below is a **constraint on the search space**, not the objective. It rules out whole
+classes of behaviour; it does not tell you which point inside the remaining space to pick. That
+choice is settled by throughput and survival, measured live.
+
+⚠️ **A HUMAN RECORDING IS AN INSTRUMENT, NOT A TARGET.** Recording an operator is how this project
+discovers *which variables exist* and *what range of values is plausible* — that a duty cycle
+exists at all, that wheel deltas are quantised, that click holds cluster near 100 ms, that a person
+types nothing. Those were all invisible until someone was recorded. But "how closely do we match
+that 40-minute session" is a **proxy metric**, and optimising it is not the job.
+
+- **Stay inside the plausible human range** — that is the one rule, and it is not negotiable.
+- **Pick the value inside that range by real-world results.** A variable whose cost is measured and
+  whose benefit is not is a variable being paid for on faith.
+- ⚠️ **Every spec must eventually be justified by opens/hour or by survival.** Fidelity to the
+  recording justifies nothing on its own. Ask of each one: *what does turning this off actually
+  cost us, live?*
+
+★ The failure mode this exists to prevent, recorded 2026-08-19: the duty cycle was built, debugged
+twice and shipped because the operator did it, at a measured cost of roughly **half the throughput**
+— and nothing anywhere tested whether it reduces blocks. A spec was validated entirely against a
+recording while its real-world benefit was never once measured. Matching a human is the constraint.
+Collecting records is the goal.
+
 ## The one rule
 
 > **A scraper must not do anything a human could not do, or would not do.**

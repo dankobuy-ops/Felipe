@@ -2500,3 +2500,89 @@ spec is now UNDER on both denominators — the opposite of the pre-duty finding.
 distribution) **above** the rates, and every rate per ACTIVE and per WALL second side by side. It
 previously reported per-active-second only, which is exactly the trap its own handbook entry
 warns about.
+
+---
+
+# ★★★★★ THE BENCHMARK IS LIVE RESULTS, NOT THE RECORDING (2026-08-19)
+
+**Sustained causas per hour without tripping.** That is the score. Fidelity to the operator's
+recorded session is not the score, and for one day it silently became it. See
+`felipe/CLAUDE.md` -> "The ultimate goal" and the handbook's Part 0.
+
+The recording is an **instrument for finding variables and their plausible ranges**. It is how we
+learned a duty cycle exists, that wheel deltas are quantised, that holds sit near 100 ms, that a
+person types nothing. It cannot tell us which value inside the plausible range to ship, because it
+never touches the site.
+
+## The two lists — sort every spec into one of them
+
+| validated against LIVE outcomes | validated only against the RECORDING |
+|---|---|
+| aggregate request rate (56/min killed 4 in 5 min; 23/min held an hour) | **duty cycle** — cost measured at ~50% throughput, benefit never measured |
+| covered clicks (0 -> 50 causas, 1 -> blocked at 23, 2 -> at 4) | pointer rate (mousemove/s) |
+| `--fill` vs sweep (95% useful vs 27%) | click hold (~100 ms) |
+| headless / background tab / direct navigation all fatal | wheel quantisation, focus bands |
+| 4 workers @ 27 req/min, 19+ min clean (2026-08-19, today's build) | zero keystrokes |
+
+⚠️ **The right-hand column is not "wrong" — it is UNPRICED.** Each entry may be buying survival or
+may be pure cost. The way to find out is a live A/B at a matched request rate, not a closer diff
+against the recording.
+
+⚠️ **The tell that you are optimising the proxy**: your success metric can be computed offline from
+files, with the site switched off.
+
+## ⚠️⚠️ `--speed 0` NO LONGER MEANS WHAT IT MEANT — historical rate figures do not transfer
+
+Relaunching the 08-17 control exactly (4 workers, one IP, disjoint court ranges, `--speed 0`):
+
+| | 2026-08-17 | 2026-08-19 (same flags) |
+|---|---:|---:|
+| aggregate | ~56 req/min | **27.1 req/min** |
+| survival | all four dead by minute 5 | **19+ min, zero trouble** |
+
+`--speed` zeroes only the READING times. Since August the engine has grown real motor work that no
+speed setting removes — pointer travel, mouse-driven selects, the datepicker — so today's "top
+speed" produces **half** the request rate the same flag produced two days ago.
+
+⇒ **The known-fatal 56 and known-safe 23 are properties of a BUILD, not of the site.** Any
+experiment that assumes them is measuring history. Re-measure the wall against the current build
+before designing anything around it.
+⇒ This killed Experiment B as specified: it needed 4 workers at ~56 and 8 at ~28, and today that
+would take 8 and 16 workers respectively. Arm 1 was the validity check and it correctly refused to
+reproduce; arm 2 was not launched.
+
+## What the instrument says about the current build (NOT a defect list)
+
+`human_profile.py --file <operator> --vs <worker>`, per ACTIVE second. Ratios are **where we
+differ**, each one a hypothesis to price live — not a gap to close on principle:
+
+    mouseover  x1.01   mouseout x1.01      <- indistinguishable
+    mousemove  x0.70   (25.1 -> 17.6/s)
+    click      x0.40   wheel x0.34  scroll x0.39  focusin x0.46
+    resize     x0.00   visibilitychange x0.00     <- we never tab away or resize
+    hold       med 99 -> 109 ms            turn sd 23.6 -> 48.7 deg
+
+⚠️ Much of the click/wheel/scroll gap is TASK MIX, not behaviour: the operator was browsing anexos
+and documents, the worker runs a narrower loop. Comparing two different jobs and calling the
+difference a tell is the same population error this file records three times over.
+⚠️ `mousemove` fell from x0.84 to x0.70 when the duty cycle was switched on, which should not
+happen if stops are cleanly excluded from active seconds — most likely one-second buckets that
+straddle a stop boundary count as active while holding fewer events. Unproven.
+
+## The next test — pricing the duty cycle
+
+Not "match the operator". **Does `--duty human` reduce blocks, and by enough to pay for the
+throughput it costs?**
+
+Both arms ramp identically until trouble, and the x-axis is MEASURED aggregate req/min, not the
+speed setting (duty changes the speed->rate mapping, so the setting is not comparable and the rate
+is):
+
+    arm  duty-off     4 workers, --duty off,   ramping
+    arm  duty-human   4 workers, --duty human, ramping
+
+Read two numbers per arm: **the measured req/min at which trouble starts**, and **causas delivered
+before it**. The second one is the benchmark; the first says whether stillness buys headroom.
+
+  same trip rate  -> the duty cycle is pure cost. Remove it and take the throughput back.
+  duty trips later -> it buys survival, and now we know the exchange rate.

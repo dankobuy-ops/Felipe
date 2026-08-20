@@ -18,6 +18,43 @@ Everything else in this handbook is a corollary. When you are stuck, come back h
 every incident recorded below, the scraper was doing something no person ever does, and the site
 noticed.
 
+### ⚠️⚠️ THE RULE IS A CONSTRAINT. THE GOAL IS RECORDS PER HOUR.
+
+> **The benchmark is sustained records collected per hour, without ever tripping — measured
+> against the SITE.**
+
+The one rule bounds the search space. It does not tell you which point inside that space to pick,
+and it is not a scoring function. Two configurations can both be perfectly plausible as human
+behaviour and differ by 2x in throughput; the rule is silent between them and the site is not.
+
+⚠️ **A HUMAN RECORDING IS AN INSTRUMENT, NOT A TARGET.** Recording a real operator is how you
+discover *which variables exist* and *what values are plausible* — that a duty cycle exists at all,
+that wheel deltas arrive quantised, that click holds cluster near 100 ms, that a person types
+nothing into a readonly field. None of that was visible until someone was recorded, and none of it
+could have been guessed. But **"how closely do we match that session" is a proxy**, and a proxy
+optimised past the point where it tracks the objective starts costing you the objective.
+
+- **Stay inside the plausible human range.** That is the rule, and it is not negotiable.
+- **Choose the value inside that range by live results** — opens per hour, and survival.
+- ⚠️ **Every spec owes an answer to: what does turning this OFF actually cost us, live?** If the
+  answer is "we don't know, but the operator did it", the spec is being paid for on faith.
+
+★ **The failure this exists to prevent** (PJUD, 2026-08-19): a duty cycle — going completely still
+~3 times a minute — was designed, debugged through two wrong diagnoses, and shipped because the
+recorded operator did it. Its cost was measured precisely: **roughly half the throughput.** Its
+benefit was never measured at all. Every validation was a comparison against the recording. A whole
+day of work, and the question "does this reduce blocks?" was never asked, because matching the
+human had quietly become the goal instead of the constraint.
+
+⚠️ **The tell that you have made this mistake**: your success metric can be computed offline, from
+files, without touching the target. If nothing in your evaluation requires the site to answer, you
+are measuring fidelity, not results.
+
+⇒ Sort every spec you hold into two lists — **validated against live outcomes** and **validated
+only against a recording** — and keep the second list short and suspicious. On PJUD that split put
+rate limits, covered clicks and fill-vs-sweep in the first list, and the duty cycle, pointer rate,
+click hold, wheel quantisation and focus bands in the second.
+
 It is two tests, and you need both.
 
 ### "Could not" — physically impossible for a person
@@ -2390,6 +2427,17 @@ because half of a human's session is spent not touching anything. That is a deci
 measurement. But this project's own history says the trade usually pays: every time it chose
 fidelity over pace, throughput went UP within a week, because the pacing that had been
 compensating for bad behaviour could then be removed.
+
+⇒ ~~"This project's own history says the trade usually pays; matching the duty cycle is worth
+halving throughput for."~~ **THE PRESCRIPTION IS STRUCK, 2026-08-19 (same day it was written).**
+The *measurement* above stands: we do emit 68% more per wall second than the operator, and that is
+worth knowing. What does not follow is that we should therefore reproduce their duty cycle. The
+cost is measured (about half the throughput). **The benefit has never been measured at all** — no
+run has ever compared block rates between a duty-on and a duty-off fleet at a matched request rate.
+Every validation of this spec was a comparison against a recording, which cannot answer the only
+question that matters. See "THE RULE IS A CONSTRAINT. THE GOAL IS RECORDS PER HOUR" in Part 0.
+⇒ **Treat the duty cycle as an untested hypothesis carrying a known 50% bill, not as a spec.**
+
 
 (PJUD, 2026-08-19. Found by attaching the human recorder to a running worker — an experiment that
 required no new code and had never once been run.)

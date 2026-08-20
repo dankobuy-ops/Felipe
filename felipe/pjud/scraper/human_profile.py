@@ -21,7 +21,19 @@ import argparse
 import json
 import math
 import statistics as st
+import sys
 from pathlib import Path
+
+# The console is cp1252 here, and this file prints the arrows and warning signs the rest
+# of the project uses. Without this the whole --vs diff dies on its own header AFTER doing
+# all the work. human_record.py has carried the identical guard for weeks; this is the
+# second time the same crash has been re-introduced by not copying a guard that already
+# existed three files away.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 HERE = Path(__file__).parent
 HUMAN = HERE.parent / "data" / "human"
