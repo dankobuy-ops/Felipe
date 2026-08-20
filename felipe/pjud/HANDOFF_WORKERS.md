@@ -2761,3 +2761,76 @@ fleet-size study reaches a confident wrong answer.
 
 ⇒ For production the same arithmetic says: **long shifts, not short ones.** The arrival cost is
 paid once per run regardless of length, so it is 40% of a 25-minute run and 3% of a six-hour one.
+
+---
+
+# ★★★★★ GOAL 2 — 8 WORKERS, 52.9 req/min, ZERO TROUBLE (2026-08-20)
+
+The rate that killed four workers in five minutes on 2026-08-17 was ~56 POST/min. Today eight
+workers held **52.9 req/min for 25 minutes with nothing at all**: no refusals, no modal failures,
+no recoveries, `refused=0` on every shard.
+
+    steady state, last 8 min, all eight shards working
+    h1 6.38  h2 6.50  h3 6.62  h4 6.88  h5 6.50  h6 6.75  h7 6.88  h8 6.38   ALL 52.88  trouble 0
+
+## ★ Workers scale LINEARLY in steady state — the sublinearity was the entry gate
+
+    4 workers   26.2 req/min   6.55 each
+    8 workers   52.9 req/min   6.61 each      2.02x aggregate for 2.0x the workers
+
+⚠️ **Doubling the fleet did not slow the individual worker at all**, which contradicts
+`rate_watch.py`'s own header ("it goes DOWN as workers are added... contention stretches the
+cycle"). At minute 12 this arm looked like +32% over four workers, and that WAS the arrival tax,
+not contention: measured over the whole run the larger fleet is penalised for time it spent
+queuing at the entry gate, and measured in steady state it is not penalised at all.
+
+## ⚠️⚠️ THE 08-17 EXPERIMENT CONFOUNDED RATE WITH BEHAVIOUR, AND WE READ ONLY THE RATE
+
+That test moved `--speed`, and `--speed` moved two things at once:
+
+    --speed 0   ~56 POST/min   AND   pointer 6-9 mousemove/s
+    --speed 1.0 ~23 POST/min   AND   pointer 15-20 mousemove/s
+
+It was written up as "the binding limit is the aggregate request rate per address", and the
+handbook's own entry even notes the pointer collapse in the same breath — *"top speed buys
+throughput by spending the exact channel we believe keeps you unblocked"* — without drawing the
+obvious conclusion that the arms differed in TWO variables.
+
+Today `--speed 0` no longer wrecks the behaviour: the motor work added since August (pointer
+travel, mouse-driven selects, the datepicker) is irreducible, so top speed keeps its pointer and
+gets the rate. **We now hold the rate that supposedly kills, with behaviour that does not.**
+
+⇒ ~~"The binding limit is the AGGREGATE REQUEST RATE PER ADDRESS."~~ **OVERTURNED as stated.** The
+rate was never varied independently of the behaviour, so what that experiment showed is that
+*fast-and-degraded* dies while *slow-and-faithful* lives. 53 req/min of faithful behaviour is fine.
+⚠️ It does NOT follow that rate is irrelevant — only that it is not the binding limit at 53/min,
+and that any future rate claim must hold behaviour constant to mean anything.
+
+⚠️ **25 minutes, not an hour.** The 08-17 arm died at minute 5, so 25 is 5x the time-to-death and
+that is real evidence — but the surviving arm there ran 60 minutes, and this has not. Do not
+promote 53 req/min to "sustained" until an hour has been run.
+
+## ⚠️⚠️ CAPACITY DOUBLED. DELIVERY DID NOT. THE WINDOW IS NEARLY EMPTY.
+
+    4 workers    589 opens ->  335 NEW   57% useful   13.3 new records/min
+    8 workers   1008 opens ->  330 NEW   33% useful   13.1 new records/min
+
+**Twice the fleet, twice the opens, the same number of records.** Both arms swept the SAME July
+window over the SAME 230 courts, an hour apart, so the second spent half its opens re-finding what
+the first had just banked. Useful% fell 57 -> 33 and the delivered rate did not move at all.
+
+⚠️ **This is the depletion confound, and it is not a flaw in the experiment — it is the answer.**
+Capacity scales beautifully (26 -> 53 req/min, 23.5 -> 40.1 opens/min, linear per worker). Delivery
+is bounded by **how much unharvested territory exists**, and July is nearly harvested.
+
+⇒ **At this point adding workers to this window buys nothing.** The bottleneck has moved from rate
+to SCOPE. The next throughput gain comes from pointing the fleet at unswept months or courts, or
+from `--fill` (which asks the bank what is missing instead of re-discovering it, ~95% useful
+against this sweep's 33%) — not from another rung of the ladder.
+⇒ ★ **The benchmark protected us here.** On opens/min the 8-worker arm looks like a triumph, 1.7x
+the four. On the metric that is actually the goal it delivered five records FEWER. Any study that
+had scored itself on opens would have concluded "add workers" and been exactly wrong.
+
+⇒ Next rung: **12 workers, ~79 req/min**, which needs about 6.4 GB free. If that is clean too, the
+limit is somewhere we have never looked, and the question stops being "how fast dare we go" and
+becomes "how many browsers does this machine hold".
