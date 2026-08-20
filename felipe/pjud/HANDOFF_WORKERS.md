@@ -238,6 +238,56 @@ block runs, only that it exceeded eight hours and that we stopped waiting.
 
 ---
 
+---
+
+# THE LADDER PROTOCOL — 1, then 4, then 8, ALL ON ONE SET OF SPECS (2026-08-20)
+
+⚠️⚠️ **LAST NIGHT'S 4- AND 8-WORKER ARMS ARE NOT COMPARABLE TO THE SOLO RUN, OR TO EACH OTHER'S
+SUCCESSOR.** They differ from it in three ways at once — a different IP (since blocked), a
+1440x900 window instead of 480x300, and several hours of clock. A ladder whose rungs differ in
+their specs measures the specs, not the ladder. The operator called this before the second rung was
+launched, which is the only reason it did not become another suspended finding.
+
+⇒ **Re-run 4 and 8 with the SOLO RUN'S EXACT SPECS.** The solo arm is the baseline; the other rungs
+exist to be compared against it.
+
+## Held constant across all three rungs
+
+    --speed 0  --duty off  --focus off      the fastest configuration we have
+    --window 480x300                        verified across 313 opens, 0 refusals
+    --desde 01/07/2026 --hasta 31/07/2026   dense window; a sparse one inverts the request mix
+    --gate-release form
+    courts 0-229, split evenly by rung
+    the SAME address, unrotated for the whole ladder
+    --max-minutes 180                       so survival is comparable, not just rate
+
+## Read from each rung
+
+| quantity | how |
+|---|---|
+| productive rate | first open -> last open, **excluding entry** — the `DONE` line divides by lifespan and understates by ~20% |
+| steady-state req/min | `rate_watch.py --mins 8` late in the run, after every shard has arrived |
+| trouble | `expduty_score.py` — and ⚠️ **`site_health.py` before AND after**, because a trip and a clean finish look identical in the log |
+| delivery | `expduty_score.py --new`, **before the ingest** |
+
+## ⚠️ What NOT to conclude from the ladder
+
+- **Not delivery.** Each rung re-sweeps a window the previous one just banked, so useful% falls by
+  construction. Score the ladder on RATE and TROUBLE; delivery needs fresh territory.
+- **Not remote behaviour.** Everything here shares one uplink and one address class.
+
+## ⚠️ The risk, and why it is now affordable
+
+A tripped rung burns the address. That was an eight-hour wall last night — but **a router reset
+cleared it instantly**, so the real cost of a trip is a reset and a restart, not a lost day.
+⇒ Run the ladder up, not down: 1 → 4 → 8. If a rung trips, that IS the answer for that rung, and
+the next one is not run.
+⇒ ⚠️ **Do not carry a rung's result across a reset without re-baselining.** A new IP is a new
+address with its own history; the solo baseline should be re-checked if the ladder is interrupted
+by one.
+
+---
+
 ## 000. WHAT I WOULD HAVE WANTED TO KNOW BEFORE THE 2026-08-19 SESSION
 
 Every one of these cost real time in a single night. They are here because none of them were
