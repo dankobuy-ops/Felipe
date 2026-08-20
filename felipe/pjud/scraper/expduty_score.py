@@ -15,6 +15,7 @@ of as a trip.
 """
 import argparse
 import re
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -24,6 +25,11 @@ DOC_RE = re.compile(r"^\[(\d{2}:\d{2}:\d{2})\]\s+docs c2:\s+(\d+)\s+pdf")
 DONE_RE = re.compile(r"DONE in ([\d.]+) min.*?opens=(\d+)\s+kept=(\d+)")
 # ⚠️ The same signatures rate_watch treats as trouble. A rate without its consequences is a
 # reassurance, not a measurement.
+# WARN: THE LOG CARRIES BOTH HALVES OF THE KEY. "open 277-C-9940-2026" is tribunal 277 and
+# rol C-9940-2026. A rol is unique only WITHIN a tribunal -- matching on it alone returned MORE
+# hits than there were causas (861 against 495) and a NEGATIVE new count, which is how the
+# mistake surfaced. Always join on the pair.
+OPENKEY_RE = re.compile(r"^\[\d{2}:\d{2}:\d{2}\]\s+open\s+(\d+)-(\S+)")
 BAD_RE = re.compile(r"(BLOCKED|sin resultados|modal did not open|silent throttle|"
                     r"could not select|form is not usable|recovery \d+/|paginator stuck)")
 
@@ -72,11 +78,62 @@ def score(d):
             out["kept"] += int(dm.group(3))
         # per-shard wall, summed then divided: shards overlap in time, so the ARM's wall clock is
         # the mean shard lifetime, not the sum and not the max.
-        if first is not None and last is not None and last >= first:
-            out["wall"] += (last - first) / 60.0
+        if first is not None and last is not None:
+            span = last - first
+            # WARN: THE LOGS CARRY HH:MM:SS WITH NO DATE, so a run that crosses midnight
+            # ends EARLIER than it started and its span goes negative. The old guard
+            # (last >= first) silently contributed ZERO wall for every such shard, and a
+            # four-shard arm that all crossed midnight scored 242000000000 causas/min --
+            # absurd enough to catch, which is the only reason it was caught. rate_watch
+            # carries the same warning for the same reason; this file did not.
+            if span < 0:
+                span += 24 * 3600
+            out["wall"] += span / 60.0
     if out["shards"]:
         out["wall"] /= out["shards"]
     return out
+
+
+def new_records(d):
+    """How many of this arm's opens are NOT already in Neon -- the actual benchmark.
+
+    WARN: RUN THIS BEFORE THE INGEST, NOT AFTER. It asks what Neon does not yet hold, so
+    once the arm has been ingested its own records ARE held and it scores near zero. Arm 1
+    read 335 new before ingest and 23 after -- same run, same logs, 4% "useful". The number
+    is a snapshot of the bank at the moment you ask, not a property of the run.
+
+    WARN: `kept` IS NOT `banked`, AND `opens` IS NOT `records`. worker_h counts an open as
+    kept when it passed the etapa/procedimiento gate; nothing there knows whether the bank
+    already holds it. On 2026-08-20 an 8-worker arm opened 1,008 causas -- 1.7x a 4-worker
+    arm -- and delivered FIVE RECORDS FEWER, because it re-swept a window the earlier arm had
+    just harvested. Scoring on opens would have concluded "add workers" and been exactly wrong.
+    """
+    keys = set()
+    for f in sorted(Path(d).glob("docs-s*.log")):
+        try:
+            text = f.read_bytes().replace(bytes([0]), b"").decode("utf-8", "replace")
+        except OSError:
+            continue
+        for L in text.splitlines():
+            m = OPENKEY_RE.match(L)
+            if m:
+                keys.add((m.group(1), m.group(2)))
+    if not keys:
+        return None
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        import psycopg2, dbstore
+        cn = psycopg2.connect(**dbstore._conn_kwargs())
+        k = cn.cursor()
+        k.execute("select count(*) from causas c join unnest(%s::text[], %s::text[]) "
+                  "as w(tid, rol) on w.rol = c.rol and w.tid = c.tribunal_id::text",
+                  ([x[0] for x in keys], [x[1] for x in keys]))
+        held = k.fetchone()[0]
+        cn.close()
+    except Exception as e:
+        print("  (could not reach Neon: " + str(e)[:70] + ")")
+        return None
+    return {"opened": len(keys), "held": held, "new": len(keys) - held}
 
 
 def show(label, s):
@@ -108,6 +165,14 @@ def show(label, s):
     print(f"    {verdict}")
     for b in s["bad_lines"]:
         print(f"      {b}")
+    nr = s.get("_new")
+    if nr:
+        print("")
+        print("  DELIVERED (counted in Neon, not in the run's own tally)")
+        print(f"    distinct opened     {nr['opened']:>6}")
+        print(f"    already banked      {nr['held']:>6}")
+        print(f"    NEW records         {nr['new']:>6}   = {nr['new'] / wall:.1f}/min"
+              f"   ({100.0 * nr['new'] / max(1, nr['opened']):.0f}% of opens useful)")
     req = s["results"] + s["opens"] + s["docs"]
     print(f"\n  rate: {req / wall:.1f} req/min aggregate "
           f"({s['results']} results + {s['opens']} opens + {s['docs']} docs)")
@@ -118,11 +183,19 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dir", default=str(HERE.parent / "data" / "worker_h"))
     ap.add_argument("--vs", default="")
+    ap.add_argument("--new", action="store_true",
+                    help="count how many opens are NEW to Neon -- the actual "
+                         "benchmark. Opens and kept both overstate delivery on a "
+                         "re-swept window.")
     a = ap.parse_args()
     A = score(a.dir)
+    if a.new:
+        A["_new"] = new_records(a.dir)
     show(Path(a.dir).name, A)
     if a.vs:
         B = score(a.vs)
+        if a.new:
+            B["_new"] = new_records(a.vs)
         show(Path(a.vs).name, B)
         wa, wb = A["wall"] or 1e-9, B["wall"] or 1e-9
         ra, rb = A["opens"] / wa * 60, B["opens"] / wb * 60

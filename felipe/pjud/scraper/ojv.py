@@ -456,6 +456,56 @@ def locate_ctx(ctx):
     return best, best_page
 
 
+def describe_pages(ctx, limit=4):
+    """What is ACTUALLY open right now — url, title, and which entry points exist.
+
+    WARN: A STATE NAME IS A HYPOTHESIS YOUR CODE FORMED, NOT AN OBSERVATION. `ojv-other` means
+    "none of my selectors matched", and on 2026-08-20 that was reported for TWO HOURS while the
+    browser sat on a healthy, fully rendered OJV whose landing page had simply been redeployed
+    without `#fecCompetencia`. It was written up as a persistent escalating block, with a cost
+    model and a cool-off schedule, before anyone attached to the browser and looked. One CDP
+    attach settled it in thirty seconds.
+
+    So when entry fails, say what we are looking at, not what we failed to recognise. The cost of
+    this call is one evaluate per tab; the cost of not having it was an entire night.
+    """
+    out = []
+    for pg in list(ctx.pages)[:limit]:
+        try:
+            info = pg.evaluate(r"""()=>({
+                url: location.href.slice(0,90),
+                title: (document.title||'').slice(0,50),
+                fec: !!document.querySelector('#fecCompetencia'),
+                gate: document.querySelectorAll("[onclick*='accesoConsultaCausas'],[onclick*='accesoInvitado']").length,
+                aviso: !!document.querySelector('#no-disponible'),
+                forms: document.forms.length,
+                selects: document.querySelectorAll('select').length,
+                onclicks: [...new Set([...document.querySelectorAll('[onclick]')]
+                    .map(e=>(e.getAttribute('onclick')||'').split('(')[0].trim())
+                    .filter(o=>/consulta|acceso|ingres/i.test(o)))].slice(0,6),
+                body: (document.body?document.body.innerText:'').replace(/\s+/g,' ').slice(0,110)
+            })""")
+        except Exception as e:
+            info = {"url": "?", "err": str(e)[:60]}
+        out.append(info)
+    return out
+
+
+def note_pages(ctx, why=""):
+    """Log describe_pages() one line per tab. Call before concluding anything about the site."""
+    for i, d in enumerate(describe_pages(ctx)):
+        if "err" in d:
+            note(f"    [tab {i}] unreadable: {d['err']}")
+            continue
+        note(f"    [tab {i}] {d['url']}")
+        note(f"             title={d['title']!r} fec={d['fec']} gate={d['gate']} "
+             f"aviso={d['aviso']} forms={d['forms']} selects={d['selects']}")
+        if d.get("onclicks"):
+            note(f"             entry points present: {', '.join(d['onclicks'])}")
+        if d.get("body"):
+            note(f"             text: {d['body'][:100]}")
+
+
 def _reach_ojv(ctx, start, wait=60.0):
     """Click through from www.pjud.cl to the OJV, FOCUSING the tab it opens.
 
@@ -881,6 +931,10 @@ def walk_in(ctx):
             return pg
         note("could not reach the OJV by clicking through, and we do NOT type the URL — "
              f"stopping [state={st}]")
+        # WARN: SAY WHAT WE ARE LOOKING AT. `state=ojv-other` is our own selectors failing, not a
+        # verdict about the site, and reading it as one cost a whole night on 2026-08-20.
+        note("  what is actually open (before concluding anything about the site):")
+        note_pages(ctx, why="entry-give-up")
         return None
     page.bring_to_front()
     _wait(page, 4000)
