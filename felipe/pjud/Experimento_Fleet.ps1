@@ -20,6 +20,17 @@
 #     8 workers   ~52 req/min   <- next
 #    12 workers   ~78 req/min   only if 8 is clean, and only with the RAM for it
 #
+# WARN: 0.55 GB PER WORKER, AND BEWARE HOW YOU MEASURE IT. WorkingSet64 counts SHARED pages
+# once per process, so summing it over a worker's ~11 Chrome processes reads ~957 MB when the
+# real incremental cost is about half that. Eight workers ran fine in 5.36 GB free on
+# 2026-08-20 at 6.85-9.73 s per open -- BETTER than the 4-worker rung -- while free RAM sat
+# at 0.54 GB and 18.3 GB was committed on an 11.4 GB box.
+#
+# WARN: DO NOT KILL A RUN ON FREE RAM ALONE. That arm was killed on the free-RAM figure and
+# it was HEALTHY -- swapping would have shown up as workers getting SLOWER, and they were
+# faster. Free RAM is a proxy; seconds-per-open is the harm itself, and it is in the log the
+# whole time. Watch the thing you actually care about.
+#
 # WARN: EVERY RUNG NEEDS ITS OWN RAM CHECK, AND THE GUARD BELOW REFUSES RATHER THAN SWAP. A
 # swapping machine paces its workers by the disk, so the arm measures this PC and not the site --
 # and it does it while producing a perfectly plausible number.
@@ -58,7 +69,7 @@ if ($alive.Count -gt 0) {
 # experiment measures this PC rather than the site. Refuse rather than produce a clean-looking
 # number that means nothing.
 $freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
-$needGB = [math]::Round($Workers * 0.45 + 1.0, 1)
+$needGB = [math]::Round($Workers * 0.55 + 0.8, 1)
 Write-Host "free RAM ${freeGB} GB, this arm needs about ${needGB} GB for $Workers browser(s)"
 if ($freeGB -lt $needGB -and -not $Force) {
     throw "not enough free RAM (${freeGB} GB free, ~${needGB} GB needed). Close other browsers, or pass -Force to measure the machine instead of the site."

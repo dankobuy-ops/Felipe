@@ -1073,6 +1073,25 @@ def main():
             if gate is not None:
                 gate.release()    # nothing to confirm; holding it would strand the queue
             raise SystemExit("could not reach the OJV")
+        # WARN: CLOSE THE www.pjud.cl TAB WE WALKED IN THROUGH. Every worker used to hold two tabs
+        # for its whole shift -- the OJV it works in, and the launcher tab, idle from the moment
+        # entry succeeded. Measured 2026-08-20: pages[0] was the OJV and pages[1] was www, and
+        # nothing touched www again. It costs a renderer per worker, which is ~0.4-0.8 GB across
+        # an 8-worker fleet on a machine where RAM is what gates the top of the ladder.
+        #
+        # Safe on three checks: nothing reads the launcher tab after entry; the recovery re-entry
+        # (ojv.walk_in, called again below) picks its launcher with
+        # `next(q for q in ctx.pages if "pjud.cl" in q.url)` -- which matches the OJV host too and
+        # already resolved to the OJV tab either way; and _only_tab's own docstring warns that a
+        # leftover tab "silently swallows every click aimed at the page underneath it".
+        #
+        # WARN: it is _only_tab, NOT a bare p.close() on the other page. The helper closes ONLY
+        # pjud/blank tabs and leaves anything else in the browser alone, and it brings the keeper
+        # to the front -- which human_click depends on, since it drives real screen coordinates.
+        try:
+            ojv._only_tab(ctx, p)
+        except Exception as e:
+            note(f"  (could not close the launcher tab: {str(e)[:60]})")
         if gate is not None and a.gate_release == "entry":
             note("  on the form — releasing the entry gate (arrival done)")
             gate.release()
