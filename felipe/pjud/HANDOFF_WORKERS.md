@@ -2436,3 +2436,67 @@ eight seconds across an entire session" is not a thing a person does, and that i
 ⚠️ **And do not implement it as a lower RATE.** The human's 25.1/s while moving is higher than our
 21/s. The fix is to stop sometimes, not to move more slowly — those produce the same wall-clock
 average and completely different distributions.
+
+---
+
+## THE DUTY SCHEDULER — built, broken twice, now measured correct (2026-08-19)
+
+`--duty human` shipped at **1.86 stops/min and 19% silent** against the 59% target above. The
+fault was not the sampler and not truncation. Both earlier diagnoses were guesses from the output;
+the one that worked logged every draw (`E.DRAWN`, reported as the `DUTY DRAWS:` line before `DONE`)
+so the question became a subtraction.
+
+**What was wrong — two independent defects in one function:**
+
+1. `maybe_still()` rolled `SILENCE_PER_MIN * window_secs / 60`, which is 3.23 stops per minute of
+   **covered window**. Only `read()` and the causa load ever called it, so search waits, form
+   building, navigation, ingest and modal closes had probability **zero**. → 1.86/min.
+2. `waiting_for_site()` had absorbed the old `still()` body's last line as an unconditional tail,
+   so the presence path waited `secs` via `pres.run()` **and again** on a raw timeout. Every search
+   wait was double length. It compiled and ran clean.
+
+**What it is now:** one wall-clock deadline (`E.arm_duty()` / `E._NEXT_STOP`), armed with
+`expovariate(1 / ACTIVE_GAP_MEAN)` where `ACTIVE_GAP_MEAN = SILENCE_MEAN * (1 - DUTY_TARGET) /
+DUTY_TARGET` = 7.6 s. ⚠️ **Not `SILENCE_PER_MIN / 60`** — re-arming after a stop means the gap only
+elapses while working, so its mean is the mean ACTIVE stretch (7.6 s), not the mean wall interval
+(18.6 s). Shipping the obvious version gives 2.04 stops/wall-min, the same shortfall in a new
+costume. Caught by simulating against a fake clock, not by a run.
+
+The local `random() < 0.55` in `waiting_for_site` is **gone**: a machine wait is just another
+boundary, offered to the same scheduler. One rate governs the session.
+
+**Measured, 14 causas, tribunal 277, July window — identical to the broken run:**
+
+| | before | after | operator |
+|---|---:|---:|---:|
+| stops/min (drawn) | 1.86 | **3.29** | 3.23 |
+| stop median | 2.0 s | **6.4 s** | 6.1 s |
+| silent, drawn/wall | 19% | **42%** | 59% |
+| silent, recorder | — | 33% | 59% |
+| opens/min | 2.4 | 1.8 | 4.6 |
+
+⚠️ **The mean stop reads 7.7 s against an expected 11.1 s and that is NOT residual truncation.**
+20,000 bootstrap samples put 7.7 s at the **9th percentile** of what n=25 produces; the entire
+deficit is that no draw landed in the top decile (28-60 s), a 7.2% event. The median is robust to
+that tail and lands at 6.4 s vs 6.1 s. **Judge this spec by its median, or budget enough draws to
+see the tail** — a 14-causa run cannot resolve the mean.
+
+⚠️ **Why the recorder reads 33% while the draws imply 42%:** the recorder's wall clock (541 s)
+brackets entry and form-building, where the worker is continuously active and takes no scheduled
+stops; the worker's own causa-loop wall was 456 s. It also counts **36** stops to our 25 — the extra
+~11 are natural 2-3 s site waits. That mixed population is the whole reason the pre-fix median
+looked pinned at 3.0 s, and it is why `DUTY DRAWS` exists as a separate, unmixed measurement.
+
+⚠️ **Boundary density is now the remaining lever, and it is visible.** Simulated against a virtual
+clock: boundaries ~1 s apart → 3.16/min and 63% silent; ~5 s apart → 2.82/min and 54%; ~15 s apart
+→ 2.02/min and 40%. If a future job stops calling `read()` as often, the duty cycle falls with it
+and nothing will say so. Re-run the sim when the causa loop changes shape.
+
+**New, unrelated, and now visible for the first time:** with duty on we emit **17.6 mousemove per
+active second against the operator's 25.1**, and 8.6 per wall second against their 11.6. The rate
+spec is now UNDER on both denominators — the opposite of the pre-duty finding. Not chased here.
+
+`human_profile.py` now prints the duty block (wall seconds, silent %, stops/min, stop-length
+distribution) **above** the rates, and every rate per ACTIVE and per WALL second side by side. It
+previously reported per-active-second only, which is exactly the trap its own handbook entry
+warns about.

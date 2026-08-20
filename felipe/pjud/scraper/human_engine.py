@@ -192,7 +192,18 @@ def pace(name):
 # full minute) that any tidy distribution would smooth away.
 SILENCE_DECILES = (2.0, 2.0, 2.0, 2.2, 4.0, 6.1, 8.1, 11.1, 16.3, 28.3, 60.4)
 SILENCE_PER_MIN = 3.23        # stops per minute of WALL clock, measured
+SILENCE_MEAN = 10.9           # mean stop, seconds, measured
+DUTY_TARGET = 0.59            # fraction of WALL seconds the operator was completely silent
 DUTY_HUMAN = False            # --duty human: insert real stillness. Off = today's always-on hum.
+
+# ⚠⚠ THE GAP BETWEEN STOPS IS IN *ACTIVE* SECONDS, AND 3.23/MIN IS IN *WALL* SECONDS. Arming the
+# next stop with `expovariate(SILENCE_PER_MIN / 60)` looks obviously right and is wrong by 40%:
+# re-arming after a stop means the gap only ever elapses while we are working, so its mean must be
+# the mean ACTIVE stretch (7.6 s), not the mean wall interval (18.6 s). Ship the obvious version
+# and you get 2.04 stops per wall minute against a measured 3.23 — the identical shortfall the
+# scheduler was written to fix. 129 stops over 40 min with 1,406 s of them silent leaves 994 active
+# seconds; 994/129 = 7.7 s, which is what the formula below reproduces from the duty target.
+ACTIVE_GAP_MEAN = SILENCE_MEAN * (1.0 - DUTY_TARGET) / DUTY_TARGET      # 7.6 s
 
 
 def silence_secs():
@@ -206,8 +217,17 @@ def silence_secs():
     return pace("silence")
 
 
+DRAWN = []      # every stillness actually taken, for drawn-vs-measured diagnosis
+
+
 def still(page, secs):
     """Do NOTHING for `secs`. No pointer, no drift, no hooks — genuinely motionless.
+
+    ⚠️ RECORDS WHAT IT ACTUALLY TOOK, in DRAWN. Two diagnoses of the duty shortfall were wrong
+    because both reasoned about the mechanism from the MEASURED output, on 12-18 stops a run —
+    far too few to tell a 4.1 s mean from a 5.5 s one. Logging the draws turns "why is the output
+    short?" into a subtraction: draws matching the operator with the measurement short means the
+    loss is downstream; draws already short means it is the sampler. Guessing cost two runs.
 
     ⚠️⚠️ THIS MUST NOT GO THROUGH `pause()` OR THE PRESENCE LOOP, and that is the entire point.
     Every other wait in this engine exists to keep a hand on the page; this one exists to take the
@@ -215,26 +235,87 @@ def still(page, secs):
     correcting — and it is exactly the mistake the shape of this file invites, since `pause()` is
     the obvious call to reach for.
     """
+    DRAWN.append(round(secs, 2))
     page.wait_for_timeout(int(secs * 1000))
 
 
-def maybe_still(page, window_secs):
-    """Stop, sometimes, the way a person does. Call at a natural boundary between actions.
+def waiting_for_site(page, secs, presence=None):
+    """A wait for the MACHINE, not for the person — so the hand often just rests.
 
-    `window_secs` is roughly how much wall clock this call site covers, so the 3.2 stops/minute
-    the operator produced comes out right without any call site needing to know the rate.
+    ⚠️⚠️ WE HAD THIS BACKWARDS. Every wait in this project was filled with pointer motion on the
+    reasoning that a frozen pointer is a tell. But look at what the operator actually does: they
+    move while READING (active, 25/s) and they go STILL while waiting for a page (passive). Filling
+    a 20-second search wait with continuous motion is not what a person does with the twenty
+    seconds after they click Buscar — a lot of them take their hand off the mouse.
+    ⇒ Sometimes rest, sometimes stay alive. `presence` is the fallback that keeps the old
+    behaviour when the duty cycle is off, so this is one variable, not two.
+    """
+    # ⚠⚠ NO `min(secs, ...)` HERE, AND NO LOCAL PROBABILITY EITHER. Both were bugs, found in
+    # that order. The cap clipped every long draw down to the 2-20 s wait it sat inside, killing
+    # exactly the tail that makes the distribution human. Removing it exposed the second one: a
+    # private `random() < 0.55` here meant two uncoordinated sources of stillness, neither aware
+    # of the wall clock. A machine wait is simply a BOUNDARY — offer it to the scheduler and let
+    # one rate govern the whole session. Stillness EXTENDS time; it does not fit inside the wait.
+    maybe_still(page)
+    if secs > 0.05:
+        if presence is not None:
+            presence(page, secs)
+        else:
+            # ⚠ THE TAIL WAIT BELONGS HERE, NOT AT FUNCTION LEVEL. It was the orphaned last line
+            # of the old `still()` body, absorbed when this function was inserted above it, and it
+            # ran unconditionally — so the presence path waited `secs` through `pres.run` and then
+            # `secs` AGAIN on a raw timeout. `ojv._hold` hands us the full wait expecting us to
+            # consume it exactly once; every search wait was double-length. A mechanical insertion
+            # is not safe just because it compiles — the same lesson `pause()` already carries.
+            page.wait_for_timeout(int(secs * 1000))
 
-    ⚠️ ONLY AT BOUNDARIES. A person does not freeze mid-drag or halfway through reaching for a
-    control; they stop between things — after closing a record, after a search returns, before
-    deciding what to open next. Sprinkling stillness inside an action would produce the right
-    histogram out of impossible behaviour, which is how this project got the metronome keyboard.
+
+_NEXT_STOP = [None]     # time.monotonic() at which the next stillness comes due
+
+
+def arm_duty():
+    """(Re)start the stillness clock. Call once when a run begins."""
+    _NEXT_STOP[0] = time.monotonic() + random.expovariate(1.0 / ACTIVE_GAP_MEAN)
+
+
+def maybe_still(page, window_secs=None):
+    """Stop, if a stop is DUE. Call at a natural boundary between actions.
+
+    ⚠⚠ THE RATE IS AGAINST THE WALL CLOCK, AND THAT IS THE WHOLE FIX. This used to roll
+    `SILENCE_PER_MIN * window_secs / 60` at each call, which delivers 3.2 stops per minute of
+    COVERED WINDOW — and the call sites only ever covered reads and causa loads. Every other
+    stretch of the session (search waits, form building, navigation, ingest, closing modals) had
+    probability ZERO, so the session-wide rate came out at 1.86/min against the operator's 3.23.
+    Measured: 11 stops in 5.9 min, 19% silent against a 59% target, with the sampler itself
+    verified faithful over 166 offline draws (mean 12.3 s vs the operator's 10.9).
+
+    ⚠⚠⚠ IT IS THE ACTIVE-SECONDS-VERSUS-WALL-SECONDS ERROR, FOR THE THIRD TIME IN THIS
+    PROJECT — committed inside the fix for the second one, by the author of the handbook entry
+    warning about it. A rate is meaningless until you say what it is per. Here the denominator
+    silently became "seconds a call site happens to bracket" instead of "seconds elapsed".
+
+    Now a deadline accrues in real time and is discharged at the next boundary, so an uncovered
+    stretch builds debt instead of dropping its stops. `window_secs` is ignored and kept only so
+    call sites need not change; the scheduler alone owns the rate.
+
+    ⚠ ONLY AT BOUNDARIES, still. A person does not freeze mid-drag or halfway through reaching
+    for a control; they stop between things — after closing a record, after a search returns,
+    before deciding what to open next. Sprinkling stillness inside an action would produce the
+    right histogram out of impossible behaviour, which is how this project got the metronome
+    keyboard. The scheduler sets WHEN; the call sites still decide WHERE.
     """
     if not DUTY_HUMAN:
         return 0.0
-    if random.random() > (SILENCE_PER_MIN * window_secs / 60.0):
+    now = time.monotonic()
+    if _NEXT_STOP[0] is None:
+        arm_duty()
+        return 0.0
+    if now < _NEXT_STOP[0]:
         return 0.0
     s = silence_secs()
     still(page, s)
+    # ⚠ Re-arm from AFTER the stop, which is exactly why ACTIVE_GAP_MEAN and not SILENCE_PER_MIN.
+    _NEXT_STOP[0] = time.monotonic() + random.expovariate(1.0 / ACTIVE_GAP_MEAN)
     return s
 
 

@@ -79,7 +79,19 @@ def profile(rows):
         if r.get("path"):
             paths.append(r["path"])
 
-    out = {"seconds": secs, "counts": counts, "K": K}
+    # ⚠️⚠️ WALL SECONDS, AND THE SILENT FRACTION BESIDE THEM — ALWAYS. This file used to report
+    # per-ACTIVE-second rates and nothing else, which is the precise trap the handbook entry
+    # written from its own output warns about. An always-on worker has almost no excluded seconds
+    # and a human has more excluded than included, so the two averages describe two different
+    # populations of second and the worker looks "under" while emitting 68% MORE per wall second.
+    in_ts = sorted(r["t"] for r in rows if r.get("kind") == "input" and r.get("t") is not None)
+    all_t = [r["t"] for r in rows if r.get("t") is not None]
+    wall = (max(all_t) - min(all_t)) if len(all_t) > 1 else 0.0
+    # One `input` row per second that had ANY activity, so consecutive active seconds differ by
+    # ~1.0. A gap of g seconds is g-1 seconds in which nothing at all was emitted.
+    sil = [round(b - a - 1.0, 2) for a, b in zip(in_ts, in_ts[1:]) if (b - a) >= 2.0]
+    out = {"seconds": secs, "counts": counts, "K": K,
+           "wall": wall, "silences": sil, "silent_total": sum(sil)}
 
     # ── inter-arrival gaps, per channel. THE thing counts cannot show. ──────────
     gaps = {}
@@ -129,13 +141,26 @@ def profile(rows):
 
 def report(label, p):
     print(f"\n=== {label} ===")
-    print(f"  {p['seconds']} active second(s) recorded")
+    wall = p.get("wall") or 0.0
+    sil = p.get("silences") or []
+    silent = p.get("silent_total") or 0.0
+    print(f"  {p['seconds']} active second(s) of {wall:.0f} wall second(s)")
+    print("\n  DUTY CYCLE — the rhythm, not the rate. Read this BEFORE the rates below.")
+    if wall:
+        print(f"    active          {100.0 * p['seconds'] / wall:>6.1f}%   (operator 41%)")
+        print(f"    SILENT          {100.0 * silent / wall:>6.1f}%   (operator 59%)")
+        print(f"    stops           {len(sil):>4}  = {len(sil) / (wall / 60.0):>5.2f}/min"
+              f"   (operator 3.23/min)")
+    print("   " + describe("stop length", sil, "s").strip()
+          + "   (operator: median 6.1  p90 28.3  max 60.4)")
     tot = p["counts"]
-    if p["seconds"]:
-        print("\n  RATES (per active second) — match these, do not exceed them")
+    if p["seconds"] and wall:
+        print("\n  RATES — per ACTIVE second AND per WALL second. Neither alone means anything.")
+        print(f"    {'channel':<18} {'/active s':>10} {'/wall s':>10}")
         for k in sorted(tot, key=lambda k: -tot[k]):
             if tot[k]:
-                print(f"    {k:<18} {tot[k] / p['seconds']:>7.2f}/s   ({tot[k]} total)")
+                print(f"    {k:<18} {tot[k] / p['seconds']:>10.2f} {tot[k] / wall:>10.2f}"
+                      f"   ({tot[k]} total)")
     print("\n  INTER-ARRIVAL GAPS — a metronome and a hand have the same rate and different sd")
     for k in sorted(p["gaps"], key=lambda k: -len(p["gaps"][k]))[:8]:
         print(describe(k, p["gaps"][k]))

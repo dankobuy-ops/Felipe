@@ -2394,6 +2394,90 @@ compensating for bad behaviour could then be removed.
 (PJUD, 2026-08-19. Found by attaching the human recorder to a running worker — an experiment that
 required no new code and had never once been run.)
 
+### ★★★★★ "Per WHAT?" — the same denominator error three times, the third inside its own fix
+
+The duty-cycle fix above shipped at **1.86 stops/min and 19% silent** against a 59% target. Two
+diagnoses were guessed from the output and both were wrong. The third attempt logged **what was
+actually drawn**, turning the question into a subtraction:
+
+    drawn, in-run   n=11 over 5.9 min   mean 6.2 s   median 2.0 s   max 36.6 s
+    drawn, offline  n=166               mean 12.3 s  median 6.7 s   max 59.8 s
+    operator        n=129 over 40 min   mean 10.9 s  median 6.1 s   max 60.4 s
+
+The sampler was **fine**. The deficit was entirely in **how often it was called**:
+
+```python
+if random.random() > (SILENCE_PER_MIN * window_secs / 60.0):   # 3.23 per minute of... WHAT?
+```
+
+That is 3.23 stops per minute **of covered window**, and the call sites only ever bracketed reads
+and causa loads. Search waits, form building, navigation, ingest and modal closes had probability
+**zero**. 3.23 per covered minute arrived as 1.86 per wall minute.
+
+⚠️⚠️ **The active-seconds-versus-wall-seconds error for the third time in this project — committed
+inside the fix for the second one, by the author of the entry above warning about it.** A rate is
+meaningless until you say what it is *per*, and the denominator drifts silently because it is never
+written down: it had quietly become "seconds a call site happens to bracket".
+
+**Fix: a deadline that accrues in real time and is discharged at the next boundary**, so uncovered
+stretches build debt instead of dropping their stops. Call sites still choose WHERE (only at
+boundaries — a person never freezes mid-drag); the scheduler alone owns WHEN.
+
+⚠️ **It bit a FOURTH time, one line into the fix.** Re-arming the deadline *after* each stop means
+the gap only elapses while working, so its mean must be the mean **active** stretch, not the mean
+wall interval:
+
+    expovariate(SILENCE_PER_MIN / 60)  -> mean gap 18.6 s -> 2.04 stops per WALL min   WRONG
+    expovariate(1 / 7.6)               -> mean gap  7.6 s -> 3.24 stops per WALL min   right
+
+7.6 s is not a new measurement, it is forced by the two already in hand:
+`mean_stop x (1 - duty) / duty = 10.9 x 0.41 / 0.59`. Equivalently, 129 stops and 1,406 s of silence
+inside 2,400 s leave 994 active seconds, and 994/129 = 7.7 s.
+
+**Measured after the fix (14 causas, same tribunal and window as the broken run):**
+
+    stops       3.29/min drawn   (operator 3.23)      <- fixed, was 1.86
+    stop median 6.4 s            (operator 6.1)       <- no truncation
+    silent      33% measured / 42% drawn-over-wall    (operator 59%)  <- see below
+
+⇒ **Simulate a scheduler offline before measuring it live.** A fake `time.monotonic` and a fake
+`wait_for_timeout` took ten minutes and caught the fourth error, which would otherwise have shipped
+the identical shortfall in a new costume and looked like a fresh mystery. The same harness shows
+the one real remaining lever: at boundaries ~5 s apart the scheduler lands at 2.82/min and 54%
+silent, but if boundaries thin to 15 s apart it falls to 2.02/min and 40%. **Boundary density is
+now a visible parameter instead of a hidden one.**
+
+⇒ **Log what a random draw PRODUCED, not just its effect.** "Why is the output short?" is a guess;
+"the draws match the operator but the output does not" is a subtraction. Two runs were spent
+reasoning about a mechanism that one logged list settled.
+
+⚠️ **And do not read a mean off a heavy tail with n=25.** The post-fix mean stop was 7.7 s against
+an expected 11.1 s, which looks like residual truncation and is not: 20,000 bootstrap samples put
+7.7 s at the 9th percentile of what n=25 produces, and the whole deficit is that no draw landed in
+the top decile (28-60 s), a 7.2% event. **The median — robust to that tail — was 6.4 s against the
+operator's 6.1 s.** Judge a heavy-tailed spec by its median, or budget enough draws to see the tail.
+
+(PJUD, 2026-08-19.)
+
+### ⚠️ A mechanical insertion is not safe because it compiles — watch the ORPHANED TAIL
+
+Inserting `waiting_for_site()` **above** the body of `still()` left `still()`'s last line
+(`page.wait_for_timeout(int(secs * 1000))`) sitting at function-body indentation inside the NEW
+function, where it ran unconditionally. The presence path then waited `secs` through `pres.run()`
+and `secs` **again** on a raw timeout — and `ojv._hold` hands the callee the whole wait expecting it
+consumed exactly once, so **every search wait was double length**. It compiled, it ran, and it
+silently halved throughput while the run looked healthy.
+
+This is the third defect here from a bulk or positional edit — see the `pause()` infinite recursion
+(a bulk rewrite caught its own fallback line) and the duty instrumentation twice landing inside
+`pause()`.
+
+⇒ **After inserting a function, read the diff asking what the line AFTER it now belongs to.**
+`git diff` shows the insertion; only reading it shows the absorption.
+
+(PJUD, 2026-08-19.)
+
+
 ---
 
 ## Quick checklist for a new scraper
