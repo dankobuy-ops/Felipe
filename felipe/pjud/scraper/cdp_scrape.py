@@ -98,7 +98,23 @@ def _human_pointer(page, x, y, press=True):
     # visited, with the same mean and a completely different histogram. Nothing in a script
     # decides how long a finger stays down, which is exactly why the value is worth getting right.
     # Clamped, because a Gaussian tail can otherwise emit an 8 ms or a 400 ms press.
-    page.wait_for_timeout(int(min(200, max(45, random.gauss(100, 24)))))
+    # ⚠️⚠️ THE KNOB IS NOT CONNECTED BELOW ~108 ms — TESTED, DO NOT RE-TUNE IT. Asking for
+    # gauss(100, 24) measured 107-112 ms on the wire; lowering the ask to gauss(90, 22) measured
+    # 108.5. The setting moved 10% and the measurement did not move at all, so the hold is
+    # TRANSPORT-limited: `wait_for_timeout` plus the `mouse.up()` round trip put a floor there.
+    # ⇒ We sit ~9 ms above the operator's 99 ms median and comfortably inside their p10-p90 of
+    # 78-129, so this is "cannot be fixed this way and does not need to be", not a defect. If it
+    # ever must go lower it needs a different mechanism (batched CDP), not a smaller number.
+    # The original reasoning below was right in principle and simply does not apply.
+    #
+    # ⚠️ TARGET 90, NOT 100, BECAUSE THE TRANSPORT ADDS ~10 ms. Measured 2026-08-19 by
+    # recording a worker with the same instrument used on the operator: asking for a
+    # gauss(100, 24) hold produced a median of 107-112 ms on the wire against the human's
+    # 99. The shape was right (sd 20-28 vs their 24) and the centre was 10% high, because
+    # `wait_for_timeout` is a round trip and the mouse.up() that follows is another.
+    # ⇒ Calibrate the SETTING against the MEASUREMENT, not against the intention. Re-check
+    # this if the transport changes — on a slower link the offset will not be 10 ms.
+    page.wait_for_timeout(int(min(190, max(40, random.gauss(90, 22)))))
     # ⚠️ AND THE POINTER IS STILL WHILE THE BUTTON IS DOWN: drag during click measured median 0 px,
     # p90 1 px, mean 0.2 over those same 332 clicks. Do not add motion between down and up.
     page.mouse.up()
@@ -244,7 +260,13 @@ def human_scroll(page, notches=None, down=True, settle=True):
                 spot["y"] = min(max(spot["y"] + random.uniform(-7, 7), 8), vh - 8)
                 page.mouse.move(spot["x"], spot["y"])
             if random.random() < 0.3:                 # overshoot, then correct
-                page.mouse.wheel(0, -dy * random.uniform(0.15, 0.4))
+                # ⚠️ THE CORRECTION IS A NOTCH TOO. Quantising `dy` above and leaving this line
+                # alone meant we still emitted impossible deltas — measured in a worker recording
+                # the day of the fix: our wheel produced [-57, -39, -29, -18, 100, 200] where the
+                # human produced [-200, -100, 100, 200, 300]. The POSITIVES were clean and every
+                # NEGATIVE was fractional, because scrolling back is one physical notch of the same
+                # wheel. Half a fix reads as a fix in the log and not in the data.
+                page.mouse.wheel(0, -100 if dy > 0 else 100)
                 page.wait_for_timeout(random.uniform(90, 300))
         if settle:
             page.wait_for_timeout(random.uniform(150, 500))
@@ -505,11 +527,21 @@ def human_scroll_x(page, dx, notches=None):
             pass
         step = dx / n
         for i in range(n):
-            page.mouse.wheel(step * random.uniform(0.8, 1.2), 0)
+            # ⚠️ QUANTISED, like the vertical wheel — it is the SAME PHYSICAL DEVICE, so a
+            # horizontal notch cannot be fractional either. This emitted `step * uniform(0.8,1.2)`
+            # until 2026-08-19.
+            # ⚠️⚠️ AND THE WHOLE ACT IS UNMEASURED. In 1,103 active seconds the operator emitted
+            # deltaX EXACTLY -0.0, three hundred and eighty-one times — they never once scrolled
+            # sideways with the wheel. They had a window wide enough not to need it. So this is not
+            # "a human act tuned wrong", it is an act we have never seen a human perform, and the
+            # 100 below is inferred from the vertical notch rather than observed. A person reaching
+            # an off-screen column is at least as likely to drag the table's own scrollbar.
+            # Worth a recording before trusting it.
+            page.mouse.wheel(100 if step > 0 else -100, 0)
             page.wait_for_timeout(random.randint(90, 260))
         # the small correction back that a hand makes after overshooting
         if random.random() < 0.3:
-            page.mouse.wheel(-step * random.uniform(0.1, 0.3), 0)
+            page.mouse.wheel(-100 if step > 0 else 100, 0)   # the correction is a notch too
             page.wait_for_timeout(random.randint(80, 180))
     except Exception:
         pass
