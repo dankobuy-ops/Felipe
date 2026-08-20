@@ -3006,3 +3006,38 @@ sitting right there.
    form within 20 s in this probe, so the route beyond it is NOT yet known — find it by watching,
    not by guessing selectors.
 3. **Only then** re-run the sparse-window test, with both arms back to back.
+
+## What the entry probes actually established (2026-08-20, 03:40)
+
+**www.pjud.cl offers BOTH doors again:**
+
+    https://oficinajudicialvirtual.pjud.cl/home/                          "Plataforma para el ingreso de causas y escritos"
+    https://oficinajudicialvirtual.pjud.cl/includes/sesion-consultaunificada.php   "Seccion que permite la revision de causas"
+
+⚠️ The 2026-08-14 note in `ojv.py` says www.pjud.cl offered **exactly one** OJV anchor, the
+sesion-consultaunificada one, and half the entry folklore in that file was written off as belonging
+to a `/home/` path "a human may no longer take at all". **`/home/` is back.** The entry menu is not
+stable across weeks, and `entry_probe.py` exists because it changed once already that week.
+
+**Established:**
+- The OJV IS reachable — indexN.php was observed open and healthy at 03:24, menu rendered.
+- indexN.php no longer carries `#fecCompetencia`, any gate button, any `<form>` or any `<select>`.
+- Its entry points are now `consultaUnificada()`, `consultaEscritosIndepen()`,
+  `consultaAudienciasLaboral()`, `consultaCiudadana()`.
+- `_reach_ojv` fails purely because none of its four markers match that page.
+
+**NOT established, and I stopped rather than guess:**
+- Whether the search form is reachable at all, by either door. Clicking `consultaUnificada()`
+  produced no form within 20 s; a later click on the sesion-consultaunificada anchor produced no
+  OJV tab within 35 s.
+- ⚠️ That last probe used a raw `page.click()`, NOT `C.human_click`, so it had **no covered-element
+  check** — this repo's single most expensive bug class. A refused click and a dead link look
+  identical from outside. Do not conclude the link is dead from that probe.
+- Whether 01:04 was a deployment or a rate block.
+
+⇒ **The decisive test is a person opening www.pjud.cl on this network and clicking through.** If a
+human reaches a working search form, this is ours to fix and the shape of the fix is known: teach
+`_reach_ojv` to accept the menu as a valid arrival and follow the site's own route to the form.
+If a human ALSO cannot get there, the address is degraded and no selector work will help.
+⇒ Until that is answered, **do not run fleets.** Every arm would report `ojv-other` and teach
+nothing, exactly as two canaries already have.
