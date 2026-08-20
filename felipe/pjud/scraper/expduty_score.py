@@ -92,7 +92,11 @@ def show(label, s):
     print(f"    causas/min          {s['opens'] / wall:>6.1f}   <- the score (fleet aggregate)")
     print(f"    causas/hour         {s['opens'] / wall * 60:>6.0f}")
     if s["kept"]:
-        print(f"    kept (banked)       {s['kept']:>6}")
+        print(f"    kept (passed gate)  {s['kept']:>6}")
+        # WARN: `kept` IS NOT `banked`. worker_h counts an open as kept when it passed the
+        # etapa/procedimiento gate -- nothing there knows whether the bank already holds it.
+        # Deduplication happens at ingest, so a fleet can report 94% kept and still deliver few
+        # NEW records on a re-swept window. Quote this as work done, never as records delivered.
     else:
         # WARN: AN OPEN IS NOT A DELIVERED RECORD ON A SWEEP. A sweep re-opens what the bank
         # already holds -- historically only ~27% of its opens are new, against ~95% for

@@ -2551,6 +2551,36 @@ before designing anything around it.
 would take 8 and 16 workers respectively. Arm 1 was the validity check and it correctly refused to
 reproduce; arm 2 was not launched.
 
+## The arm-1 result, scored the new way (2026-08-19, 22:45-23:10)
+
+4 workers, `--duty off --focus off --speed 0`, sweep of July, one residential address:
+
+    589 causas opened     23.5 causas/min aggregate     26.2 req/min
+    556 passed the gate   4/4 shards reached the 25-min lifespan cap
+    refused=0             ZERO trouble events
+
+★ **23.5 opens/min is 2.4x the best sustained aggregate this project had ever recorded** (9.9/min,
+4 workers at operator pace, 2026-08-17). ⚠️ Over 25 minutes, not an hour — do not quote it as a
+sustained figure until an hour has been run. The 08-17 fatal arm died at minute 5, so surviving 25
+is real evidence, but the safe arm ran 60.
+
+⚠️⚠️ **AND IT DID NOT TRIP BECAUSE THE RATE WAS SAFE, NOT BECAUSE TOP SPEED IS SAFE.** 26.2 req/min
+sits just above the 23/min that held for an hour in August. The finding is not "we can go flat out
+now"; it is that **on this build `--speed 0` cannot produce a dangerous rate with four workers**,
+because the engine's motor work — pointer travel, mouse-driven selects, the datepicker — sets a
+floor no speed setting removes. The old lesson "top speed kills" was true of a build whose top
+speed reached 56 req/min. Same flag, different machine underneath.
+
+⇒ The pace axis and the rate axis have come apart. `--speed` is no longer a rate control worth the
+name: it moved 4 workers from ~23 to ~26 req/min, a 13% span, where in August it spanned 23 to 56.
+**Fleet size is now the rate control.** Design experiments on worker count, not on --speed.
+
+★ Worth sitting with: the configuration that matches the operator LEAST on pace delivered the most
+records and tripped on nothing. That is exactly the case the benchmark section above exists to
+adjudicate, and on this evidence the pace specs are not earning their cost. One 25-minute run does
+not settle it — the duty arms are next — but the direction is already uncomfortable for the
+"more human is safer" instinct, which this project has now been wrong about twice in one day.
+
 ## What the instrument says about the current build (NOT a defect list)
 
 `human_profile.py --file <operator> --vs <worker>`, per ACTIVE second. Ratios are **where we
