@@ -2627,3 +2627,43 @@ before it**. The second one is the benchmark; the first says whether stillness b
 
   same trip rate  -> the duty cycle is pure cost. Remove it and take the throughput back.
   duty trips later -> it buys survival, and now we know the exchange rate.
+
+## ⚠️ LATENT: the Drive object is keyed on POSITION, the row is keyed on FOLIO (2026-08-19)
+
+Asked whether re-running the ingest would duplicate 4,281 PDFs. **It would not** — `upload_c2_docs`
+consults the Drive cache before reading a single byte and skips any object already there, exactly
+as its own docstring promises. The guard is real and it works.
+
+But checking it surfaced a disagreement between two id schemes for the same document:
+
+    Drive object     {causa_id}/c2-{k:02d}.pdf      <- k is the POSITION in historia_c2
+    Documentos row   {causa}-c{n}-{folio}-{k}-doc   <- keyed on the FOLIO
+
+**Folios arrive newest-first** (`['3','2','1']` in every sample). So a causa that gains one filing
+between scrapes shifts every position by one: `c2-00.pdf` was folio 3 and is now folio 4. On the
+next ingest the cache returns a HIT for `c2-00.pdf` and stamps the OLD document's URL onto the NEW
+folio's row — silently, without reading or uploading anything, and the "already in Drive" counter
+makes it look like a saving.
+
+⚠️ **Measured exposure today: ZERO.** 1,250 causas carry documents and **not one of them has been
+scraped twice**, so no position currently maps to two folios. That is timing, not design — the doc
+pass ran once per causa. The first re-scrape of a document-carrying causa is when this bites.
+
+⇒ **Key the Drive object on the folio, not the index** (`c2-f{folio}.pdf`), which makes the two
+schemes agree by construction. Anything already uploaded keeps working; the names simply stop
+colliding across scrapes.
+⇒ The general shape: **when the same object has two identifiers, one stable and one positional,
+they agree exactly until the list changes — and then they disagree silently.** A cache keyed on
+the positional one turns a re-scrape into corrupted links rather than a re-upload.
+
+## ⚠️ 2,279 worker H records carry NO tribunal_id
+
+Found while counting how much of the corpus is banked. A `rol` is unique only WITHIN a tribunal, so
+those records cannot be matched against Neon at all — and my first attempt to count them keyed on
+`rol` alone and returned MORE hits than there were causas on disk (861 against 495, a negative
+"new" count, which is what exposed it).
+
+⚠️ It also means the "774 unbanked" figure covering the whole corpus is **not trustworthy**: those
+2,279 records collapse into `(None, rol)` keys. **Arm 1's 335 is sound** — every one of its 589
+records carries a tribunal_id. Do not quote a corpus-wide delivery number until the older records
+are either re-keyed or excluded.

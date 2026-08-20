@@ -2528,6 +2528,31 @@ This is the third defect here from a bulk or positional edit — see the `pause(
 
 ---
 
+### ⚠️ Two ids for one object: one stable, one positional — they agree until the list changes
+
+A document was cached in Drive under `{record}/c2-{index:02d}.pdf` while its database row was keyed
+on the document's own **folio**. Both were correct, and they matched perfectly — because every
+record had been scraped exactly once.
+
+The source lists newest-first. One new filing shifts every index by one, so `c2-00.pdf` stops
+meaning folio 3 and starts meaning folio 4. The next run gets a **cache HIT** on that name, stamps
+the old document's URL onto the new row, uploads nothing and reads nothing, and reports the whole
+thing as a saving. No error, no re-upload, a wrong link.
+
+⚠️ **Measured exposure when found: zero** — no document-carrying record had yet been scraped twice.
+That is a property of the schedule, not of the design, and it is the most dangerous kind of clean
+result: the check passes today and the bug is still there.
+
+⇒ **Derive a cache key from the same field the record id is derived from.** If the row is keyed on
+a stable attribute, the blob must be too. A positional key is only safe for a list that is written
+once and never re-read.
+⇒ ★ **"It agrees on all current data" is not the test.** Ask what happens the second time you see
+the same object — for anything you re-scrape, that is not hypothetical, it is scheduled.
+
+(PJUD, 2026-08-19.)
+
+---
+
 ## Quick checklist for a new scraper
 
 ```
