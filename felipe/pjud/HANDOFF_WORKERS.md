@@ -94,8 +94,11 @@ FEWER. **Scoring on opens would have concluded "add workers" and been exactly wr
 | `--duty human` | 3.23 stops/min, 49% silent | **−54%** (2.66 → 1.23 opens/min) | **unmeasured** |
 | `--focus fast` | p0–p25 band | +8% alone | **unmeasured** |
 
-⚠️⚠️ **THE SURVIVAL COLUMN IS EMPTY.** Every figure in this file is throughput. No run has ever
-compared block rates between two spec configurations. The duty cycle costs half the throughput on
+⚠️ **THE SURVIVAL COLUMN HAS EXACTLY ONE ENTRY** (2026-08-20): solo, `--speed 0 --duty off`, THREE
+HOURS, 1,129 opens, one lost click, address verified clean before and after. The fastest thing we
+have is not self-destructive at solo scale.
+⚠️⚠️ **It is still empty for every OTHER configuration and for every fleet size.** No run has
+compared block rates BETWEEN two spec configurations. The duty cycle costs half the throughput on
 the strength of "the operator did it" and **its benefit has never been measured once**.
 
 ⚠️ **`--focus fast` SHRINKS the duty cycle, it does not make it free.** `silence_secs()` samples
@@ -237,6 +240,76 @@ knowing before ever planning a long cool-off again, and the cheapest second addr
 block runs, only that it exceeded eight hours and that we stopped waiting.
 
 ---
+
+---
+
+---
+
+# ★★★★★ RUNG 1 — THREE HOURS SOLO AT TOP SPEED, CLEAN (2026-08-20)
+
+The first entry the survival column has ever had.
+
+    1 worker  --speed 0 --duty off --focus off  --window 480x300
+    01/07/2026 .. 31/07/2026, courts 0-229, fresh home IP, 12:10 -> 15:10
+
+    1,129 opens   1,033 kept   95 gated   109 searches
+    180.1 min lifespan, 171.7 min productive
+    6.37 opens/min productive   =   9.43 s per open
+    6.9 req/min aggregate
+
+    trouble: ONE lost click in three hours (0.09% of opens)
+    site_health BEFORE: FORM      site_health AFTER: FORM      -- the address is clean
+
+★ **Worker A's all-time local best was 375 opens in 190 minutes. This is 1,129 in 180.** Three
+times the opens in less time, with one lost click.
+
+## What it settles
+
+**The fastest configuration we have is not self-destructive at solo scale.** Three hours, no duty
+cycle, no reading time, and the address is provably as clean at the end as at the start — checked,
+not assumed. Yesterday nobody could say that about any configuration.
+
+**The 8-9 s floor is real and it is the SITE's.** 9.43 s per open here, against 8.6-11.8 s for
+workers inside a 4-fleet and 9.7-12.2 inside an 8-fleet, all on the same line. A solo worker lands
+in the MIDDLE of both ranges. ⇒ **Contention up to eight workers is invisible**, and per-open time
+is set by the site, not by the fleet or the uplink.
+
+⚠️ **The one trouble event was OURS, and the instrumentation proved it rather than guessing:**
+
+    [why] busy=False {'modal': True, 'modalShown': False, 'rows': 101, 'links': 100, 'spinners': []}
+    [net] 0 responses since the click, causaCivil.php=0 :: []
+          our click produced no causa request — one causa lost, session untouched
+
+**Zero network responses after the click** — it never reached the site, so it cannot have been a
+refusal. The next row opened four seconds later. Without that `[net]` line this is the exact
+signature that has been logged as a block for months.
+
+## ⚠️ The 480x300 window is VERIFIED, not merely tolerated
+
+1,129 opens at a **205 px viewport** with zero click refusals and zero covered targets. The
+previous smallest confirmed window was 744x345, and the 760x440 geometry once refused 3.5% of rows;
+this one lost 0.09%. ⇒ **Horizontal scrolling really was the fix, and it holds far below any size
+this project had tested.** `--window 480x300` is now the default.
+
+## Delivery, and why the number looks small
+
+    1,129 opened   781 already banked   348 NEW   (31% useful)   1.9 new records/min
+
+⚠️ **31% is the WINDOW, not the worker.** July has now been swept by a 4-worker arm, an 8-worker arm
+and this run in sequence; useful% has fallen 57% -> 33% -> 31% exactly as depletion predicts.
+
+⚠️ **And do not read "348 beats the fleets' 335 and 330" as a win for solo.** Per minute the fleets
+delivered ~13 new records against this run's 1.9 — seven times more. Solo won the total only by
+running seven times longer. Compare rungs per unit time, or the ladder tells you the opposite of
+the truth.
+
+## What it does NOT settle
+
+- **Nothing about the fleet.** Rungs 4 and 8 have not been run on these specs.
+- **Nothing about the duty cycle.** This arm had duty OFF; the comparison that would price it has
+  still never been run.
+- **Nothing about the request-rate wall.** One worker makes 6.9 req/min. The August fleet died at
+  21 req/min and the July 8-fleet held 52.9 — this run does not go near either.
 
 ---
 
