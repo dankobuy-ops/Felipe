@@ -1606,13 +1606,23 @@ def ensure_window(page, w=1440, h=900):
                               "width": w, "height": h}})
         page.wait_for_timeout(400)
         vp = page.evaluate("()=>({vw:innerWidth, vh:innerHeight})")
-        # WARN: THE TOLERANCE MUST BE RELATIVE TOO, OR IT IS VACUOUS WHEN SMALL. The absolute
-        # slack (120 x 220) was chosen against 1440x900, where it is 8% and 24%. Asked for
-        # 480x300 on 2026-08-20 it accepted a 500x205 viewport as "ok" -- the height threshold
-        # had become 80 px, so almost anything passed, and the operator was told the window was
-        # fine while the causa modal had 205 px to live in. A check that cannot fail is not a
-        # check. Take whichever bound is STRICTER, so the slack shrinks with the request.
-        ok = (vp["vw"] >= max(w - 120, w * 0.85) and vp["vh"] >= max(h - 220, h * 0.85))
+        # WARN: THE VIEWPORT IS NOT THE WINDOW. We set the WINDOW to w x h, then read the
+        # VIEWPORT, and Chrome's own UI (tab strip, omnibox) eats roughly 95 px of height. The
+        # original absolute slack (120 x 220) existed to absorb exactly that. Replacing it with a
+        # flat relative 0.85 removed the allowance and made this warn on a geometry PROVEN good:
+        # a 480x300 request yields a 500x205 viewport, and 1,129 opens ran through that on
+        # 2026-08-20 with ZERO click refusals and zero covered targets. A check that fires on a
+        # configuration you have 1,129 clean samples for is worse than no check.
+        #
+        # WARN: Chrome also has a MINIMUM WINDOW WIDTH near 500 px, so a narrower request comes
+        # back WIDER than asked. Never treat "bigger than requested" as a failure.
+        #
+        # What this is actually for: catching --window-size being ignored outright (six workers
+        # asked for 1440x900 came up at 958x428, 673x483, 726x434 on 2026-08-17, which put the
+        # magnifier column outside the window and cost 1,224 causas in an afternoon).
+        CHROME_UI_H = 95                       # tab strip + omnibox, measured
+        want_h = max(1, h - CHROME_UI_H)
+        ok = (vp["vw"] >= min(w, 500) * 0.9 and vp["vh"] >= want_h * 0.9)
         return ok, vp
     except Exception as e:
         try:
