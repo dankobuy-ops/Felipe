@@ -1,6 +1,9 @@
 # PJUD — Worker architecture handoff (2026-08-07)
 
-> ## ⚠️⚠️ READ THE LAST SECTION FIRST: [THE SPLIT — SPECS vs SETTINGS](#-the-split--specs-vs-settings-2026-08-19)
+> ## ⚠️⚠️ START AT [00. STATE OF PLAY — 2026-08-20](#00-state-of-play--2026-08-20-read-this-before-section-0)
+>
+> Then [000. WHAT I WOULD HAVE WANTED TO KNOW](#000-what-i-would-have-wanted-to-know-before-the-2026-08-19-session), then
+> [THE SPLIT — SPECS vs SETTINGS](#-the-split--specs-vs-settings-2026-08-19).
 >
 > Since 2026-08-19 there is **one behavioural engine** (`human_engine.py`) and the workers are
 > only jobs. Everything in this file that describes a worker's *behaviour* is history: how it
@@ -17,6 +20,190 @@ what they do, why they are shaped this way, and every trap that cost real time.
 
 **⚠️ Treat every measurement here as DATED.** The OJV is being actively changed — "Corte = Todos"
 did not work before 2026-08-06 and does now. Re-verify anything load-bearing before relying on it.
+
+---
+
+## 00. STATE OF PLAY — 2026-08-20 (READ THIS BEFORE SECTION 0)
+
+**Section 0 below is from 2026-08-17 and is superseded on the points listed here.** It is still the
+best guide to the traps; it is no longer the best guide to the numbers.
+
+### The score
+
+> **Sustained NEW records per hour, without tripping.** See `felipe/CLAUDE.md` → "The ultimate
+> goal". The operator's recording is an INSTRUMENT for finding variables and their plausible
+> ranges — it is not a target, and matching it is not the job.
+
+⚠️ **The tell that you have drifted:** your success metric can be computed offline, from files,
+with the site switched off. Then you are scoring fidelity, not results.
+
+### Corpus (after the 2026-08-20 ingest)
+
+    6,225 causas   6,063 with a cuaderno-2 historia   4,387 cuaderno-2 documents in Drive
+    by month of ingreso: 2026-07 = 3,679   2026-06 = 2,132   2026-08 = 25   2026-05 = 16
+
+⚠️ **August is virtually unswept nationally** (25 causas). July is picked over. That matters more
+than any pacing setting — see "capacity vs delivery" below.
+
+### What one worker can do, and it is the SITE's floor
+
+    8.6 – 9.0 s per open   =   6.7 – 7.0 opens/min productive (excluding entry)
+
+Measured 2026-08-20 at `--speed 0`, and identical to the 8–9 s floor found weeks earlier with
+reading merely ramped to a tenth. **`--speed 0` is the fastest SETTING, not the fastest RESULT.**
+Cutting reading 3 s → 2.2 s once bought 0.3 s; a tenth → zero bought nothing measurable.
+
+⇒ **There is nothing left to find on the speed axis for one worker.** What remains is the site
+answering plus the motor work we refuse to cut.
+
+### What a fleet can do
+
+| fleet | steady-state aggregate | per worker | 25 min outcome |
+|---|---:|---:|---|
+| 4 workers | 26.2 req/min | 6.55 | clean, zero trouble |
+| 8 workers | 52.9 req/min | 6.61 | clean, zero trouble |
+
+**Workers scale LINEARLY in steady state** — 2.02× aggregate for 2× the fleet. `rate_watch.py`'s
+header says the opposite ("it goes DOWN as workers are added"); that was the ENTRY GATE, not
+contention. ⚠️ Per-OPEN time does drift (8.6–11.8 s at four, 9.7–12.2 at eight) and **that may be
+this house's uplink rather than the site** — a local measurement of unknown cause, not to be
+carried into a remote plan.
+
+⚠️ **`--speed` is no longer a rate control.** It spans ~13% of the request rate (23 → 26 req/min at
+four workers) where in August it spanned 23 → 56. **FLEET SIZE is the rate control now.** Design
+every rate experiment on worker count.
+
+### ⚠️⚠️ CAPACITY IS NOT DELIVERY
+
+    4 workers    589 opens →  335 NEW   57% useful
+    8 workers   1008 opens →  330 NEW   33% useful
+
+Twice the fleet, twice the opens, **the same records** — the second arm re-swept a window the first
+had just harvested. Capacity scales; delivery is bounded by **unharvested territory**.
+
+⇒ On a picked-over window, more workers buy nothing. The gain comes from unswept months or from
+`--fill` (~95% useful against a sweep's 33%).
+⇒ ★ On opens/min the 8-worker arm is a 1.7× triumph. On the actual goal it delivered five records
+FEWER. **Scoring on opens would have concluded "add workers" and been exactly wrong.**
+
+### The specs, and what each is worth
+
+| spec | setting | effect on throughput | effect on BLOCKS |
+|---|---|---|---|
+| `--speed` | 0 = top | at the floor; nothing left | **unmeasured** |
+| `--duty human` | 3.23 stops/min, 49% silent | **−54%** (2.66 → 1.23 opens/min) | **unmeasured** |
+| `--focus fast` | p0–p25 band | +8% alone | **unmeasured** |
+
+⚠️⚠️ **THE SURVIVAL COLUMN IS EMPTY.** Every figure in this file is throughput. No run has ever
+compared block rates between two spec configurations. The duty cycle costs half the throughput on
+the strength of "the operator did it" and **its benefit has never been measured once**.
+
+⚠️ **`--focus fast` SHRINKS the duty cycle, it does not make it free.** `silence_secs()` samples
+through the FOCUS band, so fast draws every stop from the p0–p25 floor: 121 stops, all 2.0–2.1 s,
+16% silent against focus-off's 49%. Two behaviours on one knob.
+
+### Site status, 2026-08-20 09:09 — DEGRADED
+
+`site_health.py` reports **OJV-NO-FORM**: `indexN.php` loads and renders, but carries no
+`#fecCompetencia`, no gate button, no `<form>` and no `<select>`. Its entry points are now
+`ingresoDemanYEscritos`, `consultaUnificada`, `consultaEscritosIndepen`,
+`consultaAudienciasLaboral`, `consultaCiudadana`. It is also **intermittent** — served once, then
+no tab at all a minute later.
+
+⇒ **No experiment is interpretable until this settles.** `_reach_ojv` and `find_form` will need
+re-pointing at whatever the new route is, found BY WATCHING, not by guessing selectors.
+
+### Struck or suspended by the 2026-08-19/20 session
+
+- ~~"The binding limit is the AGGREGATE REQUEST RATE PER ADDRESS."~~ That test moved `--speed`,
+  which moved the rate AND the pointer (6–9 mousemove/s at top speed against 15–20). Two variables,
+  one read. We have since held 52.9 req/min clean.
+- ~~"It is the SEARCH rate that binds."~~ **SUSPENDED** — the arms were 90 minutes apart and the
+  site went down between them.
+- ~~"56 req/min kills, 23 is safe."~~ Properties of a BUILD, not of the site. `--speed 0` produced
+  27 req/min on 2026-08-20 where it produced 56 on 08-17.
+- ~~"Matching the duty cycle is worth halving throughput for."~~ Cost measured, benefit never.
+- ~~"www.pjud.cl offers exactly one OJV anchor."~~ `/home/` is back; it offers both.
+
+### The tools, and which question each answers
+
+| question | tool |
+|---|---|
+| is the site up, and what does it serve? | `site_health.py` (`--watch N`) |
+| what rate is the fleet producing RIGHT NOW? | `rate_watch.py --mins 8` — **read the `result requests alone` line, not the total** |
+| how did an arm score? | `expduty_score.py --new` — **run it BEFORE the ingest** |
+| what does the worker emit vs the operator? | `human_profile.py --file A --vs B` |
+| did the data actually land? | `ingest_worker_h.py --dry`, then count in Neon |
+| how many workers can this address carry? | `Experimento_Fleet.ps1 -Workers N -Speed S` |
+| which spec setting is worth what? | `Experimento_Specs.ps1` |
+
+---
+
+## 000. WHAT I WOULD HAVE WANTED TO KNOW BEFORE THE 2026-08-19 SESSION
+
+Every one of these cost real time in a single night. They are here because none of them were
+guessable and all of them were knowable.
+
+1. **A state name is a hypothesis your code formed, not an observation.** `state=ojv-other` means
+   "none of my selectors matched". I read it as "the address is refusing", wrote up a persistent
+   escalating block with a cost model and a cool-off schedule, and was wrong for two hours. One CDP
+   attach to the running browser — thirty seconds — showed a healthy OJV with a changed DOM.
+   ⇒ **When a scraper says "blocked", attach to its browser and look before believing it.**
+
+2. **You cannot tell an outage from a block without an independent check.** Six sessions died in
+   thirteen seconds; I published a request-rate wall. The site had gone down. `site_health.py`
+   exists now; run it alongside anything that matters.
+
+3. **"Per what?" — always ask it of a rate.** Three separate wrong conclusions came from
+   active-seconds vs wall-seconds; the duty scheduler then repeated the error inside its own fix
+   (3.23 stops per minute of *covered window*, not of wall clock), and again one line later, arming
+   a gap with the wall interval instead of the active interval.
+
+4. **`kept` is not `banked`, and `opens` are not `records`.** The worker's own tally cannot know
+   what the bank already holds. Count in Neon, join on **(tribunal_id, rol)** — a rol repeats
+   across the 230 courts, and matching on it alone returned MORE hits than there were causas.
+
+5. **Depletion looks exactly like a slow configuration.** Never compare two spec arms on "new
+   records" if the first one banked what the second would have found.
+
+6. **Simulate a scheduler offline before you spend a run on it.** A fake `time.monotonic` and a
+   fake `wait_for_timeout` took ten minutes and caught an error that three live runs could not
+   separate from noise at 11–25 stops apiece.
+
+7. **Log what a random draw PRODUCED, not just its effect.** "Why is the output short?" is a guess;
+   "the draws match the operator but the output does not" is a subtraction.
+
+8. **Judge a heavy-tailed spec by its MEDIAN, or budget enough draws to see the tail.** A post-fix
+   mean of 7.7 s against an expected 11.1 s looked like a bug and was a 7% sampling event.
+
+9. **The entry gate is a throughput tax that scales with fleet size**, and every worker counts it
+   against its own `--max-minutes`. A fixed-length arm penalises the larger fleet for a reason that
+   has nothing to do with the WAF. Measure rate in steady state; measure throughput over runs long
+   enough to amortise arrival.
+
+10. **Harness background tasks are killed at ~30 min.** Launch long runs DETACHED (`Start-Process`)
+    and judge them by whether the log advances. A Drive migration died at 3,000 of 4,375 this way.
+
+11. **Logs carry HH:MM:SS with NO DATE.** A run crossing midnight ends earlier than it starts; a
+    naive guard silently scored zero wall and produced 242000000000 causas/min.
+
+12. **Shell escapes cost three defects in one night.** A quoted bash heredoc still collapsed a
+    double backslash before `r` into a carriage return — which PowerShell read as a line break,
+    turning a comment into a statement 5 lines above `param()`; the same collapse before `n` became
+    a real newline inside a Python string; and backticks inside a double-quoted bash string
+    EXECUTED, eating a word from a commit message. ⇒ Build such strings with `chr(92)` or
+    placeholders, and verify generated code with a real parser (`[Parser]::ParseFile`, `compile()`)
+    — **never `ast.parse` alone, which is not a compile check.**
+
+13. **Reuse the guards this repo already has.** The cp1252 print crash, the `worker_[ah].py`
+    process-match, the covered-click check — each already existed three files away and each was
+    re-broken by not copying it. `human_profile.py --vs` had NEVER been run, because it died on its
+    own header for want of a guard `human_record.py` had carried for weeks.
+
+14. **A cache key must come from the same field the record id comes from.** A document was cached
+    in Drive under its POSITION in a list while its database row was keyed on its FOLIO. They agree
+    until the list changes, then disagree silently. Exposure was zero when found — because no
+    document-carrying causa had yet been scraped twice, which is the schedule, not the design.
 
 ---
 
@@ -50,8 +237,8 @@ and are more human at the same time (pointer 15-20 events/s vs 6-9 at top speed)
 
 | what | value | how it was found |
 |---|---|---|
-| the binding limit | **aggregate request RATE per address** | 4 workers died in 5 min at ~56 POST/min and ran an hour at ~23 |
-| session count | **close to free** | four concurrent sessions, one IP, one hour, no block |
+| the binding limit | ~~aggregate request RATE per address~~ **NOT ESTABLISHED** | that test moved `--speed`, which moved the rate AND the pointer (6-9 mousemove/s vs 15-20) — two variables, one read. 52.9 req/min ran clean 2026-08-20. See section 00. |
+| session count | **close to free, and now measured** | 8 concurrent sessions, one IP, 52.9 req/min, 25 min, zero trouble; linear scaling 2.02x |
 | one worker's floor | ~8-9 s per kept causa | reading time ramped to zero; the residue is the site |
 | pointer | **~16-20 mousemove/s, ~5 mouseover/s** | a real person emits 25.8 and 6.4 |
 | horizontal scroll | **human_scroll_x on every off-side target** | we had never emitted a deltaX |
@@ -1723,6 +1910,11 @@ no probe and no request:
 sixteen doing metadata, against the one law this project has measured — *the binding limit is the
 aggregate request rate per address*.
 
+⚠️ **2026-08-20: that "one law" is NOT ESTABLISHED** — see section 00. The arithmetic here still
+holds (an open costs ~5.5 requests, so a doc fleet is far heavier per worker than a metadata one),
+and holding the AGGREGATE rather than the worker count is still the right instinct. What changed is
+that the number to hold it below is unknown on the current build: 52.9 req/min ran clean.
+
 ★ **Ask the data you already hold before you ask the site.** This changed the pacing, the warning
 printed at startup and the whole plan (three launches, not one) before a browser opened. Confirmed
 live on the first two causas: 4 and 3 documents, **exactly 3.5 per causa**.
@@ -1764,7 +1956,7 @@ first five minutes of steady state say otherwise:
 
 | axis | measured | the ceiling it should be read against |
 |---|---:|---|
-| `causaCivil.php` (searches + opens) | **9.0/min** | ~56/min killed four workers in 5 min; ~23/min ran the hour |
+| `causaCivil.php` (searches + opens) | **9.0/min** | ~~~56/min killed four workers in 5 min; ~23/min ran the hour~~ **BUILD-SPECIFIC, see section 00** — the same flags produced 27/min on 2026-08-20 and 52.9/min ran clean |
 | documents (`docuN`/`docuS`) | **19.6/min** | **none exists** — this run is the measurement |
 | everything | **28.6/min** | the proven six-worker metadata fill sat at ~32/min |
 | trouble events, all six shards | **0** | |
@@ -2518,7 +2710,7 @@ never touches the site.
 
 | validated against LIVE outcomes | validated only against the RECORDING |
 |---|---|
-| aggregate request rate (56/min killed 4 in 5 min; 23/min held an hour) | **duty cycle** — cost measured at ~50% throughput, benefit never measured |
+| ⚠️ aggregate request rate — **the 56/23 pair is BUILD-SPECIFIC and the causal claim is suspended** | **duty cycle** — cost measured at ~50% throughput, benefit never measured |
 | covered clicks (0 -> 50 causas, 1 -> blocked at 23, 2 -> at 4) | pointer rate (mousemove/s) |
 | `--fill` vs sweep (95% useful vs 27%) | click hold (~100 ms) |
 | headless / background tab / direct navigation all fatal | wheel quantisation, focus bands |

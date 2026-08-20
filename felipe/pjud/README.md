@@ -7,6 +7,10 @@ full detail and PDFs, into **Neon Postgres** (+ documents to Google Drive). It d
 headed Chrome over CDP** — never headless, and never a bare `.click()`; both are load-bearing and
 the reasons are in the handoffs.
 
+**The score is sustained NEW records per hour, without tripping** — measured against the site,
+not against a recording. See [`../CLAUDE.md`](../CLAUDE.md) → "The ultimate goal". A metric you can
+compute offline, with the site switched off, is measuring fidelity rather than results.
+
 ### Which document to read
 
 | you want to | read |
@@ -26,8 +30,10 @@ the reasons are in the handoffs.
 | **B** finishes | `scraper/worker_b.py` | every document, every georreferencia, every cuaderno, receptor | 1 open, **40+ fetches** |
 | **C** refreshes | `scraper/worker_c.py` | re-opens a finished causa, takes only what is **new** | 1 open, **0 fetches** |
 
-★ **Worker H is the fastest and safest thing here** — 1,046 opens in 150 minutes with zero blocks,
-against worker A's all-time local best of 375. It is the mimic built from a *recorded* human
+★ **Worker H is the fastest thing here** — 1,046 opens in 150 minutes with zero blocks, against
+worker A's all-time local best of 375. ⚠️ *Safest* is not established: no run has compared block
+rates between configurations, and its speed is now known to sit at the SITE's floor (~8-9 s per
+open) rather than above it. It is the mimic built from a *recorded* human
 session, and every gain came from removing something a person could not do (typed dates into
 readonly fields, no horizontal scrolling, a frozen pointer), never from pacing.
 
@@ -58,6 +64,24 @@ time. **No cron anywhere in this project**, deliberately.
 
 Both cloud workflows expose `trace`; `pjud-fill.yml` also exposes `step`. See
 `HANDOFF_WORKERS.md` → **THE 2026-08-18 SESSION** for how to drive them.
+
+### Measuring it — which question each tool answers
+
+| question | tool |
+|---|---|
+| is the site up, and what does it serve? | `scraper/site_health.py [--watch N]` — clicks through, no search, no causa |
+| what request rate is the fleet making now? | `scraper/rate_watch.py --mins 8` — ⚠️ read the **`result requests alone`** line, not the total |
+| how did an experiment arm score? | `scraper/expduty_score.py --new` — ⚠️ run it **before** the ingest, or it scores its own records as already held |
+| what does the worker emit vs a human? | `scraper/human_profile.py --file A --vs B` — reports per-ACTIVE and per-WALL second, and the duty cycle |
+| record a human, or a worker, identically | `scraper/human_record.py --port N` |
+| did the data actually land? | `scraper/ingest_worker_h.py --dry`, then count in Neon — a run's own tally is not evidence |
+| how many workers can one address carry? | `Experimento_Fleet.ps1 -Workers N -Speed S` |
+| what is a spec setting worth? | `Experimento_Specs.ps1` (a focus × duty matrix) |
+
+⚠️ **The survival column is empty.** Every throughput figure in these docs is real; no run has
+ever compared BLOCK rates between two spec configurations, so the duty cycle costs ~50% of
+throughput on the strength of a recording and its benefit is unmeasured. See
+`HANDOFF_WORKERS.md` → section 00.
 
 ⚠️ Treat every measurement in these files as **dated**. The OJV is actively changed, and several
 conclusions here were overturned by later evidence in the same document — the headers say which.
