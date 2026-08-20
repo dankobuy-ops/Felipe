@@ -2354,3 +2354,85 @@ candidates, the first at row 9.
 
 ⇒ **A probe that samples a different population than the worker answers a different question, and
 nothing in its output says so.**
+
+---
+
+# ★★★★★ THE DUTY CYCLE — we emit 68% MORE than a human, not less (2026-08-19)
+
+The first time a worker was recorded with **the same instrument as the human**, and it inverted
+everything this project believed about its own pointer.
+
+| | active/wall | mousemove per ACTIVE s | mousemove per WALL s |
+|---|---|---:|---:|
+| worker (8 causas) | **93% active, 7% silent** | 21.0 | **19.5** |
+| human (40 min) | **46% active, 54% SILENT** | 25.1 | **11.6** |
+
+**The human is silent for 54% of their session. The worker is silent for 7%.**
+
+Per active second we sit at 84% of the human — close, and that is the number this project had been
+quoting. Per WALL second we emit **68% MORE than a human does**, because we almost never stop.
+
+## The structure of the silence, which is the actual spec
+
+| | silent stretches | median | p90 | max | 15-60 s | >60 s |
+|---|---:|---:|---:|---:|---:|---:|
+| human, 40 min | **129** | 6.1 s | 28.3 s | 60.4 s | **29** | 1 |
+| worker, 3.6 min | 5 | 3.0 s | 8.2 s | **8.2 s** | **0** | 0 |
+
+Per minute the human stops **3.2 times**; the worker stops 1.4 times and **has never once been
+still for more than 8 seconds.** The human was still for 15-60 s on twenty-nine separate occasions.
+
+⇒ **Every spec we had been tuning was a RATE. This is a RHYTHM.** A person works in bursts
+separated by real stillness; the worker is a continuous 21/s hum that never pauses to think. On
+rates we are slightly off. On the duty cycle we are categorically different, and it is the one an
+observer would notice first.
+
+## ⚠️⚠️ HOW THIS HID FOR SO LONG: active seconds versus wall seconds
+
+Three claims made in one session, all wrong, all from the same root:
+
+1. *"We emit 16/s against the human's 25."* — wall-seconds compared against active-seconds.
+2. *"Non-causa time emits about 5/s."* — arithmetic on those mismatched denominators.
+3. *"The form path is where the pointer dies."* — it runs at 19/s there, the same as in a causa.
+
+**You cannot be UNDER on a metric that excludes the silence.** The recorder averages over seconds
+in which something happened; a worker that never stops has almost no excluded seconds, and a human
+has more excluded than included. Comparing those two averages compares two different populations
+of second — the same "check the arms match" error this handbook records three times over, made
+again, by the author of the entry.
+
+⇒ **Report both, always: per-active-second AND per-wall-second, with the silent fraction beside
+them.** Either alone is a trap.
+
+## What it costs to be wrong in this direction
+
+⚠️ **`E.PRESENCE` — routing the engine's waits through the presence loop — moved nothing** (19.3 →
+19.5/s wall, 7% → 7% silent) and its entire justification was the denominator error above. It is
+kept because a wait genuinely should have a hand on it, and it is harmless. **It fixes nothing.**
+Worse, it pushes in the wrong direction: it fills previously-quiet stretches with more motion, on
+a channel where we already emit too much.
+
+★ This is "THE OPTIMUM IS NOT THE MAXIMUM" arriving exactly where the engine's own header warns it
+might — on the spec nobody was looking at. Every instinct in this project has been *more presence
+is more human*. Past a point it is the opposite, and we are past the point.
+
+## The next spec, with its target distribution already measured
+
+Draw complete-stillness intervals from the human's distribution and insert them at natural
+boundaries (between causas, mid-read, after a search returns):
+
+```
+55 x  2-5 s      44 x  5-15 s      29 x  15-60 s      1 x >60 s
+median 6.1 s     p90 28.3 s        max 60.4 s
+~3.2 stops per minute
+```
+
+⚠️ **Judgement call, not a mechanical fix.** Some of that 54% is the operator being interrupted,
+reading off-screen, or tabbed away — there were 52 `visibilitychange` events in the session. Whether
+a worker *should* mimic being interrupted is a real decision, and it costs throughput directly:
+matching the human duty cycle roughly halves opens per wall-hour. But "never still for more than
+eight seconds across an entire session" is not a thing a person does, and that is what we ship today.
+
+⚠️ **And do not implement it as a lower RATE.** The human's 25.1/s while moving is higher than our
+21/s. The fix is to stop sometimes, not to move more slowly — those produce the same wall-clock
+average and completely different distributions.
