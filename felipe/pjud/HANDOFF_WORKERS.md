@@ -349,6 +349,35 @@ exist to be compared against it.
   construction. Score the ladder on RATE and TROUBLE; delivery needs fresh territory.
 - **Not remote behaviour.** Everything here shares one uplink and one address class.
 
+## DEFERRED UNTIL THE LADDER IS DONE: close the www.pjud.cl tab after entry
+
+Every worker holds TWO tabs for its whole shift — the OJV it works in, and the `www.pjud.cl` it
+walked in through, idle from the moment entry succeeds. Measured live on 2026-08-20:
+
+    port 9561:  [0] .../indexN.php#modalDetalleCivil   working
+                [1] https://www.pjud.cl/               idle since entry
+
+**Safe to close**, on three checks:
+- Nothing uses it after entry. Both `_only_tab` calls sit inside the entry RETRY loop, before
+  success, and `worker_h` never scans `ctx.pages` or navigates to pjud.cl again.
+- The recovery path is unaffected. `walk_in` IS called a second time (worker_h:1242) and picks its
+  launcher with `next(q for q in ctx.pages if "pjud.cl" in q.url)` — which matches the OJV host
+  too, and **`pages[0]` is already the OJV tab**. Re-entry reuses that tab either way.
+- `_only_tab`'s own docstring argues for it: *"a leftover tab does not merely clutter the window —
+  it silently swallows every click aimed at the page underneath it."*
+
+**Worth ~50-100 MB per worker**, which is 0.4-0.8 GB across eight — and RAM is exactly what gates
+the top of the ladder.
+
+⚠️ **DO NOT LAND IT MID-LADDER.** Rung 3 must run on the same worker code as rungs 1 and 2, or the
+comparison breaks the same way last night's arms did. One line after `walk_in` returns
+(`ojv._only_tab(ctx, p)`), then a solo run to confirm, then it is available for the fleet.
+
+⚠️ **Separately, that `next(...)` selection is fragile**: it matches both `www.pjud.cl` and
+`oficinajudicialvirtual.pjud.cl` and depends on a tab order that is NOT creation order (the OJV tab
+is created second and appears first). A re-entry that grabs the wrong tab is a silent failure of
+exactly the kind this file keeps rediscovering. Worth tightening independently of the tab close.
+
 ## ⚠️ The risk, and why it is now affordable
 
 A tripped rung burns the address. That was an eight-hour wall last night — but **a router reset
