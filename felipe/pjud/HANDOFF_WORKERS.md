@@ -1629,7 +1629,7 @@ Ended by our own lifespan, not by the site.
 | | opens | min | rate | blocks |
 |---|---|---|---|---|
 | worker A, best LOCAL ever | 375 | 190 | 1.97/min | 0 |
-| worker A, best REMOTE ever | 306 | — | — | then blocked |
+| worker A, best REMOTE ever | 306 | — | 1.59/min | ⚠️ **clean — ended on our own `--max-minutes`, NOT blocked**; "then blocked" here contradicted two other passages in this file and is corrected 2026-08-20 |
 | **worker H at the floor** | **1,046** | **150** | **7.0/min** | **0** |
 
 68 courts, 72 searches, 793 causas kept with both cuadernos, 253 discarded by the etapa gate.
