@@ -1606,7 +1606,14 @@ def ensure_window(page, w=1440, h=900):
                               "width": w, "height": h}})
         page.wait_for_timeout(400)
         vp = page.evaluate("()=>({vw:innerWidth, vh:innerHeight})")
-        return (vp["vw"] >= w - 120 and vp["vh"] >= h - 220), vp
+        # WARN: THE TOLERANCE MUST BE RELATIVE TOO, OR IT IS VACUOUS WHEN SMALL. The absolute
+        # slack (120 x 220) was chosen against 1440x900, where it is 8% and 24%. Asked for
+        # 480x300 on 2026-08-20 it accepted a 500x205 viewport as "ok" -- the height threshold
+        # had become 80 px, so almost anything passed, and the operator was told the window was
+        # fine while the causa modal had 205 px to live in. A check that cannot fail is not a
+        # check. Take whichever bound is STRICTER, so the slack shrinks with the request.
+        ok = (vp["vw"] >= max(w - 120, w * 0.85) and vp["vh"] >= max(h - 220, h * 0.85))
+        return ok, vp
     except Exception as e:
         try:
             vp = page.evaluate("()=>({vw:innerWidth, vh:innerHeight})")
