@@ -106,6 +106,138 @@ def jitter(lo, hi):
 PRESENCE = None      # set by the worker: callable(page, seconds)
 
 
+# ── MOTOR vs PACE: the two kinds of spec, and only one of them is tunable ────
+#
+# ⚠️⚠️ THE DISTINCTION THAT MAKES "OPTIMAL HUMAN" MEANINGFUL (operator, 2026-08-19):
+#
+#   MOTOR  biomechanics. Does NOT change with how hard a person is working, so there is no
+#          "faster" version of it. A rushed person's click is still ~100 ms; a hurried wheel still
+#          emits 100 px notches; a hand in a hurry still tops out near 25 moves/s.
+#          → HOLD EXACTLY AT MEASURED. Pushing one of these is what makes a session non-human;
+#            a 40 ms click hold is not a fast human, it is not a human.
+#
+#   PACE   the person deciding. Reading times, how long they dwell, how often and how long they
+#          stop. One operator spanned 4.6x on causa cycle WITHIN ONE SESSION (p10 6.1 s, median
+#          28.3 s).
+#          → SAMPLE FROM THE OPERATOR'S OWN DISTRIBUTION, and choose WHICH BAND with FOCUS.
+#
+# ⇒ "Optimal human" = motor constants exact, pace variables drawn from the fast end of a band the
+# operator DEMONSTRABLY PRODUCED. Nothing is extrapolated to a person who does not exist: every
+# value shipped is one that was actually observed.
+#
+# ★ AND IT IS FASTER THAN WHAT WE SHIP. Measured 2026-08-19: the worker runs ~27-30 s per causa
+# while the operator's own p25 is 11.1 s and their p10 is 6.1 s. We are not trading fidelity for
+# speed here — on the pace variables we are SLOWER than a human and less human at the same time.
+#
+# ⚠️ THE DECILES BELOW ARE n=1 SESSION EACH, AND TWO SESSIONS DISAGREE BY 17x. The August
+# recording put "open -> switch to book 2" at a 2.0 s median; this one puts it at 34.5 s, because
+# the operator was reading documents rather than triaging. Same person, same site, different task.
+# So: the FAST end of the union of what has been observed is the defensible target, and a second
+# recording of the SAME task is worth more than any amount of tuning against this one.
+PACE = {
+    # name                     deciles p0..p100, seconds        source
+    "book1": (2.0, 2.0, 5.1, 6.1, 10.1, 13.2, 18.2, 34.5, 55.6, 114.3, 241.9),
+    #   ⚠️ p0/p10 are the AUGUST session's 2.0 s median, kept because it was really observed and is
+    #   the fastest this act has ever been seen done. The rest is 2026-08-19 (n=24).
+    "book2": (1.0, 1.0, 1.0, 2.0, 2.0, 3.0, 4.0, 10.1, 12.1, 15.2, 64.7),      # n=24
+    "silence": (2.0, 2.0, 2.0, 2.2, 4.0, 6.1, 8.1, 11.1, 16.3, 28.3, 60.4),    # n=129
+    "list": (2.0, 3.0, 6.1, 8.1, 11.1, 15.2, 22.3, 34.5, 55.6, 78.0, 180.0),   # causa->causa, n=29
+}
+
+# The quantile band to draw pace variables from. (0.0, 1.0) is the whole operator; (0.0, 0.25) is
+# the operator on their quickest stretches — still their own behaviour, just the fast quarter.
+FOCUS = (0.0, 1.0)
+FOCUS_ON = False   # --focus: off keeps the August two-number spans (today's behaviour)
+
+
+def pace(name):
+    """One sample of a PACE variable, from the operator's deciles within the FOCUS band.
+
+    ⚠️ Interpolates the EMPIRICAL deciles rather than fitting a curve. We have one session per
+    variable; a lognormal fitted to it would add confidence we have not earned, and would smooth
+    away the long tail that is the most distinctive part of the shape.
+    """
+    d = PACE.get(name)
+    if not d:
+        return 0.0
+    lo_q, hi_q = FOCUS
+    q = (lo_q + random.random() * max(1e-6, hi_q - lo_q)) * 10.0
+    i = min(9, int(q))
+    lo, hi = d[i], d[i + 1]
+    return lo + (hi - lo) * (q - i)
+
+
+# ── THE DUTY CYCLE: a person STOPS, and we never did ─────────────────────────
+#
+# ⚠️⚠️ THE SPEC WE DID NOT KNOW EXISTED, AND THE ONLY ONE WHERE WE ARE CATEGORICALLY WRONG.
+# Measured 2026-08-19 by recording a worker with the SAME instrument used on the operator:
+#
+#     worker   93% of seconds active,  7% silent    21.0/s active    19.5 per WALL second
+#     human    41% of seconds active, 59% SILENT    25.1/s active    11.6 per WALL second
+#
+# Per ACTIVE second we sit at 84% of the human, which is the number this project quoted for weeks
+# while concluding "we are under, emit more". Per WALL second we emit 68% MORE than a human,
+# because we almost never stop. Every spec we had been tuning was a RATE; this is a RHYTHM.
+#
+#     human    129 silences in 40 min   median 6.1 s   p90 28.3 s   max 60 s   3.2 stops/min
+#     worker     5 silences in 3.6 min  median 3.0 s   p90  8.2 s   max  8 s
+#
+# ⚠️ FIX IT BY STOPPING, NEVER BY MOVING SLOWER. The human's rate WHILE MOVING (25.1/s) is HIGHER
+# than ours (21/s). Lowering the rate gives the same wall-clock average and a completely different
+# distribution — and the distribution is the thing being measured.
+#
+# ⚠️ SAMPLED FROM THE MEASURED DECILES, not from an invented parametric shape. We have one 40-minute
+# session; a lognormal fitted to it would add confidence we have not earned. Interpolating the
+# empirical deciles reproduces what was actually observed, including the long tail (one stop of a
+# full minute) that any tidy distribution would smooth away.
+SILENCE_DECILES = (2.0, 2.0, 2.0, 2.2, 4.0, 6.1, 8.1, 11.1, 16.3, 28.3, 60.4)
+SILENCE_PER_MIN = 3.23        # stops per minute of WALL clock, measured
+DUTY_HUMAN = False            # --duty human: insert real stillness. Off = today's always-on hum.
+
+
+def silence_secs():
+    """One stillness duration, from the operator's distribution within the FOCUS band.
+
+    ⚠️ FREQUENCY IS THE SIGNATURE, DURATION IS THE PACE. An operator working fast still stops just
+    as often — they stop BRIEFLY. My first implementation sampled the whole curve including the
+    60-second tail, which made a focused worker behave like a distracted one. FOCUS shortens the
+    stops; it must never reduce how many there are.
+    """
+    return pace("silence")
+
+
+def still(page, secs):
+    """Do NOTHING for `secs`. No pointer, no drift, no hooks — genuinely motionless.
+
+    ⚠️⚠️ THIS MUST NOT GO THROUGH `pause()` OR THE PRESENCE LOOP, and that is the entire point.
+    Every other wait in this engine exists to keep a hand on the page; this one exists to take the
+    hand OFF it. Routing it through presence would turn the fix into more of the very thing it is
+    correcting — and it is exactly the mistake the shape of this file invites, since `pause()` is
+    the obvious call to reach for.
+    """
+    page.wait_for_timeout(int(secs * 1000))
+
+
+def maybe_still(page, window_secs):
+    """Stop, sometimes, the way a person does. Call at a natural boundary between actions.
+
+    `window_secs` is roughly how much wall clock this call site covers, so the 3.2 stops/minute
+    the operator produced comes out right without any call site needing to know the rate.
+
+    ⚠️ ONLY AT BOUNDARIES. A person does not freeze mid-drag or halfway through reaching for a
+    control; they stop between things — after closing a record, after a search returns, before
+    deciding what to open next. Sprinkling stillness inside an action would produce the right
+    histogram out of impossible behaviour, which is how this project got the metronome keyboard.
+    """
+    if not DUTY_HUMAN:
+        return 0.0
+    if random.random() > (SILENCE_PER_MIN * window_secs / 60.0):
+        return 0.0
+    s = silence_secs()
+    still(page, s)
+    return s
+
+
 def pause(page, ms):
     """Wait `ms`, with the pointer alive if a worker has installed PRESENCE.
 
@@ -142,7 +274,7 @@ RAMP_STEP = 0.75       # multiply the spans by this at each rung
 
 
 
-def read(pres, target, span, selector=None):
+def read(pres, target, span, selector=None, name=None):
     """Spend `span` seconds READING something, the way a person does: pointer over it, moving.
 
     This is the only kind of wait in this worker other than waiting for the site. It is not a
@@ -151,7 +283,25 @@ def read(pres, target, span, selector=None):
     """
     pres.aim(target, selector)
     lo, hi = span
-    pres.run(jitter(lo * SPEED, hi * SPEED))
+    # ⚠️ `name` selects the operator's own measured distribution for THIS act; without it we fall
+    # back to the two-number span from the August session. FOCUS then picks which part of that
+    # distribution to live in — the whole operator, or the quarter of the time they were quickest.
+    # SPEED still multiplies, so the old ramp keeps working, but it should be left at 1.0 when
+    # FOCUS is doing the work: two knobs on the same quantity is how a result becomes
+    # uninterpretable, which is the mistake `--speed` has already caused twice here.
+    secs = pace(name) * SPEED if (name and FOCUS_ON) else jitter(lo * SPEED, hi * SPEED)
+    # ⚠️ THE DUTY CYCLE GOES HERE, AND ONLY HERE. `read()` is the one call that means "the person
+    # is looking at something" — which is exactly when a human stops moving the mouse. Between
+    # closing one record and opening the next, or while taking in a book, they go COMPLETELY
+    # STILL, 3.2 times a minute, for a median of 6 s and sometimes a full minute.
+    # Every other wait in this engine is mid-action: a person does not freeze halfway through
+    # reaching for a control, and putting stillness there would produce the right histogram out of
+    # impossible behaviour — which is how this project got the metronome keyboard.
+    still_for = maybe_still(target, secs)
+    if still_for:
+        secs = max(0.0, secs - still_for)      # the stillness IS part of the looking, not extra
+    if secs > 0.05:
+        pres.run(secs)
 
 
 def close_modal_human(page, pres):

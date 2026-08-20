@@ -673,7 +673,7 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
     # ── the act under test: book 2, at the human's two seconds, with zero keystrokes ──
     rec["historia_c2"], rec["cuaderno_c2"] = None, ""
     if len(rec["cuadernos"]) > 1:
-        read(pres, page, READ_BOOK1, "#modalDetalleCivil")   # a person looks at book 1 first
+        read(pres, page, READ_BOOK1, "#modalDetalleCivil", name="book1")   # a person looks at book 1 first
         pres.travel_to(page, "#selCuaderno")
         # A signature of book 1's historia, so we can tell when book 2 has actually arrived.
         before = page.evaluate("()=>{const t=document.querySelector('#historiaCiv table tbody');"
@@ -717,7 +717,7 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
          f"{len(rec.get('historia_c1') or [])} hist c1 · "
          f"{len(rec.get('historia_c2') or [])} hist c2 · "
          f"{len(rec['cuadernos'])} cuadernos · {proc[:34]}")
-    read(pres, page, READ_BOOK2, "#modalDetalleCivil")
+    read(pres, page, READ_BOOK2, "#modalDetalleCivil", name="book2")
     close_modal_human(page, pres)
     rec["open_seconds"] = round(time.time() - t_open, 1)
     return rec
@@ -759,6 +759,23 @@ def main():
                          "hits docuN.php/docuS.php, the endpoint worker A was redefined in "
                          "August to stay clear of. Hold the AGGREGATE rate, not the worker count "
                          "— see --speed and HANDOFF_WORKERS.md section 0.")
+    ap.add_argument("--focus", choices=("off", "standard", "fast"), default="off",
+                    help="WHICH PART of the operator's own pace distribution to work at. "
+                         "'off' keeps the August two-number spans we ship today. 'standard' "
+                         "samples their whole curve. 'fast' samples p0-p25 — the quarter of the "
+                         "time they were quickest, every value one they actually produced. "
+                         "⚠️ MOTOR constants (click hold, wheel notch, pointer rate) are NOT "
+                         "touched by this and must never be: a 40 ms hold is not a fast human, it "
+                         "is not a human. ★ 'fast' is FASTER than what we ship: the worker runs "
+                         "~27-30 s per causa against the operator's p25 of 11.1 s.")
+    ap.add_argument("--duty", choices=("off", "human"), default="human",
+                    help="the DUTY CYCLE — how often the worker goes COMPLETELY STILL. Measured "
+                         "2026-08-19: the operator was silent 59%% of their session (129 stops in "
+                         "40 min, median 6.1 s, p90 28.3 s, max 60 s) while the worker was silent "
+                         "7%% and had never once been still for more than 8 s. Per WALL second we "
+                         "emit 68%% MORE than a human. 'human' samples the measured distribution; "
+                         "'off' is the always-on hum we shipped before. ⚠️ 'human' roughly HALVES "
+                         "opens per wall-hour — that is the cost of the fidelity, not a bug.")
     ap.add_argument("--anexos", action="store_true",
                     help="enumerate the causa's ANEXO folders and download the ones whose "
                          "Referencia matches --anexo-match. The inventory (every label, matched "
@@ -930,6 +947,21 @@ def main():
             idle=lambda pg, s: C.human_idle(pg, s))
         note(f"STEP MODE: waiting for an instruction before each action "
              f"(run_id={C.STEPPER.run_id}, {a.step_timeout:.0f}s -> {a.step_on_timeout})")
+    E.FOCUS_ON = (a.focus != "off")
+    E.FOCUS = (0.0, 0.25) if a.focus == "fast" else (0.0, 1.0)
+    if E.FOCUS_ON:
+        note(f"FOCUS: {a.focus} — pace variables sampled from the operator's own distribution, "
+             f"band {E.FOCUS[0]:.2f}-{E.FOCUS[1]:.2f}. Motor constants unchanged.")
+        if a.speed != 1.0:
+            note(f"  [warn] --speed {a.speed} on top of --focus is TWO KNOBS ON ONE QUANTITY. "
+                 f"The result will not be attributable to either. Use --speed 1.0 with --focus.")
+    E.DUTY_HUMAN = (a.duty == "human")
+    if E.DUTY_HUMAN:
+        note(f"DUTY CYCLE: human — stopping completely ~{E.SILENCE_PER_MIN:.1f}x/min "
+             f"(median {E.SILENCE_DECILES[5]:.1f}s, up to {E.SILENCE_DECILES[-1]:.0f}s). "
+             f"Expect roughly half the opens/hour of --duty off; that is the point.")
+    else:
+        note("DUTY CYCLE: off — the pointer never stops, which no human session does")
     global DOCS_C2, ANEXOS, ANEXO_MATCH, ANEXO_ALL
     ANEXOS, ANEXO_ALL = a.anexos, a.anexo_all
     ANEXO_MATCH = a.anexo_match
@@ -1351,7 +1383,7 @@ def main():
                 if rec in ("click-refused", "stale-row"):
                     # our click never reached the row: one causa lost, session untouched
                     tally["refused"] = tally.get("refused", 0) + 1
-                    read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
+                    read(pres, p, READ_LIST, "#dtaTableDetalleFecha", name="list")
                     continue
                 if rec is None:
                     # ⚠️ NOT automatically the wall. A local session produced this exact signature
@@ -1400,7 +1432,7 @@ def main():
                 # the next causa?"). Copying the aggregate 13 s open-to-open and spending the
                 # surplus wandering reproduces an INTERVAL, not a behaviour — a person travels to
                 # the next row and clicks it. The reading below is over the list, as theirs was.
-                read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
+                read(pres, p, READ_LIST, "#dtaTableDetalleFecha", name="list")
                 nxt = rows[rows.index(row) + 1] if row is not rows[-1] else None
                 if nxt is not None:
                     pres.travel_to(page_row(p, nxt))
@@ -1473,7 +1505,7 @@ def main():
                     if rec in ("click-refused", "stale-row"):
                         # our click never reached the row: one causa lost, session untouched
                         tally["refused"] = tally.get("refused", 0) + 1
-                        read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
+                        read(pres, p, READ_LIST, "#dtaTableDetalleFecha", name="list")
                         continue
                     if rec is None:
                         # ⚠️ THE SAME FAILURE HAS TWO CALL SITES AND I FIXED ONE. Recovery was
@@ -1505,7 +1537,7 @@ def main():
                     out_file.write_text(json.dumps(got, ensure_ascii=False, indent=1),
                                         encoding="utf-8")
                     save_state()
-                    read(pres, p, READ_LIST, "#dtaTableDetalleFecha")
+                    read(pres, p, READ_LIST, "#dtaTableDetalleFecha", name="list")
                 if stop or recovered_here:
                     break
             if recovered_here:
