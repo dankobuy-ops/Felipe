@@ -2677,3 +2677,62 @@ those records cannot be matched against Neon at all — and my first attempt to 
 2,279 records collapse into `(None, rol)` keys. **Arm 1's 335 is sound** — every one of its 589
 records carries a tribunal_id. Do not quote a corpus-wide delivery number until the older records
 are either re-keyed or excluded.
+
+---
+
+# ★★★★ GOAL 1 — THE BEST SPECS FOR ONE WORKER (2026-08-20)
+
+A 2x2 of `--focus` x `--duty`, four single workers in parallel, `--speed 1.0`, 25 min, one address.
+Parallel so all four meet identical site load and time of day — this project has more than once
+attributed to a spec what was really the hour.
+
+| shard | focus | duty | opens/min | duty draws |
+|---|---|---|---:|---|
+| s1 | off | off | 2.66 | — |
+| s2 | **fast** | off | **2.86** | — |
+| s3 | off | **human** | **1.23** | n=68 mean 11.0s median 6.2s max 58.0s, 49% silent |
+| s4 | **fast** | **human** | **2.86** | n=121 mean 2.0s median 2.0s max 2.1s, 16% silent |
+
+## ⚠️⚠️ s4 IS NOT "THE DUTY CYCLE FOR FREE". `--focus fast` SHRINKS THE DUTY CYCLE.
+
+The obvious reading of the table — *fast cancels duty's cost* — is wrong, and the draws say so.
+`silence_secs()` samples through the FOCUS band, so under `fast` every stop is drawn from the
+operator's p0-p25 floor: **all 121 of them landed at 2.0-2.1 s.** s4 is silent 16% of the time
+against s3's 49%. They are not one spec at two speeds; s4 is a different worker.
+
+⇒ **A knob that was only ever meant to shorten READING also shortens STOPPING.** Two behaviours on
+one control, discovered only because the draws are logged. Had `DUTY DRAWS` not existed, s4 would
+have been written up as "the duty cycle is free at focus fast" and shipped.
+
+## ⚠️ AND THE INTERACTION IS A BUG, NOT JUST A SURPRISE
+
+`ACTIVE_GAP_MEAN` is derived from `SILENCE_MEAN = 10.9` — the FULL distribution's mean — so it does
+not move when FOCUS shortens the stops. The result preserves neither quantity it should:
+
+    stops/min   3.23 (operator)  ->  2.7 at focus off  ->  4.8 at focus fast     frequency UP
+    silent %      59 (operator)  ->   49 at focus off  ->   16 at focus fast     fraction DOWN
+
+`human_engine.silence_secs` says in as many words: *"FOCUS shortens the stops; it must never reduce
+how many there are."* It does not reduce them — it inflates them, because a shorter stop re-arms
+the same fixed gap sooner. Whichever invariant is intended (frequency or duty fraction),
+`ACTIVE_GAP_MEAN` has to be derived from the mean stop ACTUALLY IN USE, not from the constant.
+
+★ s3 is the vindication of the scheduler rebuilt earlier tonight: **mean 11.0 s, median 6.2 s, max
+58.0 s against the operator's 10.9 / 6.1 / 60.4**, over 68 stops. The earlier 25-stop runs could
+not have shown that.
+
+## The answer for one worker, and it is not the human-like one
+
+    --speed 0  --duty off        ~5.8 opens/min   (arm 1, four shards: 6.5 / 5.8 / 4.6 / 6.7)
+    --speed 1.0 --focus fast      2.86 opens/min
+    --speed 1.0 --focus off       2.66 opens/min
+    --speed 1.0 --focus off --duty human   1.23 opens/min
+
+**`--speed 0` is worth about 2x the best focus setting**, because it removes reading entirely while
+`fast` only samples the quick quarter of it. Nothing tripped at any setting — but ONE worker at 25
+minutes cannot show tripping, and worker A has been blocked on multi-hour single-worker runs
+before. ⚠️ **Read this as a throughput ranking with the survival column still empty.**
+
+⇒ Provisional best single-worker specs: **`--speed 0 --duty off`** (focus is moot at speed 0, which
+zeroes the reading `--focus` selects from). To be confirmed by a multi-hour run, which is the only
+thing that can fill in the survival column.

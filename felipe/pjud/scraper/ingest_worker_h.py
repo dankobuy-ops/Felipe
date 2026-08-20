@@ -25,6 +25,7 @@ like a causa we hold. They are counted and reported instead.
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -109,6 +110,31 @@ def load(paths):
     return causas, dupes, gated, headerless, regated
 
 
+LEGACY_DOC_OBJ = "{cid}/c2-{k:02d}.pdf"     # what we wrote before 2026-08-19; see migrate_doc_keys.py
+
+
+def doc_obj(cid, h, k):
+    """Drive object name for one cuaderno-2 document.
+
+    WARN: KEYED ON THE FOLIO, NOT THE POSITION IN THE LIST. It used to be `c2-{k:02d}.pdf`, while
+    the Documentos row it feeds is `<causa>-c<n>-<folio>-<k>-doc` — two ids for one document, one
+    positional and one stable. Historia arrives NEWEST-FIRST, so a single new filing shifts every
+    position: `c2-00.pdf` stops meaning folio 3 and starts meaning folio 4. The next ingest then
+    gets a cache HIT on that name, stamps the OLD document's URL onto the NEW folio's row, uploads
+    nothing, reads nothing, and counts it as a saving. A wrong link with no error anywhere.
+
+    WARN: exposure when this was found was ZERO -- no document-carrying causa had been scraped
+    twice yet. That was the schedule, not the design, and the first re-scrape would have been
+    silent. Do not take "it agrees on all current data" for a test of a positional key.
+
+    WARN: the no-folio fallback is `c2-i{k:02d}`, deliberately NOT the legacy `c2-{k:02d}`. A
+    legacy object must never be reachable under the new scheme by accident -- that would reinstate
+    exactly the bug this function exists to remove.
+    """
+    folio = re.sub(r"[^0-9A-Za-z-]", "", str(h.get("folio") or "")).strip()
+    return f"{cid}/c2-f{folio}.pdf" if folio else f"{cid}/c2-i{k:02d}.pdf"
+
+
 def upload_c2_docs(causas, dry=False, upload=True):
     """Push the cuaderno-2 PDFs worker H fetched to Drive, and stamp `doc_url` on their rows.
 
@@ -145,7 +171,7 @@ def upload_c2_docs(causas, dry=False, upload=True):
             fname = (h.get("_doc_file") or "").strip()
             if not fname:
                 continue
-            obj = f"{cid}/c2-{k:02d}.pdf"
+            obj = doc_obj(cid, h, k)
             hit = cache.get(gstore._flatten_name(obj))
             if hit:
                 h["doc_url"] = dbstore.direct_link(hit)
@@ -167,7 +193,7 @@ def upload_c2_docs(causas, dry=False, upload=True):
     links = store.upload_pdfs_parallel(items) if items else {}
     for cid, rec in todo:
         for k, h in enumerate(rec["historia_c2"]):
-            url = links.get(f"{cid}/c2-{k:02d}.pdf")
+            url = links.get(doc_obj(cid, h, k))
             if url:
                 h["doc_url"] = url
     if items:

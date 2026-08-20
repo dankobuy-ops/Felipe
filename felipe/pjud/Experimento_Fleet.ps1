@@ -1,40 +1,31 @@
-﻿# EXPERIMENTO B — DOES SESSION COUNT MATTER AT A FIXED AGGREGATE RATE?
+﻿# EXPERIMENTO FLEET — HOW MANY WORKERS CAN THIS ADDRESS CARRY? (GOAL 2)
 #
-# The 2026-08-17 test settled that the RATE kills: four workers at --speed 0 produced ~56 POST/min
-# and were all dead by minute 5, while the same four at --speed 1.0 produced ~23 and two ran the
-# full hour. It is written up as "IT IS THE AGGREGATE RATE PER ADDRESS, NOT THE SESSION COUNT".
+# Launch N worker H sweeps at a fixed --speed, disjoint court ranges, one address. The score is
+# aggregate new records/min without tripping (felipe/CLAUDE.md -> "The ultimate goal").
 #
-# ⚠️ THAT TITLE IS STRONGER THAN ITS EVIDENCE. Session count was held at FOUR in both arms; only
-# the pace moved. It proves rate matters at a fixed session count. It never tested session count
-# at a fixed rate, so "session count is close to free" rests on a separate low-rate run (four
-# sessions, one hour, ~23/min) where nothing was near the wall anyway.
+# WARN: FLEET SIZE IS THE RATE CONTROL NOW, WHICH IS WHY THIS SCRIPT EXISTS. --speed only zeroes
+# READING time, and the engine has grown motor work no speed setting removes: on 2026-08-19 four
+# workers at --speed 0 produced 26 req/min against the 56 the same flag produced on 08-17, and ran
+# 25 min with zero trouble. --speed now spans about 13% of the rate; worker count spans all of it.
 #
-# This script runs the missing cell. Same aggregate, different number of sessions:
+# WARN: THE HISTORICAL WALL NUMBERS ARE PROPERTIES OF A BUILD, NOT OF THE SITE. "56 kills, 23 is
+# safe" was measured on the 08-17 engine and does not transfer. Re-measure before designing around
+# it. This script was originally written for a fixed-aggregate session-count test (4x14 vs 8x7)
+# that could not be run for exactly this reason -- arm 1 refused to reproduce the control, which is
+# what a validity check is for.
 #
-#     arm 4x14   4 workers, --speed 0     ~56 POST/min aggregate   (replicates the known kill)
-#     arm 8x7    8 workers, --speed CAL   ~56 POST/min aggregate   (half the rate per session)
+# The ladder, each rung 25 min, stopping at the first rung that shows trouble:
 #
-#   both die      -> the wall is the ADDRESS's aggregate; sessions do not shield you, and 23/min
-#                    is a real ceiling until the IP count goes up.
-#   8x7 survives  -> the wall is PER SESSION; the fleet can be widened to raise total throughput,
-#                    and every "add workers, do not accelerate them" note gets a number behind it.
+#     4 workers   ~26 req/min   measured clean 2026-08-19
+#     8 workers   ~52 req/min   <- next
+#    12 workers   ~78 req/min   only if 8 is clean, and only with the RAM for it
 #
-# ⚠️ ARM 1 IS ALSO THE VALIDITY CHECK. If 4 workers at --speed 0 do NOT die, the setup has not
-# reproduced the control and arm 2 is uninterpretable — stop rather than launch it. The code has
-# changed a great deal since 08-17 (engine collapse, duty cycle, focus bands), and a rate measured
-# under one build is not a rate under another.
-#
-# ⚠️ --duty off AND --focus off IN BOTH ARMS, deliberately. They are our best specs and they are
-# not what is being tested: duty roughly halves the request rate, which is the very quantity being
-# held constant. This experiment reproduces the 08-17 configuration, where the ONLY difference
-# between arms was --speed.
-#
-# ⚠️ A SWEEP, NOT --docs-c2. The doc pass makes ~2.7x the requests per open, so it cannot be
-# compared against a control measured on a sweep. Same job in both arms, and the same job as the
-# run being replicated.
+# WARN: EVERY RUNG NEEDS ITS OWN RAM CHECK, AND THE GUARD BELOW REFUSES RATHER THAN SWAP. A
+# swapping machine paces its workers by the disk, so the arm measures this PC and not the site --
+# and it does it while producing a perfectly plausible number.
 #
 #   Rate:   python scraper\rate_watch.py --mins 10
-#   Watch:  Get-Content data\worker_h\docs-s1.log -Wait -Tail 20
+#   Score:  python scraper\expduty_score.py
 #
 param(
     [Parameter(Mandatory=$true)][int]    $Workers,

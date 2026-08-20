@@ -203,7 +203,42 @@ DUTY_HUMAN = False            # --duty human: insert real stillness. Off = today
 # and you get 2.04 stops per wall minute against a measured 3.23 — the identical shortfall the
 # scheduler was written to fix. 129 stops over 40 min with 1,406 s of them silent leaves 994 active
 # seconds; 994/129 = 7.7 s, which is what the formula below reproduces from the duty target.
-ACTIVE_GAP_MEAN = SILENCE_MEAN * (1.0 - DUTY_TARGET) / DUTY_TARGET      # 7.6 s
+ACTIVE_GAP_MEAN = SILENCE_MEAN * (1.0 - DUTY_TARGET) / DUTY_TARGET      # 7.6 s at FOCUS off
+
+
+def mean_stop():
+    """Mean stillness IN THE CURRENT FOCUS BAND, by integrating the deciles across it.
+
+    WARN: THE GAP MUST FOLLOW THE BAND, AND A CONSTANT CANNOT. `ACTIVE_GAP_MEAN` above is derived
+    from SILENCE_MEAN = 10.9, the mean of the WHOLE distribution. `--focus fast` samples the
+    operator's p0-p25 band, where every stop is 2.0-2.1 s, and a fixed 7.6 s gap then re-arms far
+    too soon: measured 2026-08-20 over 121 stops, 4.8 stops/min against the operator's 3.23, while
+    the silent fraction collapsed to 16% against 49% at focus off. The setting preserved NEITHER
+    quantity it should.
+
+    WARN: FREQUENCY IS THE INVARIANT, NOT THE DUTY FRACTION -- see silence_secs(): an operator
+    working fast stops just as OFTEN and stops BRIEFLY. So the gap absorbs the change: a shorter
+    stop must be followed by a LONGER wait, keeping starts-per-minute at SILENCE_PER_MIN.
+    """
+    lo, hi = FOCUS
+    n, tot = 200, 0.0
+    for j in range(n):
+        q = (lo + (j + 0.5) / n * (hi - lo)) * 10.0
+        i = min(9, int(q))
+        a, b = SILENCE_DECILES[i], SILENCE_DECILES[i + 1]
+        tot += a + (b - a) * (q - i)
+    return tot / n
+
+
+def active_gap():
+    """Mean ACTIVE seconds between stops, so that stops START at SILENCE_PER_MIN per wall minute.
+
+    60/SILENCE_PER_MIN is the mean wall interval between the STARTS of two stops (18.6 s). We
+    re-arm when a stop ENDS, so the gap we wait is that interval minus the stop we just took.
+    At FOCUS off this returns 18.6 - 10.9 = 7.7 s, reproducing the measured constant above; at
+    FOCUS fast it returns 18.6 - 2.0 = 16.6 s, which keeps 3.23 stops/min instead of 4.8.
+    """
+    return max(0.5, 60.0 / SILENCE_PER_MIN - mean_stop())
 
 
 def silence_secs():
@@ -275,7 +310,7 @@ _NEXT_STOP = [None]     # time.monotonic() at which the next stillness comes due
 
 def arm_duty():
     """(Re)start the stillness clock. Call once when a run begins."""
-    _NEXT_STOP[0] = time.monotonic() + random.expovariate(1.0 / ACTIVE_GAP_MEAN)
+    _NEXT_STOP[0] = time.monotonic() + random.expovariate(1.0 / active_gap())
 
 
 def maybe_still(page, window_secs=None):
@@ -315,7 +350,7 @@ def maybe_still(page, window_secs=None):
     s = silence_secs()
     still(page, s)
     # ⚠ Re-arm from AFTER the stop, which is exactly why ACTIVE_GAP_MEAN and not SILENCE_PER_MIN.
-    _NEXT_STOP[0] = time.monotonic() + random.expovariate(1.0 / ACTIVE_GAP_MEAN)
+    _NEXT_STOP[0] = time.monotonic() + random.expovariate(1.0 / active_gap())
     return s
 
 
