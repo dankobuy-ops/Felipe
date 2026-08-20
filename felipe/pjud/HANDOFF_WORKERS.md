@@ -2834,3 +2834,70 @@ had scored itself on opens would have concluded "add workers" and been exactly w
 ⇒ Next rung: **12 workers, ~79 req/min**, which needs about 6.4 GB free. If that is clean too, the
 limit is somewhere we have never looked, and the question stops being "how fast dare we go" and
 becomes "how many browsers does this machine hold".
+
+---
+
+# ★★★★★ IT IS THE **SEARCH** RATE, NOT THE REQUEST RATE (2026-08-20)
+
+Two arms, one hour apart. **Same eight workers, same `--speed 0 --duty off`, same machine, same
+address, same code.** The only thing changed was the date window:
+
+| window | total req/min | **result req/min** | opens/min | outcome |
+|---|---:|---:|---:|---|
+| July 01-31 | **52.9** | **3.0** | 40.1 | clean 25 min, zero trouble |
+| Aug 01-19 | 21.3 | **11.6** | 9.7 | **6 of 8 dead in ~10 min** |
+
+**The arm that died was running at 40% of the total request rate of the arm that lived.** What it
+was running at 3.9x was SEARCHES.
+
+    01:04:21  BLOCKED ON SEARCH after  7 opens / 21 searches
+    01:04:23  BLOCKED ON SEARCH after  7 opens / 11 searches
+    01:04:23  BLOCKED ON SEARCH after 19 opens / 17 searches
+    01:04:25  BLOCKED ON SEARCH after 11 opens / 10 searches
+    01:04:29  BLOCKED ON SEARCH after  6 opens / 14 searches
+    01:04:34  BLOCKED ON SEARCH after 21 opens / 13 searches
+
+Six sessions, **thirteen seconds**, progress ranging 6 to 21 opens. That is the address-level
+signature this file already names: *unequal progress, simultaneous death, look for what they
+share.* All six: `Buscar stuck disabled while idle (spent session)`.
+
+## Why a FRESH window is more dangerous than a picked-over one
+
+Sparsity inverts the request mix. In July every search returned a page full of causas and the
+worker spent minutes opening them — one search bought a long, quiet, open-heavy stretch. In August
+most courts hold nothing for the window, so a search returns little or nothing and the worker
+**immediately searches the next court**. Same worker, same pacing constants, four times the search
+rate, from the data rather than from any setting.
+
+⚠️⚠️ **THE DANGER OF A WINDOW IS NOT VISIBLE IN THE CONFIGURATION.** Two runs with identical flags
+sit on opposite sides of the wall depending only on how much the window happens to contain. Nothing
+in `--speed`, `--duty`, worker count or the launcher says which one you have.
+
+⇒ ~~"The binding limit is the aggregate REQUEST rate per address" (08-17)~~ and
+~~"53 req/min is fine" (08-20, six hours ago)~~ — **both refined by this.** The quantity that binds
+is the **result-request rate** (searches and page advances, `consultaFechaCivil.php`), which is
+exactly what `SEARCH_GAP` and the "result request budget" in this file were always about. The
+project drifted into counting TOTAL requests and then measured a window where the two diverged.
+
+⇒ **`rate_watch.py` prints `result requests alone:` on its own line and flagged this correctly**
+— "[!] above anything this IP has been measured sustaining, on any config" — while the total-request
+line still read as healthy. The tool was right and its headline number was the wrong one to watch.
+**Watch the result-request line.** Known-clean is ~3/min for a fleet; 11.6/min killed six sessions
+in ten minutes.
+
+## ⚠️ Three explanations, one measured, two still open
+
+1. **The search rate binds.** Fits every number here and the whole SEARCH_GAP history.
+2. **The August window is special** — it is the CURRENT month, and the site may treat a
+   still-accumulating window differently.
+3. **The empty results were already refusals.** This file records `sin resultados` = blocked, not
+   empty. If sparse-looking searches were in fact soft refusals, the fleet may have been in trouble
+   from the first minutes and the "spent session" was the end of it, not the start.
+
+⇒ **The discriminating test is cheap: run the SAME August window with TWO workers**, which puts the
+search rate near 2.9/min — July's value. Clean means it is the rate (1). Dead means it is the
+window (2 or 3). Do not run it until the address has recovered, and prove recovery with a single
+canary worker first.
+
+⚠️ **Cost of learning it: 71 causas.** Six sessions spent, ~10 minutes each. Cheap for a wall that
+has been mis-stated in this file twice.

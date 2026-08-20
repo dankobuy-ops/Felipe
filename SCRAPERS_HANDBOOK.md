@@ -2528,6 +2528,37 @@ This is the third defect here from a bulk or positional edit — see the `pause(
 
 ---
 
+### ★★★★★ The dangerous variable may be set by the DATA, not by your configuration
+
+Two runs of one scraper, an hour apart. Identical code, identical pacing flags, identical worker
+count, same address. One ran clean; the other lost six of eight sessions in ten minutes, all within
+thirteen seconds of each other.
+
+    dense window   52.9 requests/min total,  3.0 SEARCHES/min   -> clean
+    sparse window  21.3 requests/min total, 11.6 SEARCHES/min   -> six sessions dead
+
+**The run that died was making 40% of the total requests of the run that lived.** The difference was
+the request MIX, and nothing chose that mix: on a dense window a search returns a page full of
+records and the worker spends minutes reading them, so searches are naturally spaced. On a sparse
+one the search returns nothing and the worker immediately searches again. Same code, same
+constants, four times the search rate — **decided entirely by how much the target happened to hold.**
+
+⚠️ **A fresh, unharvested window is more dangerous than a picked-over one**, which is the opposite
+of the intuition that new territory is safe because nobody has touched it.
+
+⇒ **Rate-limit the expensive ENDPOINT, not the aggregate.** Cheap requests dilute the average and
+hide the one that counts. This project had a per-search gap for exactly this reason and then drifted
+into counting total requests, which agreed with the search rate on every window it had measured —
+until it met one where they diverged by 4x.
+⇒ **Know which of your numbers is load-bearing before you need it.** The monitoring tool printed
+the search rate on its own line and flagged it correctly; the headline total sat in the healthy
+band. The instrument was right and the wrong line was being read.
+⇒ **When several sessions with very unequal progress die within seconds of each other, it is the
+address, not the session.** Six workers holding 6 to 21 records each stopped inside thirteen
+seconds. No per-session budget produces that.
+
+(PJUD, 2026-08-20.)
+
 ### ⚠️ Two ids for one object: one stable, one positional — they agree until the list changes
 
 A document was cached in Drive under `{record}/c2-{index:02d}.pdf` while its database row was keyed
