@@ -2574,6 +2574,40 @@ that says "blocked", attach to its browser and look. The tab is sitting right th
 
 (PJUD, 2026-08-20.)
 
+### ★★★★★ A block can be a PAGE THAT LOOKS FINE — only a second address can tell you
+
+A scraper stopped working. The browser was attached to and inspected: the target's page was open,
+titled correctly, fully styled, carousel rotating, menu drawn. It was simply missing the one
+control the scraper needed. That was read as "they redeployed and our selectors are stale", and
+eight hours of evidence were consistent with it.
+
+Then the operator opened the same site **on a phone**, and it worked instantly. The address had
+been blocked the whole time.
+
+    blocked address    page renders perfectly, search form ABSENT, no error, no captcha, HTTP 200
+    clean address      identical URL, form present, works immediately
+
+⚠⚠ **"The page looks fine" is not evidence that you are not blocked.** The absence of a rejection
+page is not the absence of a block. A modern WAF can answer 200 with a page that is complete,
+interactive, and quietly missing the control you need — a signature indistinguishable from a site
+redesign if you only ever look from one address.
+
+⇒ **The only reliable test is a SECOND ADDRESS.** Page content, status code, timing and retry
+behaviour are all consistent with both explanations. A phone on mobile data settled in thirty
+seconds what eight hours of local evidence could not.
+⇒ **Build the block test into your tooling.** A two-page-load check that asks "is the control I
+need present?" is a block detector, not just a health check. Run it before an experiment so a
+degraded start is not read as a result, and after one so a trip is caught in a single check.
+⇒ ★ **Note the asymmetry in the two inferences.** Inferring a block from a FAILURE was correct.
+Inferring no-block from an APPEARANCE was wrong. Failures are evidence about the world; appearances
+are evidence about what the other side chose to show you.
+⚠ **And price a tripped experiment in ADDRESS-HOURS, not in records lost.** This block lasted more
+than eight hours and was never seen to lift — the address was abandoned for another. That makes
+walk-the-ladder-until-it-breaks the wrong shape of experiment on any address you also need for
+production: test from one address, work from another.
+
+(PJUD, 2026-08-20.)
+
 ### ⚠️ "Fastest setting" and "fastest result" are different claims
 
 A scraper's pace knob was set to zero — no reading time at all — and the run was written up as the

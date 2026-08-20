@@ -102,7 +102,7 @@ the strength of "the operator did it" and **its benefit has never been measured 
 through the FOCUS band, so fast draws every stop from the p0–p25 floor: 121 stops, all 2.0–2.1 s,
 16% silent against focus-off's 49%. Two behaviours on one knob.
 
-### Site status, 2026-08-20 09:09 — DEGRADED
+### Site status — THE SITE WAS NEVER DOWN; THIS ADDRESS WAS BLOCKED (see next section)
 
 `site_health.py` reports **OJV-NO-FORM**: `indexN.php` loads and renders, but carries no
 `#fecCompetencia`, no gate button, no `<form>` and no `<select>`. Its entry points are now
@@ -110,16 +110,19 @@ through the FOCUS band, so fast draws every stop from the p0–p25 floor: 121 st
 `consultaAudienciasLaboral`, `consultaCiudadana`. It is also **intermittent** — served once, then
 no tab at all a minute later.
 
-⇒ **No experiment is interpretable until this settles.** `_reach_ojv` and `find_form` will need
-re-pointing at whatever the new route is, found BY WATCHING, not by guessing selectors.
+⚠⚠ **RESOLVED 2026-08-20 11:56: that is what a BLOCKED ADDRESS is served.** A phone on a
+different network reached the form instantly, and the tethered PC reports FORM twice in a row. No
+redeployment, no outage — an eight-hour IP block that serves a healthy page with the search form
+removed. `_reach_ojv` and `find_form` need NO changes.
 
 ### Struck or suspended by the 2026-08-19/20 session
 
 - ~~"The binding limit is the AGGREGATE REQUEST RATE PER ADDRESS."~~ That test moved `--speed`,
   which moved the rate AND the pointer (6–9 mousemove/s at top speed against 15–20). Two variables,
   one read. We have since held 52.9 req/min clean.
-- ~~"It is the SEARCH rate that binds."~~ **SUSPENDED** — the arms were 90 minutes apart and the
-  site went down between them.
+- "It is the SEARCH rate that binds." — **UN-SUSPENDED 2026-08-20**: the site never went down, so
+  the August arm did trip a real block and the deaths need a cause again. Still NOT proven (the
+  arms differed in window AND time), but it is the leading hypothesis once more.
 - ~~"56 req/min kills, 23 is safe."~~ Properties of a BUILD, not of the site. `--speed 0` produced
   27 req/min on 2026-08-20 where it produced 56 on 08-17.
 - ~~"Matching the duty cycle is worth halving throughput for."~~ Cost measured, benefit never.
@@ -136,6 +139,96 @@ re-pointing at whatever the new route is, found BY WATCHING, not by guessing sel
 | did the data actually land? | `ingest_worker_h.py --dry`, then count in Neon |
 | how many workers can this address carry? | `Experimento_Fleet.ps1 -Workers N -Speed S` |
 | which spec setting is worth what? | `Experimento_Specs.ps1` |
+
+---
+
+---
+
+# ★★★★★ THE BLOCK IS A **DEGRADED PAGE**, NOT A REFUSAL — AND IT LASTS HOURS (2026-08-20)
+
+The operator tried the OJV **from a phone** while this machine still could not use it, and it worked
+instantly. The PC was then tethered through that phone — a new address — and `site_health.py`
+reported **FORM** twice in a row, immediately.
+
+    residential IP, 01:04 -> 09:11+ (8+ hours)   SITE OJV-NO-FORM   consistently
+    phone-tethered IP, 11:56 / 11:58            SITE FORM          immediately, twice
+
+**The site was never down. We were blocked, by address, for more than eight hours.**
+
+## ⚠️⚠️ WHAT A BLOCK LOOKS LIKE HERE — this is the finding
+
+A blocked address is served `indexN.php` **that renders perfectly and is missing the search form**:
+
+    title "Oficina Judicial Virtual"   menu drawn   carousel rotating   heading "Invitado"
+    #fecCompetencia .......... ABSENT
+    gate buttons ............. ABSENT
+    <form> ................... 0
+    <select> ................. 0
+    entry points present ..... ingresoDemanYEscritos, consultaUnificada,
+                               consultaEscritosIndepen, consultaAudienciasLaboral,
+                               consultaCiudadana
+
+**No rejection page. No captcha. No error. No HTTP failure.** The page is healthy, live and
+plausible — it simply cannot be used to search. This is the quietest block signature this project
+has ever seen, and it is indistinguishable from a site redesign unless you compare two addresses.
+
+⇒ ★ **`site_health.py` is therefore a BLOCK DETECTOR, and that is its real value.**
+`OJV-NO-FORM` = this address is blocked. `FORM` = it is not. One check, two page loads, no search.
+Run it before blaming a fleet, and run it from a second address before believing either answer.
+
+## ⚠️⚠️⚠️ I HAD THE RIGHT ANSWER AND TALKED MYSELF OUT OF IT
+
+The sequence is worth keeping intact, because the mistake is subtle and I made it *while being
+careful*:
+
+| time | evidence | what I concluded | verdict |
+|---|---|---|---|
+| 01:04 | six sessions die in 13 s | the search rate binds | plausible, unproven |
+| 02:21 | canary on a known-good window cannot enter | **the address is blocked** | **CORRECT** |
+| 03:24 | attached: OJV open, healthy, DOM changed | "the site was redeployed, we were never blocked" | **WRONG — retracted a correct conclusion** |
+| 11:56 | a second address works instantly | it was an address block all along | confirmed |
+
+At 03:24 I attached to the browser — which was the right instinct, and which this file now
+recommends in two places — saw a **healthy rendered page**, and took that as proof we were not
+blocked. It was proof of nothing of the kind.
+
+⇒ ⚠️ **"THE PAGE LOOKS FINE" IS NOT EVIDENCE THAT YOU ARE NOT BLOCKED.** The absence of a rejection
+page is not the absence of a block. A modern WAF can answer 200 with a page that is complete,
+styled, interactive and quietly missing the one control you need.
+⇒ **The only reliable test is a SECOND ADDRESS.** Everything else — page content, HTTP status,
+timing, retry behaviour — is consistent with both explanations. One phone settled in thirty seconds
+what eight hours of local evidence could not.
+⇒ ★ And note the shape of the error: at 02:21 I inferred a block from a FAILURE and was right; at
+03:24 I inferred no-block from an APPEARANCE and was wrong. Failures are evidence about the world.
+Appearances are evidence about what the other side chose to show you.
+
+## What this restores, and what it does not
+
+- ~~"The site was redeployed."~~ **WRONG.** There was no deployment. `/home/` reappearing and
+  `#fecCompetencia` vanishing were both the block.
+- **"It is the SEARCH rate that binds" is UN-SUSPENDED** — the August arm did trip a real block, so
+  the deaths need a cause again. ⚠️ Still NOT proven: the July and August arms differed in window
+  AND in time, and the search-rate story remains the leading hypothesis rather than a finding.
+- **"The address recovered in 25-70 minutes"** — wrong by an order of magnitude. **8+ hours**, and
+  we never saw it recover; we changed address instead.
+- **The cost model I retracted was right.** A tripped experiment costs the ADDRESS, not the causas
+  the arm collected. At 8+ hours and the July arm's delivered rate, the August arm cost on the
+  order of **6,000 records of opportunity** against the 71 it collected. I retracted that estimate
+  when I believed the outage story; it stands, and it was an order of magnitude too small.
+
+## ⚠️ What this does to experiment design
+
+**A trip costs eight hours of address.** That makes every rate experiment far more expensive than
+last night assumed, and it rules out the ladder-until-it-breaks approach on a single address.
+
+⇒ **Never probe a wall on the address you need for production.**
+⇒ **Two addresses minimum**: one to work, one to test. The phone tether is now a second address and
+should be treated as the *test* one, not the work one.
+⇒ **Check `site_health.py` before AND after every arm.** Before, so a degraded start is not read as
+a result; after, so a trip is detected in one check instead of eight hours of canaries.
+⚠️ **And the tethered address is a mobile/CGNAT one** — it may be shared, rate-limited or classified
+differently from residential. Do not carry measurements between the two without re-verifying; that
+is exactly the trap this file records for local-vs-runner.
 
 ---
 

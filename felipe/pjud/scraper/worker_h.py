@@ -838,12 +838,20 @@ def main():
                     help="directory for failure screenshots + page state. A runner has no screen: "
                          "capture what it was actually looking at when a click was refused, a "
                          "modal never opened, or entry was blocked, and upload it as an artifact.")
-    ap.add_argument("--window", default="1440x900",
+    ap.add_argument("--window", default="480x300",
                     help="browser window size, WxH. The correctness fix is horizontal scrolling "
                          "(human_scroll_x), not size -- a 744x345 window reaches an off-screen "
                          "target once we scroll across, verified. So this is a PREFERENCE: small "
                          "tiled windows stay watchable. Use 760x440 to reproduce the geometry "
-                         "that refused 3.5%% of rows and truncated 39%% of courts.")
+                         "that refused 3.5%% of rows and truncated 39%% of courts. "
+                         "WARN: the default dropped 1440x900 -> 480x300 on 2026-08-20 at the "
+                         "operator's request, now that scrolling rather than size is known to be "
+                         "the fix. 480x300 is SMALLER THAN ANYTHING VERIFIED -- the smallest "
+                         "window ever confirmed to reach an off-screen target is 744x345, and the "
+                         "results table is ~1115 px wide, so this leans hard on human_scroll_x. "
+                         "ensure_window() only checks that the RESIZE TOOK EFFECT, not that the "
+                         "size is workable, so it will not warn you. Watch the first run for "
+                         "click refusals and truncated courts; raise it if either appears.")
     ap.add_argument("--gate", choices=("file", "db", "none"), default="file",
                     help="serialise ARRIVALS so concurrent workers never open fresh browsers in "
                          "the same instant. 'file' for workers on ONE machine; 'db' for cloud "
