@@ -582,6 +582,10 @@ def harvest(page, pres, causa_id, row, trib_id="", trib_name="", only_proc="",
 
     # The two seconds a causa takes to load are spent MOVING, like a person waiting for it.
     pres.aim(page, "#dtaTableDetalleFecha")     # where the hand is while the causa loads
+    # ⚠️ AND THE CAUSA LOAD IS ANOTHER MACHINE WAIT. A person clicks a row and then waits — often
+    # with their hand off the mouse entirely — for the two to five seconds the modal takes. This
+    # is a boundary between actions, which is the only place stillness belongs.
+    E.maybe_still(page, 4.0)
     got = pres.run(90.0, poll=lambda: page.evaluate(
         "(rol)=>{const m=document.querySelector('#modalDetalleCivil');"
         "return !!m && m.innerText.indexOf(rol)>=0;}", row["rol"]), poll_every=0.35)
@@ -1086,7 +1090,13 @@ def main():
         # the ~20 s of every search — 15% of a 150-minute session with an empty input channel,
         # measured on the 1,046-open run. See ojv.WAIT_PRESENCE for the risk this carries.
         if not a.no_search_presence:
-            ojv.WAIT_PRESENCE = lambda page, secs: pres.run(secs)
+            # ⚠️ THE SEARCH WAIT IS A WAIT FOR THE MACHINE. ~13-20 s per search, and we filled
+            # every second of it with pointer motion. The operator moves while READING and rests
+            # while WAITING — so this now sometimes takes the hand off the mouse, exactly as a
+            # person does in the twenty seconds after clicking Buscar. Falls back to pure presence
+            # when --duty is off, so it stays one variable.
+            ojv.WAIT_PRESENCE = lambda page, secs: E.waiting_for_site(
+                page, secs, presence=lambda pg, s: pres.run(s))
             # ⚠️ AND THE FORM PATH TOO, which is where the pointer actually dies. Measured with
             # the same instrument as the human: 20-22 mousemove/s INSIDE a causa (human 25.1) but
             # 16.1-16.7/s over a whole run and 6.5-7.6/s on a one-causa run. The causa was never
@@ -1321,6 +1331,16 @@ def main():
             if hit:
                 note(f"  *** BLOCKED ON SEARCH after {tally['opens']} opens / "
                      f"{tally['searches']} searches — {why}")
+                # WARN: SAY WHAT THE PAGE IS, NOT ONLY THAT WE STOPPED. On 2026-08-20 six
+                # sessions logged this line within thirteen seconds and it was diagnosed as
+                # a rate wall, published, and only then found to be the SITE GOING DOWN --
+                # two hours of a wrong causal story on top of a message that describes our
+                # reaction rather than the world. A blocked run and an outage produce the
+                # same line here and are told apart only by what the tab is showing.
+                try:
+                    ojv.note_pages(p.context, why="blocked-on-search")
+                except Exception as e:
+                    note(f"    (could not describe pages: {str(e)[:60]})")
                 stop = f"blocked-on-search: {why}"
                 break
             if kind != "results":
@@ -1556,6 +1576,14 @@ def main():
         save_state(stop or "finished")
         el = (time.time() - t_start) / 60.0
         s = pres.stats()
+        # ⚠️ DRAWN vs MEASURED. Two wrong diagnoses of the duty shortfall came from reasoning
+        # about the mechanism off 12-18 measured stops a run. This prints what was actually
+        # taken, so the comparison is a subtraction rather than a theory.
+        if E.DRAWN:
+            _d = sorted(E.DRAWN)
+            note(f"DUTY DRAWS: n={len(_d)} mean={sum(_d)/len(_d):.1f}s "
+                 f"median={_d[len(_d)//2]:.1f}s max={_d[-1]:.1f}s total={sum(_d):.0f}s "
+                 f"(operator: mean 10.9 median 6.1 max 60.4)")
         note(f"DONE in {el:.1f} min — {stop or 'finished'} | refused={tally.get('refused', 0)} "
              f"searches={tally['searches']} opens={tally['opens']} kept={tally['kept']} "
              f"gated={tally['gated']}  ({tally['opens']/max(0.01, el):.1f} opens/min, "

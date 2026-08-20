@@ -3041,3 +3041,46 @@ human reaches a working search form, this is ours to fix and the shape of the fi
 If a human ALSO cannot get there, the address is degraded and no selector work will help.
 ⇒ Until that is answered, **do not run fleets.** Every arm would report `ojv-other` and teach
 nothing, exactly as two canaries already have.
+
+## ⚠️ CORRECTION: `--speed 0` IS THE FASTEST SETTING, NOT THE FASTEST RESULT (2026-08-20)
+
+I wrote that `--speed 0 --duty off` at ~5.8 opens/min was the best single-worker figure we have.
+It is not. Measuring PRODUCTIVE rate (first open to last open, excluding entry) against the floor
+this file already recorded:
+
+    arm1 s4   8.6 s per open   7.0 opens/min      <- tonight, best shard
+    arm1 s1   8.9 s            6.7
+    arm1 s2   9.0 s            6.7
+    prior     8-9 s            ~7.0               <- already measured, reading merely ramped to 1/10
+
+**Tonight lands exactly on the floor that was already found, and does not beat it.** The 5.8 figure
+was low for two reasons that had nothing to do with pace: the `DONE` line divides by LIFESPAN,
+which includes 1.1-5.7 min of entry per shard, and shard s3 drew sparse courts (11.8 s per open,
+27 searches against 14).
+
+⇒ **We are at the SITE's floor and have been for weeks.** This file already says so — *"that residue
+is PJUD's own response time plus the acts"* — and that cutting reading from 3 s to 2.2 s bought
+0.3 s. Going from a tenth to zero bought nothing measurable. **No speed knob touches what is left**,
+because what is left is the site answering plus the motor work we refuse to cut.
+⇒ ★ **There is nothing further to find on the speed axis for a solo worker.** Max is ~7 opens/min,
+measured twice, months apart, on different builds. The open question was never "how fast" — it is
+"what does running at the floor cost us in blocks", and that is a SURVIVAL question.
+
+## ⚠️⚠️ AND THE 8-WORKER SLOWDOWN MAY BE THIS HOUSE'S INTERNET, NOT THE SITE
+
+Per-open time drifts up with fleet size:
+
+    4 workers   8.6 - 11.8 s per open
+    8 workers   9.7 - 12.2 s per open
+
+I called that contention. ⚠️ **On a local machine the operator's own uplink is a shared variable**,
+and eight browsers pulling causa pages through one residential connection can throttle each other
+with the site entirely innocent. Nothing in these runs separates "the site is slower under our
+load" from "our own line is saturated".
+
+⇒ **This is the measure-don't-inherit trap in its exact original form.** A constant measured locally
+is not a constant measured remotely: a runner has datacenter bandwidth and would show NO such
+slowdown if the cause is the uplink — and the same slowdown if the cause is the site.
+⇒ **Do not carry the per-open contention figure into any remote fleet plan.** It is a LOCAL
+measurement of unknown cause. The cheap discriminator is to watch bandwidth during a fleet run, or
+to run the same ladder on a runner and compare the shape.

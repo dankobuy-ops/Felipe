@@ -2574,6 +2574,26 @@ that says "blocked", attach to its browser and look. The tab is sitting right th
 
 (PJUD, 2026-08-20.)
 
+### ⚠️ "Fastest setting" and "fastest result" are different claims
+
+A scraper's pace knob was set to zero — no reading time at all — and the run was written up as the
+fastest configuration the project had. Measured properly against its own history, it landed exactly
+on a floor recorded weeks earlier at a setting ten times slower. Going from a tenth to zero bought
+nothing, because what remained was the target's own response time plus the acts that cannot be
+skipped.
+
+⇒ **When a knob stops changing the outcome, you have found the floor — say so.** Continuing to
+report the setting as an achievement hides that the axis is exhausted, and sends the next person
+looking for speed where there is none left.
+⇒ **Exclude setup from a rate before comparing it.** Dividing by total lifespan rather than
+productive time understated this one by 20% and made a floor look like a regression.
+⇒ ★ **A per-worker slowdown under fleet load may be YOUR uplink, not the target.** Eight browsers
+behind one residential line throttle each other while the site sits innocent, and nothing in the
+run separates the two. That number is a local measurement of unknown cause — do not carry it into a
+plan for a datacenter fleet, where the shared bottleneck may simply not exist.
+
+(PJUD, 2026-08-20.)
+
 ### ⚠️ Two ids for one object: one stable, one positional — they agree until the list changes
 
 A document was cached in Drive under `{record}/c2-{index:02d}.pdf` while its database row was keyed
