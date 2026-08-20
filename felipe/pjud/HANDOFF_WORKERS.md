@@ -2736,3 +2736,28 @@ before. ⚠️ **Read this as a throughput ranking with the survival column stil
 ⇒ Provisional best single-worker specs: **`--speed 0 --duty off`** (focus is moot at speed 0, which
 zeroes the reading `--focus` selects from). To be confirmed by a multi-hour run, which is the only
 thing that can fill in the survival column.
+
+## ⚠️ THE ENTRY GATE IS A THROUGHPUT TAX THAT GROWS WITH FLEET SIZE (2026-08-20)
+
+Arrivals serialise on the entry gate — deliberately, because six sessions opening in the same
+second is the "would not" violation that cost five of six workers their entry. But the cost scales
+with N and nobody had ever priced it:
+
+    4 workers   all productive within a few minutes of launch
+    8 workers   at minute 5, only 6 shards had opened anything and the fleet was at 8.5 req/min
+
+At `--gate-release form` a worker holds the gate for its walk-in plus its form build. Eight of those
+in series is a large slice of a 25-minute run — and every worker still counts those minutes against
+its own `--max-minutes`, so the tax is paid twice: once in wall clock, once in lifespan.
+
+⇒ **A fixed-length arm penalises the larger fleet for a reason that has nothing to do with the
+WAF.** Comparing 4 vs 8 workers over 25 minutes measures arrival overhead as much as it measures
+capacity, and it does so in the direction that makes more workers look worse.
+
+⇒ **Measure the RATE in steady state** (a window near the end, after every shard is working), and
+**measure THROUGHPUT over runs long enough to amortise arrival** — an hour at least for eight
+workers. The two questions want two different windows, and using one window for both is how a
+fleet-size study reaches a confident wrong answer.
+
+⇒ For production the same arithmetic says: **long shifts, not short ones.** The arrival cost is
+paid once per run regardless of length, so it is 40% of a 25-minute run and 3% of a six-hour one.
