@@ -162,7 +162,17 @@ def fill_targets(desde, hasta, limit=0, corte="", mode="cuaderno2"):
 def counters(page):
     """This worker's OWN telemetry, read with the instrument used on the human. Measuring
     ourselves with a different ruler is how you end up comparing two numbers that were never
-    comparable — which is exactly the mistake that produced the burst theory."""
+    comparable — which is exactly the mistake that produced the burst theory.
+
+    ⚠️⚠️ DO NOT RUN `human_record.py` AGAINST A WORKER THAT CALLS THIS. `human_record.READ` is
+    READ-AND-CLEAR: it drains `window.__hr` and zeroes the counters. Both this function and the
+    recorder call the SAME READ, so whichever polls first takes the events and the other reads
+    zero. Measured 2026-08-19: with a recorder attached, the worker logged `0.0 mousemove/s` for
+    an entire run while the recorder saw 26/s from the very same browser.
+    ⇒ To profile a worker with the human's instrument, attach the recorder and IGNORE the `[me]`
+    lines — or pass `--no-measure`. Two consumers of one read-and-clear buffer is not "two
+    measurements", it is one measurement split randomly between them, and neither is right.
+    """
     try:
         return page.evaluate(human_record.READ)
     except Exception:
