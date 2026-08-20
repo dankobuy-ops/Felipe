@@ -313,6 +313,57 @@ the truth.
 
 ---
 
+---
+
+# ★★★★ RUNG 2 — FOUR WORKERS SCALE PERFECTLY LINEARLY, AND CLEAN (2026-08-20)
+
+Same specs as rung 1, same address, same window, same code. Stopped deliberately when the FIRST
+shard exhausted its courts, so every number below is measured while all four were live.
+
+| | rung 1 (solo, 180 min) | rung 2 (4 workers, 61 min) |
+|---|---:|---:|
+| opens | 1,129 | **1,576** |
+| aggregate | 6.37/min | **25.7/min** — 4.03x for 4x the workers |
+| per worker | 6.37/min | **6.54 – 7.47/min** |
+| req/min | 6.9 | **28.3** — 4.10x |
+| s per open | 9.43 | ~8.9 |
+| trouble | 1 in 1,129 | **0 in 1,576** |
+| delivered | 348 (31% useful) | 461 (29%) |
+| new records/min | 1.9 | **7.5** |
+| address after | FORM (clean) | FORM (clean) |
+
+★ **Four workers each match or BEAT a solo worker.** 6.54–7.47 opens/min against solo's 6.37, and
+scaling is 4.03x on opens and 4.10x on requests. **Contention is not merely small, it is absent.**
+
+⇒ Combined with rung 1, the per-open floor is now measured three ways on one line — solo 9.43 s,
+in-4-fleet ~8.9 s, in-8-fleet 9.7–12.2 s (older code, other address). **It is the site's, and it
+does not move with fleet size.**
+
+## ⚠️ Why this rung ran 61 minutes and not 180
+
+**A fixed corpus divided N ways gives each worker 1/N the runtime.** 230 courts split four ways is
+58 each, and every worker consumes courts at the same ~1.65 min/court whether it is alone or in a
+fleet — so a shard exhausts in ~95 min where a solo worker with all 230 would need ~380.
+
+⚠️ **And the fleet does not end, it DISASSEMBLES.** Shard 3 finished at 60.7 min ("finished", not
+"lifespan"); the others were projected at +32, +35 and +79 min. Left alone, the run would have
+become a 3-worker, then 2-worker, then 1-worker run still labelled "4 workers", and the final
+averages would have silently mixed all four regimes.
+
+⇒ **Stopped at the first exhaustion, on the operator's call.** Every figure above is from the
+all-four-live window. This is the right shape for any fleet rung on a fixed corpus.
+⇒ **For future ladders, hold PER-WORKER work constant, not total.** Give every rung 58 courts per
+worker and all rungs run the same ~95 min, with fleet size the only variable.
+
+## What rung 2 does NOT establish
+
+- **Survival at rate.** Rung 1 held 6.9 req/min for 180 min; this held 28.3 for 61. Each rung
+  tests a higher rate for a shorter time — a reasonable trade, but not a controlled comparison.
+- **Nothing above 4 workers on these specs.** Rung 3 is unrun.
+- **Nothing about the duty cycle**, which was off in both rungs.
+
+---
+
 # THE LADDER PROTOCOL — 1, then 4, then 8, ALL ON ONE SET OF SPECS (2026-08-20)
 
 ⚠️⚠️ **LAST NIGHT'S 4- AND 8-WORKER ARMS ARE NOT COMPARABLE TO THE SOLO RUN, OR TO EACH OTHER'S
