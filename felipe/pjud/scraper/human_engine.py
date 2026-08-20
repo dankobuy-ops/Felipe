@@ -87,6 +87,46 @@ def jitter(lo, hi):
     return random.uniform(lo, hi)
 
 
+# ⚠️⚠️ THE HAND IS ALIVE WHILE WORKING AND HALF-DEAD WHILE WAITING. Measured 2026-08-19 from the
+# worker's own telemetry, taken with the SAME instrument as the human recording:
+#
+#     inside a causa        20-22 mousemove/s     (human 25.1)   — essentially on target
+#     whole run             16.1-16.7/s
+#     a 1-causa run          6.5-7.6/s            — almost entirely non-causa time
+#
+# The deficit is not in the causa at all; it is in ENTRY, FORM BUILDING and the waits between.
+# Back out the arithmetic and the non-causa stretches emit about 5/s against 21/s inside a causa.
+# `ojv.WAIT_PRESENCE` already covers the ~20 s search; what it does not cover is this file, which
+# owns the form: `set_select_mouse` alone can burn 4 s per select in a 200 ms poll loop, and the
+# datepicker walks up to 36 hops. Those are the stretches with a frozen pointer.
+#
+# So the engine gets the same hook the search wait has. A worker sets PRESENCE once and every
+# wait in here runs through it. With no hook set the behaviour is exactly `wait_for_timeout` —
+# the pacing itself does not change, only whether a hand is on the page while it elapses.
+PRESENCE = None      # set by the worker: callable(page, seconds)
+
+
+def pause(page, ms):
+    """Wait `ms`, with the pointer alive if a worker has installed PRESENCE.
+
+    ⚠️ NEVER swallow the wait itself. This replaces `page.wait_for_timeout(ms)` and must wait just
+    as long — the point is what happens DURING it, not how long it is. A presence callback that
+    returns early would quietly shorten every settle in the form path.
+    """
+    if PRESENCE is None:
+        page.wait_for_timeout(ms)
+        return
+    try:
+        PRESENCE(page, ms / 1000.0)
+    except Exception:
+        # ⚠️ page.wait_for_timeout, NOT pause() — the fallback must never re-enter this function.
+        # A bulk rewrite of `page.wait_for_timeout(...)` -> `pause(page, ...)` caught this very
+        # line and turned the fallback into INFINITE RECURSION: every presence hiccup would have
+        # become a stack overflow mid-run. Caught by reading the diff; a mechanical edit is not
+        # safe just because it compiles.
+        page.wait_for_timeout(ms)
+
+
 # ── the speed ramp (step 2 of the operator's plan) ───────────────────────────
 # ⚠️ RAMP ONE THING: the READING TIMES. Everything else stays exactly as measured — same acts,
 # same order, same pointer rate, same zero keystrokes. So a trip during the ramp is attributable
@@ -180,7 +220,7 @@ def set_select_mouse(page, sel, value=None, index=None, settle=4.0):
     try:
         t0 = time.time()
         while C.page_busy(page) and time.time() - t0 < 15.0:
-            page.wait_for_timeout(400)
+            pause(page, 400)
     except Exception:
         pass
     hover(page, sel)
@@ -224,10 +264,10 @@ def set_select_mouse(page, sel, value=None, index=None, settle=4.0):
                 C.open_fecha_panel(page)      # the usual reason: the panel closed under us
             except Exception:
                 pass
-            page.wait_for_timeout(800)
+            pause(page, 800)
     t0 = time.time()
     while time.time() - t0 < settle:
-        page.wait_for_timeout(200)
+        pause(page, 200)
         try:
             if index is not None:
                 if page.eval_on_selector(sel, "e=>e.selectedIndex") == index:
@@ -307,7 +347,7 @@ def pick_date_mouse(page, sel, value, max_hops=36):
             return False
         t0 = time.time()
         while time.time() - t0 < 4.0 and not picker_ready():
-            page.wait_for_timeout(150)
+            pause(page, 150)
         return picker_ready()
 
     for hop in range(max_hops):
@@ -344,7 +384,7 @@ def pick_date_mouse(page, sel, value, max_hops=36):
         if not C.human_click(page, arrow, timeout=4000):
             note(f"    [warn] datepicker arrow did not take (showing {st['mi']:02d}/{st['y']})")
             return False
-        page.wait_for_timeout(random.randint(180, 380))
+        pause(page, random.randint(180, 380))
     else:
         note(f"    [warn] {max_hops} hops and never reached {m:02d}/{y}")
         return False
@@ -383,7 +423,7 @@ def pick_date_mouse(page, sel, value, max_hops=36):
     # a day from an adjacent month's trailing week.
     C.human_click(page, page.locator(f"{div} td[data-month='{m - 1}'][data-year='{y}'] a")
                   .filter(has_text=re.compile(rf"^{d}$")).first, timeout=5000)
-    page.wait_for_timeout(500)
+    pause(page, 500)
     got = page.eval_on_selector(sel, "e=>e.value")
     if got != value:
         note(f"    [warn] {sel} reads {got!r}, wanted {value!r}")

@@ -1045,6 +1045,13 @@ def main():
         # measured on the 1,046-open run. See ojv.WAIT_PRESENCE for the risk this carries.
         if not a.no_search_presence:
             ojv.WAIT_PRESENCE = lambda page, secs: pres.run(secs)
+            # ⚠️ AND THE FORM PATH TOO, which is where the pointer actually dies. Measured with
+            # the same instrument as the human: 20-22 mousemove/s INSIDE a causa (human 25.1) but
+            # 16.1-16.7/s over a whole run and 6.5-7.6/s on a one-causa run. The causa was never
+            # the problem — entry, form building and the settles between are, and they live in
+            # human_engine, which had six raw wait_for_timeout calls. `set_select_mouse` alone can
+            # spend 4 s per select in a 200 ms poll loop, once per court change.
+            E.PRESENCE = lambda page, secs: pres.run(secs)
         lst = build_form_mouse(p, settler,
                                None if a.use_form_dates else a.desde,
                                None if a.use_form_dates else a.hasta)
