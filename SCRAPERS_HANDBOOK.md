@@ -2348,6 +2348,52 @@ approximation of it.
 
 (PJUD, 2026-08-19.)
 
+### ★★★★★ Measure the DUTY CYCLE, not just the rate — you are probably emitting too much
+
+The first time this project recorded its own scraper with **the same instrument it had used on a
+human**, the result inverted everything it believed about its own behaviour:
+
+    scraper    93% of seconds active,  7% silent     21.0 events/s active    19.5 per WALL second
+    human      46% of seconds active, 54% SILENT     25.1 events/s active    11.6 per WALL second
+
+Per *active* second the scraper sat at 84% of the human — the number the project had been quoting
+for weeks, and the reason every plan said "we are under, emit more". Per *wall* second it emitted
+**68% MORE than the human**, because it almost never stopped.
+
+The structure matters more than the average:
+
+    human    129 silent stretches in 40 min   median 6.1 s   p90 28.3 s   max 60 s   (29 of 15-60 s)
+    scraper    5 silent stretches in 3.6 min  median 3.0 s   p90  8.2 s   max  8 s   (none over 15 s)
+
+**A person works in bursts separated by real stillness. A generator hums.** Every spec being tuned
+was a RATE; this is a RHYTHM, and it is the one an observer notices first — you can match a human's
+events-per-second exactly and still be the only session on the site that never once pauses to think.
+
+- **Report per-active-second AND per-wall-second, always, with the silent fraction beside them.**
+  Either alone is a trap, and the trap is directional: an always-on generator has almost no
+  excluded seconds while a human has more excluded than included, so comparing the two averages
+  compares two different populations of second.
+- ⚠️ **You cannot be UNDER on a metric that excludes the silence.** Three separate wrong
+  conclusions in one afternoon came from that single confusion — "we emit 16/s against 25", "the
+  idle stretches emit 5/s", "the setup path is where the pointer dies" (it ran at the same rate as
+  everywhere else). Each was a real measurement compared against a differently-defined one.
+- **Fix it by STOPPING sometimes, never by moving more slowly.** The human's rate while moving is
+  HIGHER than the scraper's. Lowering the rate produces the same wall-clock average and a
+  completely different distribution — which is the thing being measured.
+- ⚠️ **And notice what this does to "more presence is more human".** That instinct drove every
+  improvement here for a month and was right until it wasn't. Past a point, adding presence makes
+  you the least human thing on the site. *The optimum is not the maximum* — and the spec where it
+  bites is the one nobody is looking at.
+
+⚠️ **The honest cost.** Matching a human's duty cycle roughly HALVES throughput per wall-hour,
+because half of a human's session is spent not touching anything. That is a decision, not a
+measurement. But this project's own history says the trade usually pays: every time it chose
+fidelity over pace, throughput went UP within a week, because the pacing that had been
+compensating for bad behaviour could then be removed.
+
+(PJUD, 2026-08-19. Found by attaching the human recorder to a running worker — an experiment that
+required no new code and had never once been run.)
+
 ---
 
 ## Quick checklist for a new scraper
@@ -2359,6 +2405,8 @@ approximation of it.
 [ ] Human at the gate: log in / solve the challenge by hand, with nothing attached.
 [ ] Identify the SCARCE act. Harvest everything free around it.
 [ ] WATCH A HUMAN USE IT, recording the network. Diff their endpoints against yours.
+[ ] Record YOUR OWN scraper with the SAME instrument. Compare per-wall-second, not just
+    per-active-second — a generator that never stops emits more than a human, not less.
 [ ] Any container reused per record needs a FRESHNESS PROOF, or it serves you the last one.
 [ ] Input: real keystrokes, correct blur, read the value BACK.
 [ ] Pointer: arc + dwell, refuse covered targets — UNLESS the site just needs el.click().
