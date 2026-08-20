@@ -2901,3 +2901,34 @@ canary worker first.
 
 ⚠️ **Cost of learning it: 71 causas.** Six sessions spent, ~10 minutes each. Cheap for a wall that
 has been mis-stated in this file twice.
+
+## ⚠️⚠️ THE AUGUST BLOCK PERSISTS PAST 25 MIN, AND IT ESCALATES TO *ENTRY* (2026-08-20)
+
+A single-worker canary on the KNOWN-GOOD July window, 25 minutes after the six sessions died:
+
+    [02:22:43] could not reach the OJV by click-through (attempt 1/3) [state=ojv-other]
+    [02:24:02] could not reach the OJV by click-through (attempt 2/3) [state=ojv-other]
+    [02:25:21] could not reach the OJV by click-through (attempt 3/3) [state=ojv-other]
+    [02:25:39] could not reach the OJV by clicking through, and we do NOT type the URL — stopping
+
+**Not one causa. Not one search. It could not get in at all.** The block began as `Buscar stuck
+disabled` on individual sessions and is now refusing the walk-in from `www.pjud.cl` to a brand-new
+browser with a fresh profile.
+
+⚠️ **The canary was on JULY on purpose** — the window that ran clean an hour earlier — so this
+cannot be read as "August is bad". It is the address.
+
+⚠️ **THE REAL COST OF THE AUGUST ARM WAS NEVER 71 CAUSAS.** It was the address, for 25+ minutes and
+counting, during which NOTHING can be collected — no sweep, no fill, no doc pass. Price a failed
+rate experiment in dead-address minutes, not in the records the arm itself lost. At the July arm's
+delivered rate that is already ~330 records of opportunity gone, five times what the arm collected.
+
+⇒ **A canary must be cheap AND on known-good ground.** This one cost 4 minutes and settled that the
+discriminating test cannot run yet — which is exactly what it was for.
+⇒ ★ The worker refused to type the URL and stopped instead. That guard is the one rule holding
+under pressure: the shortcut was available, it would have "worked", and it is precisely what no
+person does.
+
+⇒ Next: a LONGER cool-off, then canary again **with `--trace entry`**, so the refusal page itself is
+captured. This file's own instruction is ASK THE PAGE WHY BEFORE RECOVERING, and three block
+investigations here have gone nowhere for want of the frame the worker was looking at.
