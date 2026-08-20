@@ -892,6 +892,21 @@ def cuaderno_options(page):
         return []
 
 
+def historia_sig(page):
+    """A cheap fingerprint of the historia currently on screen, for change detection.
+
+    Rows and the first row's text are enough: the two cuadernos of a causa differ in row count
+    almost always (measured 2026-08-20: '9 hist c1 / 3 hist c2' is typical), and where they do
+    not, the first row still differs. Compared for EQUALITY only, so no normalisation is needed.
+    """
+    try:
+        return page.evaluate(
+            "()=>{const r=document.querySelectorAll('#historiaCiv table tbody tr');"
+            "return r.length + '|' + (r[0] ? r[0].innerText.slice(0,140) : '');}")
+    except Exception:
+        return None
+
+
 def select_cuaderno(page, index):
     """Switch cuaderno with the TRUSTED keyboard, never select_option.
 
@@ -955,14 +970,40 @@ def select_cuaderno(page, index):
                                b["y"] + b["height"] / 2, press=False)
         except Exception:
             pass
+        before_sig = historia_sig(page)      # captured BEFORE the switch, for change detection
         page.locator("#selCuaderno").focus()
         key = "ArrowDown" if index > cur else "ArrowUp"
         for _ in range(abs(index - cur)):
             page.keyboard.press(key)
             _kbd_pause(page, base=85, spread=60)
-        page.wait_for_timeout(1600)          # historia reloads via AJAX
+        # WARN: WAIT FOR THE HISTORIA TO CHANGE, NOT FOR A NUMBER OF MILLISECONDS. This was a
+        # flat wait_for_timeout(1600) "historia reloads via AJAX", measured residentially and
+        # inherited unchanged by a datacenter runner whose round-trip is 17-23 s against a local
+        # 12-26. It was wrong in BOTH directions: locally it cost 1,005 x 1.6 s = 26.8 min of a
+        # 180-minute run (15% of the whole shift) waiting after the page had already updated, and
+        # remotely it is likely too SHORT -- and too short here does not fail loudly, it records
+        # cuaderno-1 rows under cuaderno 2, because the check below only ever asked whether the
+        # <select> index had moved and never whether the TABLE had.
+        deadline = time.time() + 25.0
+        t0 = time.time()
+        changed = False
+        while time.time() < deadline:
+            page.wait_for_timeout(80)
+            if historia_sig(page) != before_sig:
+                changed = True
+                break
+        took = (time.time() - t0) * 1000
         now = page.eval_on_selector_all(
             "#selCuaderno option", "els=>els.findIndex(o=>o.selected)")
+        if not changed:
+            # The select moved but the table never did. Do NOT report success: the caller's
+            # contract is "False means do not trust the historia now on screen", and trusting it
+            # is precisely how book-1 rows would be stamped as book 2.
+            print(f"      [warn] selCuaderno {index}: historia never changed in 25 s "
+                  f"(select={now}) — refusing to trust it")
+            return False
+        if took > 3000:
+            print(f"      [slow] historia reload took {took:.0f} ms")
         return now == index
     except Exception as e:
         print(f"      [warn] selCuaderno {index}: {e}")
@@ -1005,9 +1046,16 @@ def close_modal(page, sel):
         try:
             if page.query_selector(s):
                 human_click(page, s, timeout=2000)     # human arc — never page.click()
-                page.wait_for_timeout(500)
-                if not modal_open(page, sel):
-                    return
+                # WARN: POLL UNTIL IT IS GONE. A flat 500 ms here cost 1,129 x 0.5 s = 9.4 min of
+                # a 180-minute run, and a modal that closes in 80 ms paid the full 500 anyway.
+                # It is also the wrong shape remotely, where 500 ms may not be enough and the
+                # next row click then lands on a live backdrop -- the "modal did not open"
+                # signature this project has chased for months.
+                deadline = time.time() + 6.0
+                while time.time() < deadline:
+                    if not modal_open(page, sel):
+                        return
+                    page.wait_for_timeout(60)
         except Exception:
             pass
     page.wait_for_timeout(300)
