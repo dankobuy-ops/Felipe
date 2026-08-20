@@ -2559,9 +2559,20 @@ reproduce; arm 2 was not launched.
     556 passed the gate   4/4 shards reached the 25-min lifespan cap
     refused=0             ZERO trouble events
 
-★ **23.5 opens/min is 2.4x the best sustained aggregate this project had ever recorded** (9.9/min,
-4 workers at operator pace, 2026-08-17). ⚠️ Over 25 minutes, not an hour — do not quote it as a
-sustained figure until an hour has been run. The 08-17 fatal arm died at minute 5, so surviving 25
+⚠️⚠️ **AND 23.5 OPENS/MIN IS NOT THE SCORE. 13.3 NEW RECORDS/MIN IS.** Counted where the data is
+meant to END UP — matching `(tribunal_id, rol)` against Neon, because a `rol` alone repeats across
+the 230 courts and matching on it gave more hits than there were causas:
+
+    589 opened   254 already banked   335 NEW   ->  13.3 new records/min, 57% of opens useful
+
+★ Still the best figure this project has recorded (previous best 9.9 OPENS/min, 4 workers at
+operator pace, 2026-08-17 — and that number was never discounted for duplicates either, so the
+honest comparison is closer than 2.4x and probably nearer 1.4x on new records). ⚠️ Over 25 minutes,
+not an hour — do not quote it as a sustained figure until an hour has been run.
+
+⚠️ **57% useful, against the ~27% this file predicts for a sweep.** July was under-swept, so the
+discount is milder than usual. It is a property of THIS WINDOW, not of sweeping, and it will fall
+as the window fills. The 08-17 fatal arm died at minute 5, so surviving 25
 is real evidence, but the safe arm ran 60.
 
 ⚠️⚠️ **AND IT DID NOT TRIP BECAUSE THE RATE WAS SAFE, NOT BECAUSE TOP SPEED IS SAFE.** 26.2 req/min
