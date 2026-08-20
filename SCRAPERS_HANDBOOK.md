@@ -2557,6 +2557,21 @@ band. The instrument was right and the wrong line was being read.
 address, not the session.** Six workers holding 6 to 21 records each stopped inside thirteen
 seconds. No per-session budget produces that.
 
+⚠️⚠️ **CORRECTION, ninety minutes later: this entry is SUSPENDED.** Attaching to the browser
+showed the target's landing page had been REDEPLOYED — the form marker the entry code waits for was
+gone from a page that was otherwise healthy. A deployment mid-experiment explains the six
+simultaneous deaths better than a rate limit ever did, and the two arms were separated by ninety
+minutes as well as by window. The measurements above are real; the causal claim is not established.
+
+★ **And the lesson that survives either way: I diagnosed a block for two hours without looking at
+the page.** The scraper reported a state name meaning "none of my selectors matched", and I read it
+as evidence about the SITE rather than about MY SELECTORS — then wrote up an escalating block, a
+cost model, and a cool-off schedule on top of it. One attach to the running browser, thirty seconds,
+showed a working page with a changed DOM.
+
+⇒ **A state name is a hypothesis your code formed, not an observation.** Before believing a scraper
+that says "blocked", attach to its browser and look. The tab is sitting right there.
+
 (PJUD, 2026-08-20.)
 
 ### ⚠️ Two ids for one object: one stable, one positional — they agree until the list changes

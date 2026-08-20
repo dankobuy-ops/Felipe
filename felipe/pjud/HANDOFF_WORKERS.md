@@ -2932,3 +2932,77 @@ person does.
 ⇒ Next: a LONGER cool-off, then canary again **with `--trace entry`**, so the refusal page itself is
 captured. This file's own instruction is ASK THE PAGE WHY BEFORE RECOVERING, and three block
 investigations here have gone nowhere for want of the frame the worker was looking at.
+
+---
+
+# ⚠️⚠️⚠️ CORRECTION: "IT IS THE SEARCH RATE" IS PROBABLY WRONG — THE SITE CHANGED (2026-08-20)
+
+Written about ninety minutes after the entry above, which should be read with this one.
+
+Attaching to the canary's browser mid-attempt showed the OJV tab **open and healthy**:
+
+    page 1: https://oficinajudicialvirtual.pjud.cl/indexN.php
+            title "Oficina Judicial Virtual", menu rendered, heading "Invitado"
+
+    #fecCompetencia                    0        <- the form marker _reach_ojv waits for
+    [onclick*='accesoConsultaCausas']  0
+    [onclick*='accesoInvitado']        0
+    form                               0
+    select                             0
+    onclick attrs PRESENT: consultaUnificada(); consultaEscritosIndepen();
+                           consultaAudienciasLaboral(); consultaCiudadana();
+
+**We were never refused entry. We arrived, and did not recognise where we were.** `state=ojv-other`
+means "not the OJV page we expect", and it was reported while sitting on the OJV.
+
+`indexN.php` no longer carries the search form. It now serves a MENU whose entry point is
+`consultaUnificada()`. The engine's own comment records measuring the opposite on 2026-08-14 —
+*"it lands STRAIGHT ON THE FORM (indexN.php, #fecCompetencia present)"* — and `entry_probe.py`
+exists because **the site had already changed its entry route once that week.**
+
+## ⚠️ Why this undermines the search-rate finding
+
+A rate limit does not restructure a landing page's DOM. Whatever removed `#fecCompetencia` from
+`indexN.php` was a **deployment**, not a throttle. And a deployment at ~01:04 explains the thing
+the rate story never explained well:
+
+    01:04:21 .. 01:04:34   six sessions dead in THIRTEEN SECONDS, holding 6 to 21 opens each
+
+Simultaneity across sessions at wildly different progress is exactly what a deploy does — the page
+changes under everyone at once. A rate limit reached by six sessions independently, within thirteen
+seconds, while a fleet at **2.5x the total request rate** had run clean an hour earlier, was always
+the awkward part of that story. `Buscar stuck disabled while idle` is also what a changed page and
+stale automation look like.
+
+⇒ ~~"It is the SEARCH rate, not the request rate, that binds."~~ **SUSPENDED, not confirmed.** The
+July/August arms were separated by TIME as well as by window, and a site deployment in that gap is
+now the leading explanation for both the deaths and the broken entry. The measurements stand; the
+causal claim does not.
+⚠️ It is not disproved either. Sparsity really does invert the request mix, and that remains worth
+testing — but it must be tested against a site we can still drive, and on two arms that are not
+separated by ninety minutes.
+
+## ★ The lesson that outlives whichever explanation wins
+
+**I diagnosed a block for two hours without once looking at the page.** The canary said
+`state=ojv-other`; I read it as "the address is refusing" and wrote up a persistent escalating
+block, a cost in dead-address minutes, and a cool-off schedule. One CDP attach to the running
+browser — thirty seconds — showed a healthy OJV with a changed DOM.
+
+⇒ This file's own rule is **ASK THE PAGE WHY, BEFORE RECOVERING**, and it was written after the
+same mistake. A state name is a HYPOTHESIS the code formed, not an observation. `ojv-other` is
+literally "none of my selectors matched"; treating it as evidence about the SITE rather than about
+OUR SELECTORS is how a stale integration reads as hostility.
+⇒ **When a scraper reports a block, attach to its browser before you believe it.** The tab is
+sitting right there.
+
+## What to do next, in order
+
+1. **Confirm by hand.** Open `www.pjud.cl` in a normal browser on this network and click through to
+   the OJV. If a person reaches a working search form, this is entirely ours to fix. That is the
+   decisive test and it takes a minute — no automation can substitute for it.
+2. **Re-point `_reach_ojv` and `find_form`** at the new structure: accept the menu as a valid
+   arrival and drive `consultaUnificada()` to the form. ⚠️ A click on that control did NOT produce a
+   form within 20 s in this probe, so the route beyond it is NOT yet known — find it by watching,
+   not by guessing selectors.
+3. **Only then** re-run the sparse-window test, with both arms back to back.
