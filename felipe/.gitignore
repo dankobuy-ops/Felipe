@@ -17,6 +17,10 @@ screenshots/
 Logs/
 logs/
 *.log
+# *.err is the same class as *.log and was missing: every detached worker writes one
+# (Start-Process -RedirectStandardError), so 102 of them had accumulated untracked in
+# scraper/. They carry stack traces and can quote scraped rows.
+*.err
 
 # PJUD network-probe dumps — local experiment artifacts (may hold request internals)
 netprobe_*.jsonl
