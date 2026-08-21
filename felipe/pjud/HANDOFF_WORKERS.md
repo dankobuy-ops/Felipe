@@ -37,10 +37,13 @@ best guide to the traps; it is no longer the best guide to the numbers.
 ⚠️ **The tell that you have drifted:** your success metric can be computed offline, from files,
 with the site switched off. Then you are scoring fidelity, not results.
 
-### Corpus (after the 2026-08-20 ingest)
+### Corpus (after the 2026-08-21 rung-8 ingest)
 
-    6,225 causas   6,063 with a cuaderno-2 historia   4,387 cuaderno-2 documents in Drive
-    by month of ingreso: 2026-07 = 3,679   2026-06 = 2,132   2026-08 = 25   2026-05 = 16
+    6,477 causas   6,307 with a cuaderno-2 historia   4,387 cuaderno-2 documents in Drive
+    by month of ingreso: 2026-07 = 3,679++   2026-06 = 2,132   2026-08 = 25   2026-05 = 16
+
+⚠️ Rung 8 opened 1,385 causas and only **252 of them were new** (18%). July is not merely picked
+over, it is nearly exhausted at this date range.
 
 ⚠️ **August is virtually unswept nationally** (25 causas). July is picked over. That matters more
 than any pacing setting — see "capacity vs delivery" below.
@@ -57,6 +60,13 @@ back-to-back on one address and tripped at rung 4 after ~2,700 cumulative opens 
 nothing about four workers and everything about two hours of debt. A back-to-back ladder makes the
 last rung look guilty.
 
+★ **Done on 2026-08-21: rung 8 was re-run alone on a rotated IP** and gave the throughput ceiling
+(50.06 opens/min) plus the cleanest survival datum here — **a virgin address lasted 30.5 minutes /
+1,385 opens at 46/min**. ⚠️ But rotating between rungs makes the rungs incomparable ON SURVIVAL,
+because each then meets a different address history. **Throughput comparisons want rotation;
+survival comparisons want an identical starting state, which means one rung per address.** The
+protocol cannot serve both in one pass — decide which question the ladder is for before running it.
+
 ### What one worker can do, and it is the SITE's floor
 
     8.6 – 9.0 s per open   =   6.7 – 7.0 opens/min productive (excluding entry)
@@ -70,16 +80,22 @@ answering plus the motor work we refuse to cut.
 
 ### What a fleet can do
 
-| fleet | steady-state aggregate | per worker | 25 min outcome |
+| fleet | aggregate opens/min | vs solo | outcome |
 |---|---:|---:|---|
-| 4 workers | 26.2 req/min | 6.55 | clean, zero trouble |
-| 8 workers | 52.9 req/min | 6.61 | clean, zero trouble |
+| 1 worker | 6.37 | 1× | clean over 180 min |
+| 4 workers | 28.47 | 4.47× | zero trouble in 1,023 opens |
+| 8 workers | **50.06** | **7.86×** | zero trouble in 1,385 opens |
 
-**Workers scale LINEARLY in steady state** — 2.02× aggregate for 2× the fleet. `rate_watch.py`'s
-header says the opposite ("it goes DOWN as workers are added"); that was the ENTRY GATE, not
-contention. ⚠️ Per-OPEN time does drift (8.6–11.8 s at four, 9.7–12.2 at eight) and **that may be
-this house's uplink rather than the site** — a local measurement of unknown cause, not to be
-carried into a remote plan.
+**Scaling is linear to four workers and bends at eight** — 4 → 8 returns only **1.76× for 2× the
+fleet**, the first measured contention here (2026-08-21, rung 8). `rate_watch.py`'s header says
+scaling goes DOWN as workers are added; that was the ENTRY GATE, not contention.
+
+⚠️⚠️ **Per-OPEN time is NOT a fleet-size signal — it is court density.** Across rung 8's shards,
+opens-per-court vs s/open correlates at **r = −0.814**: a shard drawing sparse courts pays a ~19 s
+search over few causas and looks slow. This is why rung 4 came out *faster* per worker than a solo
+worker (8.43 vs 9.42 s), which was never explicable as contention. **Judge a rung on aggregate
+opens/min; per-worker s/open measures the shard split.** The old "this house's uplink" theory for
+the same drift is struck.
 
 ⚠️ **`--speed` is no longer a rate control.** It spans ~13% of the request rate (23 → 26 req/min at
 four workers) where in August it spanned 23 → 56. **FLEET SIZE is the rate control now.** Design
@@ -89,6 +105,7 @@ every rate experiment on worker count.
 
     4 workers    589 opens →  335 NEW   57% useful
     8 workers   1008 opens →  330 NEW   33% useful
+    8 workers   1385 opens →  252 NEW   18% useful   (2026-08-21, July further depleted)
 
 Twice the fleet, twice the opens, **the same records** — the second arm re-swept a window the first
 had just harvested. Capacity scales; delivery is bounded by **unharvested territory**.
@@ -131,6 +148,10 @@ no tab at all a minute later.
 different network reached the form instantly, and the tethered PC reports FORM twice in a row. No
 redeployment, no outage — an eight-hour IP block that serves a healthy page with the search form
 removed. `_reach_ojv` and `find_form` need NO changes.
+
+⚠️ **A router reset clears it instantly** (2026-08-20, again 2026-08-21) — the block is on the
+address, and the address is cheap to change. **Current status 2026-08-21 14:26: blocked again**,
+30.5 minutes after the reset, by rung 8.
 
 ### Struck or suspended by the 2026-08-19/20 session
 
@@ -467,6 +488,131 @@ time were read as two arms separated by their variable.
 - **Zero trouble in 1,023 opens at 4 workers**, and one lost click in 277 at 1 worker.
 - **Per-worker work held constant works**: rung 1 ran 44.6 min and rung 4's first shard 37.7 min,
   against the previous ladder's 180 / 95 / 48 min spread. The rungs are finally the same shape.
+
+
+---
+
+# ★★★★★ RUNG 8 ON A VIRGIN ADDRESS — 50 OPENS/MIN, AND IT COSTS THE ADDRESS IN 30 MINUTES (2026-08-21)
+
+The rung the previous ladder never reached, run alone on a **freshly rotated IP** so that it
+carried no inherited debt. Same code, same specs, same 29 courts per worker, same runner.
+
+    13:55:13  health before        FORM
+    13:56:15  first open
+    14:26:24  first shard finished — 29 courts, refused=0, DONE in 30.5 min
+    14:26:42  health after         OJV-NO-FORM
+
+| | rung 1 | rung 4 | **rung 8** |
+|---|---:|---:|---:|
+| opens | 277 | 1,023 | **1,385** |
+| aggregate | 6.37/min | 28.47/min | **50.06/min** (all-8-live, 24.4 min) |
+| vs solo | 1x | 4.47x | **7.86x** |
+| s/open | 9.42 | 8.43 | 9.58 |
+| trouble | 1 in 277 | 0 in 1,023 | **0 in 1,385** |
+| address after | FORM | OJV-NO-FORM | **OJV-NO-FORM** |
+
+⚠️ **Rung 8 is NOT comparable to rungs 1 and 4 on survival.** It ran on a rotated address with zero
+debt while those two ran back-to-back on an address already carrying ~1,700 opens. It IS comparable
+on throughput, which is what it was run to measure.
+
+## 1. THE CEILING: 50 OPENS/MIN, AND THE FIRST REAL CONTENTION
+
+    1 worker    6.37 opens/min
+    4 workers  28.47 opens/min   4.47x
+    8 workers  50.06 opens/min   7.86x     <- 4 -> 8 is only 1.76x for 2x the fleet
+
+**Eight workers is where scaling finally bends.** One through four was linear-to-superlinear; four
+through eight loses 12%. That is the first measured contention in this project and it is small —
+but it is real, and it means the marginal worker is worth less than the last one.
+
+⇒ **3,000 causa opens per hour is the local ceiling on these specs.** Nothing measured here says
+16 workers would reach 100/min, and the trend says it would not.
+
+## ⚠️⚠️ 2. THE s/open SPREAD IS COURT DENSITY — NOT CONTENTION, NOT SWAP
+
+Per-shard s/open ranged 8.42 to 11.84, which invites a contention story. It is not one:
+
+    shard 8    8 courts   188 opens   23.5 opens/court    8.42 s/open   <- densest, fastest
+    shard 5   29 courts   137 opens    4.7 opens/court   11.84 s/open   <- sparsest, slowest
+
+    correlation, opens-per-court vs s/open:  r = -0.814
+
+**A court switch costs a search (~19 s) that is amortised over however many causas that court
+yields.** A shard drawing sparse courts pays it constantly. So s/open is a property of the COURTS
+A SHARD DREW, and comparing it across rungs — or between shards — measures the draw, not the fleet.
+⇒ ⚠️ This also explains rung 4 being *faster* per worker than a solo worker (8.43 vs 9.42), which
+never made sense as a contention result. It was never contention. It was denser courts.
+⇒ **Judge a rung on AGGREGATE opens/min. Per-worker s/open is confounded by the shard split.**
+
+## ⚠️⚠️⚠️ 3. FREE RAM REFUSED TO LET THIS RUN, AND IT WAS WRONG — FOR THE SECOND TIME
+
+The pre-flight guard demanded `n * 0.55 + 0.8` = **5.2 GB free**; the machine had **2.2 GB**, so the
+runner would have silently skipped the rung. It ran anyway, at **0.51 GB free**, and produced the
+best throughput ever measured here with zero trouble in 1,385 opens.
+
+⇒ ★ **That is twice the free-RAM proxy has blocked healthy work** — once by killing a running arm
+(2026-08-20, 0.54 GB free, 6.85-9.73 s/open), once by refusing to start one. **Free RAM is not the
+harm. Seconds-per-open is the harm**, and above it would have shown as the sparse shards getting
+slower, not as a number in Task Manager.
+⇒ The guard now WARNS, logs the free figure to `ladder.log`, and refuses only under `-FloorGB`
+(1.0 GB) where Chrome genuinely cannot start.
+⇒ ⚠️ The general form: **a proxy you never validated will eventually veto the thing it was meant to
+protect.** If a guard has never been checked against the outcome it stands in for, it is a guess
+with authority.
+
+## ★★★★★ 4. SURVIVAL: A VIRGIN ADDRESS BOUGHT 30 MINUTES — AND THE CONSTRAINT LOOKS LIKE RATE
+
+This is the cleanest survival datum this project has, because the address had no history:
+
+| run | rate | duration | opens | address after |
+|---|---:|---:|---:|---|
+| solo, 3 h | 6.37/min | 180 min | **1,129** | **FORM (clean)** |
+| solo, rung 1 | 6.37/min | 44.6 min | 277 | FORM (clean) |
+| 4 workers, rung 4 | 28.47/min | 37.7 min | 1,023 | OJV-NO-FORM |
+| **8 workers, rung 8** | **46.17/min** | **30.5 min** | **1,385** | **OJV-NO-FORM** |
+
+★ **The three-hour solo run opened 1,129 causas and stayed clean. Rung 8 opened 1,385 in a
+thirtieth-and-a-half of that time and was refused.** Two similar totals, opposite outcomes. A
+lifetime-opens budget cannot explain that; a RATE can.
+
+⚠️ **But rate and CONCURRENCY are perfectly confounded in every run here** — more workers always
+means both more requests per minute and more simultaneous sessions from one address. Nothing above
+separates them.
+⇒ **The experiment that separates them: 8 workers paced to a 6.4/min AGGREGATE**, matching the solo
+run's rate with eight times its concurrency. Survives 180 min ⇒ the constraint is rate. Trips ⇒ it
+is concurrency, and the fleet is capped no matter how gently each worker behaves.
+⇒ ⚠️ Until that is run, **"8 workers trips it" is not established** — only "8 workers at 46/min
+trips it", which is a different and much weaker claim.
+
+## ⚠️ 5. AND THE BLOCK WAS AGAIN INVISIBLE FROM INSIDE
+
+Identical to rung 4, now twice observed and no longer a one-off: `refused=0`, zero trouble, all
+eight shards opening causas normally until they were stopped at 14:26:24 — and the arrival check
+refused **18 seconds later**. Working sessions carry on through a block that turns newcomers away.
+
+## ⚠️⚠️ 6. AGAINST THE ACTUAL GOAL IT BARELY MOVED
+
+    1,385 opened -> 1,379 stored to disk -> 252 NEW in Neon      18% useful
+
+    4 workers   7.50 new/min    450 new records/hour
+    8 workers   8.26 new/min    496 new records/hour             +10%
+
+⇒ ★★ **Opens scaled 1.76x. Records scaled 1.10x.** Doubling the fleet bought a tenth more of the
+only thing that counts, and spent the address in half the time. Depletion drifted between the two
+runs so the +10% is soft — but the GAP between 1.76 and 1.10 is the finding, and it points the same
+way "capacity is not delivery" already does.
+⇒ **The July window is the binding constraint, not the fleet size.** 82% of what eight workers
+opened was already held. Point a fleet this size at August (25 causas nationally) or at `--fill`
+before pointing it at July again.
+
+## What rung 8 settles, and what it does not
+
+- **Settles:** the local throughput ceiling (50 opens/min, ~3,000/hour), that 4 -> 8 is the first
+  sublinear step, that per-worker s/open is a court-density artefact, and that the RAM guard was
+  vetoing healthy work.
+- **Does NOT settle:** whether eight workers are survivable when paced down; whether the trip is
+  rate or concurrency; how long a virgin address lasts at any rate other than 46/min. One address,
+  one rung, no repeat.
 
 ---
 

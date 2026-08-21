@@ -2715,6 +2715,94 @@ the same object — for anything you re-scrape, that is not hypothetical, it is 
 
 (PJUD, 2026-08-19.)
 
+### ⚠️⚠️ A guard built on a proxy will eventually veto the work it was meant to protect
+
+A fleet launcher refused to start a run when free RAM was under an estimate of `workers × 0.55 +
+0.8` GB. The estimate had never been checked against an outcome. Twice it was wrong in the same
+direction:
+
+    it KILLED a running 8-worker arm at 0.54 GB free    the arm was healthy: 6.85-9.73 s per item
+    it REFUSED to start one at 2.2 GB free              it ran at 0.51 GB and set the throughput record
+
+⇒ **The proxy was free RAM. The harm it stood in for was swapping, and swapping shows up as WORK
+GETTING SLOWER.** The real signal was already being measured, per item, continuously — the guard
+just was not reading it.
+⇒ ★ **A guard that has never been validated against the outcome it proxies is a guess with
+authority.** It will fire on the wrong side eventually, and because it fires *before* the work, its
+false positives are invisible: you never see the healthy run it prevented.
+⇒ **Prefer: warn, log the number, and run.** Reserve a hard refusal for a floor where the work
+genuinely cannot start at all, and pick that floor from a failure you have actually seen.
+⇒ ⚠️ Note the asymmetry that hides this: a guard that wrongly ALLOWS work produces a visible bad
+run you will investigate. A guard that wrongly BLOCKS work produces silence.
+
+(PJUD, 2026-08-21.)
+
+### ⚠️⚠️ Per-item timings measure the SPLIT, not the system, when a fixed cost is amortised
+
+Eight parallel workers reported 8.42 to 11.84 seconds per record — a 40% spread that invites a
+contention story, and got one.
+
+It was not contention. Each worker walks a list of CONTAINERS and pays a fixed ~19 s search to open
+each one, then harvests however many records that container happens to hold:
+
+    worker 8    8 containers   188 records   23.5 per container    8.42 s/record
+    worker 5   29 containers   137 records    4.7 per container   11.84 s/record
+
+    correlation of records-per-container against s/record:   r = -0.814
+
+⇒ **The per-item time was a property of the DRAW, not of the fleet.** A worker dealt sparse
+containers pays the fixed cost constantly and looks slow while doing nothing wrong.
+⇒ ★ This also retro-explains an anomaly that had been sitting unexplained: a 4-worker arm had come
+out *faster per worker* than a solo worker, which is impossible as a contention result. It was
+never contention — it was a denser draw. **An unexplained anomaly is usually a confound you have
+not named yet, and it will keep producing wrong stories until you do.**
+⇒ **Compare fleets on AGGREGATE throughput.** Use per-worker timings only within a run, and only
+after normalising for whatever fixed cost each worker is amortising.
+
+(PJUD, 2026-08-21.)
+
+### ★★★ Capacity scales. Delivery does not — and you will not notice if you score capacity.
+
+Doubling a fleet from four workers to eight, on the same corpus:
+
+    records OPENED      1.76x
+    NEW records BANKED  1.10x
+
+Everything the extra workers opened had already been collected. The window was picked over: 82% of
+the 8-worker run was re-reading rows already held.
+
+⇒ ★ **Fetches are not the product. Records you did not already have are the product**, and only one
+of those two numbers is visible in a scraper's own log.
+⇒ **Score deliveries where they LAND** — count rows that appear in the destination, not fetches
+that leave the scraper. The two diverge exactly when the corpus is nearly exhausted, which is
+precisely when you are deciding whether to add capacity.
+⇒ **On a picked-over window, more workers buy almost nothing** and still spend the same reputation.
+Point new capacity at unharvested territory, or at a work-list of known gaps, before scaling it
+against a window you have already swept.
+
+(PJUD, 2026-08-21.)
+
+### ⚠️ Rate and CONCURRENCY are confounded in every "add workers" experiment
+
+Escalating fleet size to find the limit changes two things at once: the requests per minute leaving
+the address, and the number of simultaneous sessions coming from it. Every rung of every ladder run
+here moved both, so no result can attribute a block to either.
+
+The evidence is real and still unattributable:
+
+    1 worker,  6.4 req/min, 180 min  ->  1,129 fetches  ->  address clean
+    8 workers, 46  req/min,  30 min  ->  1,385 fetches  ->  address refused
+
+⇒ Similar totals, opposite outcomes, so a lifetime budget does not explain it — but "rate" and
+"eight sessions at once" explain it equally well.
+⇒ **The experiment that separates them: N workers paced so the AGGREGATE rate matches the solo
+baseline.** Same requests per minute, N times the concurrency. Survives ⇒ rate is the constraint.
+Trips ⇒ concurrency is, and no amount of gentle pacing will let the fleet grow.
+⇒ ★ Until that runs, **"N workers trips it" is not a finding** — "N workers AT THIS RATE trips it"
+is, and it is a much weaker claim that does not generalise to a paced fleet.
+
+(PJUD, 2026-08-21.)
+
 ---
 
 ## Quick checklist for a new scraper

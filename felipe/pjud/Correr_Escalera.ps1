@@ -16,9 +16,12 @@
 # averages silently mix every regime. Each rung here STOPS AT THE FIRST `DONE in`, so every number
 # comes from the all-N-live window.
 #
-# WARN: DO NOT KILL A RUNG ON FREE RAM. An 8-worker arm was killed on 2026-08-20 for sitting at
-# 0.54 GB free, and it was HEALTHY -- 6.85-9.73 s per open, better than the 4-worker rung.
-# Swapping shows up as workers getting SLOWER. Free RAM is a proxy; seconds-per-open is the harm.
+# WARN: DO NOT KILL -- OR REFUSE -- A RUNG ON FREE RAM. An 8-worker arm was killed on 2026-08-20
+# for sitting at 0.54 GB free, and it was HEALTHY -- 6.85-9.73 s per open, better than the
+# 4-worker rung. Swapping shows up as workers getting SLOWER. Free RAM is a proxy;
+# seconds-per-open is the harm, and it is the only thing that should stop a rung.
+# So the check below WARNS and runs. It refuses only under -FloorGB, where Chrome cannot start
+# at all, and it writes the free figure to ladder.log so the rung can be read with it in view.
 #
 #   .\Correr_Escalera.ps1 -Label "con-tab-fix"
 #   .\Correr_Escalera.ps1 -Label "sin-tab-fix" -Rungs 1,4,8
@@ -31,7 +34,8 @@ param(
     [string] $Desde          = "01/07/2026",
     [string] $Hasta          = "31/07/2026",
     [int]    $BasePort       = 9600,
-    [int]    $Courts         = 230
+    [int]    $Courts         = 230,
+    [double] $FloorGB        = 1.0
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,10 +78,14 @@ foreach ($n in $Rungs) {
 
     $freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
     $needGB = [math]::Round($n * 0.55 + 0.8, 1)
-    Write-Host ("  free RAM {0} GB, needs about {1} GB" -f $freeGB, $needGB)
+    Write-Host ("  free RAM {0} GB, estimate {1} GB" -f $freeGB, $needGB)
+    Add-Content -Path (Join-Path $outRoot "ladder.log") -Value ("[{0}] rung {1} free RAM {2} GB (estimate {3} GB)" -f (Get-Date -Format HH:mm:ss), $n, $freeGB, $needGB)
     if ($freeGB -lt $needGB) {
-        Write-Host "  SKIPPED — not enough RAM. A swapping machine is paced by its disk."
-        Add-Content -Path (Join-Path $outRoot "ladder.log") -Value ("[{0}] rung {1} SKIPPED: {2} GB free, {3} needed" -f (Get-Date -Format HH:mm:ss), $n, $freeGB, $needGB)
+        Write-Host "  WARN - under the estimate. Running anyway: judge it by seconds-per-open, not by free RAM."
+    }
+    if ($freeGB -lt $FloorGB) {
+        Write-Host ("  SKIPPED - under the {0} GB floor, where Chrome cannot start at all." -f $FloorGB)
+        Add-Content -Path (Join-Path $outRoot "ladder.log") -Value ("[{0}] rung {1} SKIPPED: {2} GB free, floor {3} GB" -f (Get-Date -Format HH:mm:ss), $n, $freeGB, $FloorGB)
         continue
     }
 
