@@ -2574,6 +2574,70 @@ that says "blocked", attach to its browser and look. The tab is sitting right th
 
 (PJUD, 2026-08-20.)
 
+### ★★★★★ Your block detector probably tests ARRIVAL, not the address
+
+A cheap health check — open a fresh browser, walk in, look for the control you need — is the only
+reliable way to tell a block from a site change. This project built one and it works.
+
+Then a four-session fleet ran to **normal completion**: no refusals, no errors, every session
+finishing on its own work rather than being stopped. **Fourteen seconds later the health check was
+refused.**
+
+⇒ ★ **The check opens a NEW session. So it answers "can a new arrival get in?" — not "does this
+address still work?"** Established sessions may carry on straight through a block that turns away
+every newcomer, and on this evidence they did.
+
+- **Report it as what it measures.** "Arrivals are refused" is supportable; "the address is dead"
+  is not, and the two lead to different decisions — one says stop starting workers, the other says
+  stop working.
+- **If you need to know whether existing sessions still work, ask an existing one.** A fresh
+  browser cannot answer that question, however carefully you build it.
+- ⚠️ **A fleet can be inside a block without knowing it.** That is how "the run looked healthy" and
+  "we were blocked" end up both being true, which has happened here more than once.
+
+(PJUD, 2026-08-21.)
+
+### ⚠️ Back-to-back experiments on one address make the LAST one look guilty
+
+A ladder of 1 → 4 → 8 workers was run in sequence on a single address with no cool-off. It tripped
+at the 4-worker rung, which reads like a clean answer: four is too many.
+
+It is not an answer at all. The address had absorbed **~2,700 record opens in under two hours**
+across all rungs, and every rung inherits the debt of the ones before it. The 4-worker rung was
+simply the one holding the parcel when the music stopped.
+
+⇒ **Rotate the address, or cool off, BETWEEN rungs of any escalating experiment.** Otherwise the
+variable you are escalating is confounded with cumulative load, and the confound always points at
+the largest setting — which is exactly the answer you were half-expecting, which is what makes it
+dangerous.
+⇒ **Re-baseline after a rotation.** A new address is a new history, not a reset of the old one.
+⇒ This is the same shape as comparing two arms separated by time and reading the difference as
+their variable. Sequencing IS a variable; hold it or randomise it.
+
+(PJUD, 2026-08-21.)
+
+### ⚠️ Replacing a tuned constant with a condition buys nothing where it was tuned
+
+Two flat sleeps on a per-record path were replaced with real conditions — wait for the table to
+change, wait for the modal to be gone — on the reasoning that a constant measured on one link is a
+guess on another. The arithmetic said they were 20% of a shift.
+
+Measured after: **identical throughput, to two decimal places.** The constants had been tuned on
+this link and were simply correct here; a condition exits when a well-chosen constant expires.
+
+⇒ **That does not make the change wrong** — the old check verified the *control* had moved but
+never that the *content* had, so a slower link would have filed the wrong data with no error at
+all. The gain is adaptivity and correctness, not speed.
+⇒ ⚠️ **But it does make "this made it faster" a claim you must measure rather than assume**, and
+the arithmetic that predicted 20% was measuring time the code spent waiting, not time it would
+save. Waiting on the critical path and waiting *for something that hasn't happened yet* look
+identical in a profile.
+⇒ ⚠️ **And beware the validating sample.** A 25-record check on a single container showed a 32%
+gain that vanished at full scale, because it skipped the per-container work that dominates the
+average. Validate a per-item change on a sample that includes everything the item is embedded in.
+
+(PJUD, 2026-08-21.)
+
 ### ★★★★★ A block can be a PAGE THAT LOOKS FINE — only a second address can tell you
 
 A scraper stopped working. The browser was attached to and inspected: the target's page was open,

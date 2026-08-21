@@ -45,6 +45,18 @@ with the site switched off. Then you are scoring fidelity, not results.
 ⚠️ **August is virtually unswept nationally** (25 causas). July is picked over. That matters more
 than any pacing setting — see "capacity vs delivery" below.
 
+### The standing ladder protocol
+
+> **1 worker as baseline → 4 → 8**, per-worker work held constant at **29 courts**, run unattended
+> by `Correr_Escalera.ps1`. Each rung stops at the FIRST `DONE in`, because a fleet does not end,
+> it DISASSEMBLES — shards exhaust at different times and a rung left running becomes an
+> (N-1)-worker rung still labelled N.
+
+⚠️ **Rotate the address or cool off BETWEEN rungs.** The first run of this protocol went
+back-to-back on one address and tripped at rung 4 after ~2,700 cumulative opens — which says
+nothing about four workers and everything about two hours of debt. A back-to-back ladder makes the
+last rung look guilty.
+
 ### What one worker can do, and it is the SITE's floor
 
     8.6 – 9.0 s per open   =   6.7 – 7.0 opens/min productive (excluding entry)
@@ -94,9 +106,11 @@ FEWER. **Scoring on opens would have concluded "add workers" and been exactly wr
 | `--duty human` | 3.23 stops/min, 49% silent | **−54%** (2.66 → 1.23 opens/min) | **unmeasured** |
 | `--focus fast` | p0–p25 band | +8% alone | **unmeasured** |
 
-⚠️ **THE SURVIVAL COLUMN HAS EXACTLY ONE ENTRY** (2026-08-20): solo, `--speed 0 --duty off`, THREE
-HOURS, 1,129 opens, one lost click, address verified clean before and after. The fastest thing we
-have is not self-destructive at solo scale.
+⚠️ **THE SURVIVAL COLUMN, so far:** solo `--speed 0 --duty off` ran THREE HOURS / 1,129 opens
+with one lost click and a clean address either side; a 29-court solo rung ran 44.6 min / 277 opens
+clean; a 4-worker rung ran 37.7 min / 1,023 opens with ZERO trouble and then found the ARRIVAL
+channel refused. ⚠️ That refusal followed ~2,700 cumulative opens in two hours on one address, so
+it prices the ADDRESS, not the fleet size.
 ⚠️⚠️ **It is still empty for every OTHER configuration and for every fleet size.** No run has
 compared block rates BETWEEN two spec configurations. The duty cycle costs half the throughput on
 the strength of "the operator did it" and **its benefit has never been measured once**.
@@ -361,6 +375,98 @@ worker and all rungs run the same ~95 min, with fleet size the only variable.
   tests a higher rate for a shorter time — a reasonable trade, but not a controlled comparison.
 - **Nothing above 4 workers on these specs.** Rung 3 is unrun.
 - **Nothing about the duty cycle**, which was off in both rungs.
+
+---
+
+---
+
+# ★★★★★ THE `con-tab-fix` LADDER — AND WHAT A BLOCK DETECTOR ACTUALLY DETECTS (2026-08-20/21)
+
+First ladder run under the standing protocol: **1 worker as baseline → 4 → 8**, per-worker work held
+constant at 29 courts, unattended via `Correr_Escalera.ps1`, each rung stopping at the first
+`DONE in`, with a block check before and after.
+
+| rung | workers | courts/w | opens | opens/min | s/open | trouble | address after |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | 1 | 29 | 277 | 6.37 | 9.42 | 1 | FORM |
+| 4 | 4 | 29 | 1,023 | **28.47** | 8.43 | **0** | **OJV-NO-FORM** |
+| 8 | 8 | 29 | — | — | — | — | **SKIPPED** |
+
+The runner refused rung 8 rather than run it on a blocked address. That guard earned its place on
+its first outing: a rung run there would have produced a confident zero and been read as a wall.
+
+## ⚠️⚠️ 1. THE CONDITION-BASED WAITS BOUGHT NOTHING LOCALLY — AND THAT IS THE RIGHT RESULT
+
+    old rung 1, flat sleeps      9.42 s per open
+    new rung 1, conditions       9.42 s per open      identical
+
+The two flat sleeps replaced (`select_cuaderno` 1600 ms, `close_modal` 500 ms) were **correctly
+tuned for this link**: the historia really does take ~1.5 s to reload here and the modal really
+does take ~0.5 s to go, so a condition exits at the same moment a well-chosen constant does.
+
+⚠️ **The 6.42 s/open verification run was misleading and I said so at the time — it turned out to
+be the whole story.** It covered ~1 court on a single search, excluding court switching and search
+time, which is most of what separates 6.4 from 9.4. **Never validate a per-causa change on a
+sample that skips the per-court work.**
+
+⇒ **The change is still right, for the reason it was made:** a constant tuned residentially is a
+guess on a datacenter link with a 17-23 s round-trip, and the old check verified only that the
+`<select>` index had moved — never that the TABLE had, so a slow reload silently files cuaderno-1
+rows under cuaderno 2. **Its value is adaptivity and correctness, not speed**, and any claim that
+it makes things faster locally is now measured false.
+
+## ⚠️⚠️⚠️ 2. THE BLOCK WAS INVISIBLE TO THE WORKING SESSIONS
+
+All four rung-4 shards ran to **normal completion** — `refused=0`, zero trouble lines, last causa
+opened 19:03:50, first shard finishing on its own court exhaustion. **Fourteen seconds later a
+fresh session was refused.**
+
+⇒ ★ **`site_health.py` opens a BRAND-NEW browser on a fresh profile and walks in. So
+`OJV-NO-FORM` means "a NEW ARRIVAL cannot get in" — it does not prove the address is dead.** An
+established session may keep working straight through it, and on this evidence one did.
+
+⚠️ This reframes the detector without invalidating it. It is still the only cheap way to tell a
+block from a site change, and it caught this one 14 s after it appeared. But it measures the
+**arrival** channel, and the two channels are demonstrably not the same:
+
+    working sessions   opened causas normally until they exhausted their courts
+    new arrival        refused, same address, same minute
+
+⇒ **Report it as "arrivals are refused", never as "the address is dead"**, and if you need to know
+whether existing sessions still work, ask an existing session — not a new one.
+⇒ It also means a fleet can be inside a block without knowing it, which is exactly how "the run
+looked healthy" and "we were blocked" have both been true at once in this project before.
+
+## ⚠️⚠️ 3. RUNG 4 DID NOT TRIP IT. CUMULATIVE LOAD DID.
+
+The ladder ran back-to-back on ONE address with no cool-off and no rotation:
+
+    17:10  rung 3 (previous ladder)  8 workers  28 min   1,425 opens
+    17:39  rung 1                    1 worker   44 min     277 opens
+    18:25  rung 4                    4 workers  37 min   1,023 opens
+                                                         2,725 opens in ~114 min
+
+⇒ **"Four workers trips it" is NOT supported.** What is supported is that ~2,700 opens inside two
+hours on one address trips the arrival channel. The fleet-size question is still open, and this
+ladder cannot answer it.
+
+⚠️ **A back-to-back ladder makes the LAST rung look guilty**, because every rung inherits the debt
+of the ones before it. That is a defect in the sequencing, not a finding about fleet size — and it
+is the same shape as the July-vs-August confound from the night before, where two arms separated by
+time were read as two arms separated by their variable.
+
+⇒ **Rotate the address or cool off between rungs.** A router reset clears this block in seconds
+(measured 2026-08-20), so rotation is the cheap option and there is no excuse for not doing it.
+⇒ ⚠️ And re-baseline after a rotation: a new IP is a new address with its own history.
+
+## What this ladder did establish
+
+- **4 workers reach 28.47 opens/min aggregate at 8.43 s/open**, against a solo baseline of 6.37 and
+  9.42 on the same code, same courts-per-worker, same address. **4.47x for 4x the workers** —
+  superlinear, because each shard drew denser courts than the solo run's 29.
+- **Zero trouble in 1,023 opens at 4 workers**, and one lost click in 277 at 1 worker.
+- **Per-worker work held constant works**: rung 1 ran 44.6 min and rung 4's first shard 37.7 min,
+  against the previous ladder's 180 / 95 / 48 min spread. The rungs are finally the same shape.
 
 ---
 

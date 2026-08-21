@@ -75,7 +75,8 @@ Both cloud workflows expose `trace`; `pjud-fill.yml` also exposes `step`. See
 | what does the worker emit vs a human? | `scraper/human_profile.py --file A --vs B` — reports per-ACTIVE and per-WALL second, and the duty cycle |
 | record a human, or a worker, identically | `scraper/human_record.py --port N` |
 | did the data actually land? | `scraper/ingest_worker_h.py --dry`, then count in Neon — a run's own tally is not evidence |
-| how many workers can one address carry? | `Experimento_Fleet.ps1 -Workers N -Speed S` |
+| how many workers can one address carry? | `Correr_Escalera.ps1 -Label X` — the standing ladder, 1 → 4 → 8 at 29 courts each, unattended. ⚠️ rotate the address between rungs or the last rung inherits the others’ debt |
+| one arm at a fixed fleet size | `Experimento_Fleet.ps1 -Workers N -Speed S` |
 | what is a spec setting worth? | `Experimento_Specs.ps1` (a focus × duty matrix) |
 
 ⚠️ **The survival column is empty.** Every throughput figure in these docs is real; no run has
