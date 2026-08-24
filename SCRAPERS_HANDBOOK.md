@@ -2835,8 +2835,16 @@ is, and it is a much weaker claim that does not generalise to a paced fleet.
 
 ## Where the detail lives
 
+⭐ **[`felipe/GENERIC_SCRAPER.md`](felipe/GENERIC_SCRAPER.md)** is the **library** cut of this
+material: the same knowledge organised by *the question you are asking* rather than by which scraper
+taught it, plus a blank per-target profile form to copy on day one of a new project, and the dated
+registers (measurements, overturned claims, negative results, open questions, traps). It does not
+replace this file — **this file keeps the reasoning and the near-misses**, which are half the value,
+and the library cites them. Added 2026-08-24.
+
 | topic | file |
 |---|---|
+| the reusable library: invariants, per-target profiles, the registers | `felipe/GENERIC_SCRAPER.md` |
 | PJUD workers, pacing evidence, recovery, schema | `felipe/pjud/HANDOFF_WORKERS.md` |
 | PJUD site + WAF, and how each conclusion was reached | `felipe/pjud/HANDOFF_CDP.md` |
 | PJUD second machine / backfill worker | `felipe/pjud/HANDOFF_PC2.md` |

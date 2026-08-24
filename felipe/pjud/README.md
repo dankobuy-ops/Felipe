@@ -19,7 +19,8 @@ compute offline, with the site switched off, is measuring fidelity rather than r
 | understand the site or the WAF | **`HANDOFF_CDP.md`** — entry gates, block tiers, and how each conclusion was reached. Its header lists what is superseded |
 | set up the second machine | **`HANDOFF_PC2.md`** — worker B, the filtered backfill |
 | know why it is built this way | `HANDOFF.md` — ⚠️ **superseded**, the abandoned Sheets/headless/cron design, kept for history only |
-| write a NEW scraper | **[`../../SCRAPERS_HANDBOOK.md`](../../SCRAPERS_HANDBOOK.md)** — what generalises beyond this site, starting with THE ONE RULE |
+| write a NEW scraper | **[`../GENERIC_SCRAPER.md`](../GENERIC_SCRAPER.md)** — the library: the invariants, a blank per-target profile form to fill in, and the day-one checklist |
+| find the long-form evidence for a generic claim | **[`../../SCRAPERS_HANDBOOK.md`](../../SCRAPERS_HANDBOOK.md)** — ~180 dated entries, starting with THE ONE RULE |
 
 ### The workers, split by how much of the causa each takes
 
